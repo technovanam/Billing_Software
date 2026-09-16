@@ -36,6 +36,8 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
   const [name, setName] = useState("");
   const [hsn, setHsn] = useState("");
   const [price, setPrice] = useState("");
+  const [unit, setUnit] = useState("");
+  const [description, setDescription] = useState("");
 
   useEffect(() => {
     if (productToEdit) {
@@ -43,17 +45,21 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
       setHsn(productToEdit.hsn);
       const priceValue = productToEdit.price.replaceAll(/[^0-9.-]+/g, "");
       setPrice(priceValue);
+      setUnit(productToEdit.unit || "");
+      setDescription(productToEdit.description || "");
     } else {
       // Reset form for adding new product
       setName("");
       setHsn("");
       setPrice("");
+      setUnit("");
+      setDescription("");
     }
   }, [productToEdit]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...productToEdit, name, hsn, price });
+    onSave({ ...productToEdit, name, hsn, price, unit, description });
   };
 
   const modalTitle = productToEdit ? "Edit Product" : "Add New Product";
@@ -121,6 +127,43 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
                 placeholder="0"
                 className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 required
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="productUnit" className="block text-sm text-gray-700 mb-1">
+                Unit *
+              </label>
+              <select
+                id="productUnit"
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select unit</option>
+                <option value="Piece">Piece</option>
+                <option value="Box">Box</option>
+                <option value="Kilogram">Kilogram</option>
+                <option value="Gram">Gram</option>
+                <option value="Meter">Meter</option>
+                <option value="Mile">Mile</option>
+                <option value="Litre">Litre</option>
+                <option value="Hour">Hour</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="productDescription" className="block text-sm text-gray-700 mb-1">
+                Description
+              </label>
+              <input
+                id="productDescription"
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Enter product description"
+                className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -461,6 +504,8 @@ export default function ProductManagement() {
         name: productData.name,
         hsn: productData.hsn,
         price: newPrice,
+        unit: productData.unit,
+        description: productData.description,
       };
 
       // Check if price changed to update oldPrice
@@ -485,6 +530,8 @@ export default function ProductManagement() {
         name: productData.name,
         hsn: productData.hsn,
         price: Number.parseFloat(productData.price),
+        unit: productData.unit,
+        description: productData.description,
       });
     }
 
@@ -593,7 +640,7 @@ export default function ProductManagement() {
   return (
     <>
       <div className="min-h-screen text-slate-800 font-mazzard">
-        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-28">
+        <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
           <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">

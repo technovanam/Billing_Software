@@ -2,15 +2,22 @@ import React, { useState, useContext, useEffect, useRef } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { useCompanyProfile } from "../context/CompanyProfileContext";
-import { Bars3Icon, XMarkIcon, UserCircleIcon, Cog6ToothIcon, ArrowRightStartOnRectangleIcon, PhoneIcon, BuildingOffice2Icon } from "@heroicons/react/24/outline";
+import {
+  UserCircleIcon,
+  Cog6ToothIcon,
+  ArrowRightStartOnRectangleIcon,
+  PhoneIcon,
+  BuildingOffice2Icon,
+} from "@heroicons/react/24/outline";
 
 const navItems = [
   { name: "Dashboard", path: "/dashboard" },
   { name: "Invoices", path: "/invoices" },
-  { name: "Clients", path: "/clients" },
+  { name: "Customers", path: "/clients" },
   { name: "Products", path: "/products" },
   { name: "Reports", path: "/reports" },
   { name: "Payments", path: "/payments" },
+  { name: "Expenses", path: "/expenses" },
   { name: "Settings", path: "/settings" },
 ];
 
@@ -24,7 +31,6 @@ export default function Header() {
   const { user, signOut } = useContext(AuthContext);
   const { companyProfile } = useCompanyProfile();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
@@ -37,17 +43,6 @@ export default function Header() {
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [dropdownRef]);
-
-  useEffect(() => {
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape') {
-        setIsDropdownOpen(false);
-        setIsMobileMenuOpen(false);
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleLogout = async () => {
@@ -71,180 +66,117 @@ export default function Header() {
   const headerCompanyName = companyProfile?.companyName || "Techno Vanam";
 
   return (
-    <>
-      {/* Header bar — full width, edge to edge */}
-      <header className="fixed top-0 inset-x-0 z-50 bg-white border-b border-gray-200 shadow-sm">
-        <div className="w-full px-3 sm:px-4 lg:px-6">
-          <div className="flex items-center justify-between h-14 md:h-16">
-            {/* ── Left: Logo + Nav ─────────────────────────────── */}
-            <div className="flex items-center gap-6 lg:gap-10">
-              {/* Logo + Company name from profile */}
-              <div className="flex items-center gap-2.5 flex-shrink-0">
-                <img
-                  src={headerLogo}
-                  alt={`${headerCompanyName} Logo`}
-                  className="h-8 md:h-9 w-8 md:w-9 object-contain rounded"
-                />
-                <div className="hidden sm:block leading-tight">
-                  <span className="block text-base md:text-lg font-bold text-gray-900 truncate max-w-[140px] md:max-w-[200px]">{headerCompanyName}</span>
-                  <span className="block text-[10px] font-semibold text-blue-600 uppercase tracking-widest -mt-0.5">Billing</span>
-                </div>
-              </div>
+    <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col">
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
+        <img
+          src={headerLogo}
+          alt={`${headerCompanyName} Logo`}
+          className="h-10 w-10 object-contain rounded-lg"
+        />
+        <div className="min-w-0">
+          <p className="text-lg font-bold text-slate-900 truncate">{headerCompanyName}</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600">Billing</p>
+        </div>
+      </div>
 
-              {/* Desktop Nav */}
-              <nav className="hidden md:flex items-center gap-1">
-                {navItems.map((item) => (
-                  <NavLink
-                    key={item.path}
-                    to={item.path}
-                    className={({ isActive }) =>
-                      `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                        isActive
-                          ? "bg-blue-600 text-white shadow-sm"
-                          : "text-gray-600 hover:text-blue-600 hover:bg-blue-50"
-                      }`
-                    }
-                  >
-                    {item.name}
-                  </NavLink>
-                ))}
-              </nav>
+      <nav className="flex-1 px-3 py-4 space-y-1">
+        {navItems.map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            className={({ isActive }) =>
+              `flex items-center rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+              }`
+            }
+          >
+            {item.name}
+          </NavLink>
+        ))}
+      </nav>
+
+      <div className="px-3 pb-4">
+        <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
+          {getFYLabel()}
+        </div>
+
+        {user && (
+          <div className="relative" ref={dropdownRef}>
+            <div className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-800">{displayName}</p>
+                <p className="truncate text-[11px] text-slate-500">{user.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <ArrowRightStartOnRectangleIcon className="h-5 w-5" />
+              </button>
             </div>
 
-            {/* ── Right: FY Badge + User + Hamburger ──────────── */}
-            <div className="flex items-center gap-2 md:gap-3">
-              {/* FY Badge */}
-              <span className="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                {getFYLabel()}
-              </span>
-
-              {/* User avatar + dropdown */}
-              {user && (
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setIsDropdownOpen((prev) => !prev)}
-                    className="flex items-center rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
-                    aria-haspopup="true"
-                    aria-expanded={isDropdownOpen}
-                  >
-                    <div className="flex h-8 w-8 md:h-9 md:w-9 items-center justify-center rounded-full bg-blue-600 text-white font-semibold text-xs md:text-sm">
-                      {initials}
+            {isDropdownOpen && (
+              <div className="absolute bottom-full left-0 mb-2 w-full rounded-xl bg-white shadow-xl border border-slate-200 overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-slate-100 space-y-2">
+                  {companyProfile?.companyName && (
+                    <div className="flex items-center gap-2">
+                      <BuildingOffice2Icon className="h-4 w-4 text-slate-400" />
+                      <p className="text-sm font-semibold text-slate-800 truncate">{companyProfile.companyName}</p>
                     </div>
-                  </button>
-
-                  {isDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-72 rounded-xl bg-white shadow-xl z-50 overflow-hidden border border-gray-100">
-                      {/* Company + User info */}
-                      <div className="px-4 py-3 border-b border-gray-100 space-y-2">
-                        {companyProfile?.companyName && (
-                          <div className="flex items-center gap-2">
-                            <BuildingOffice2Icon className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                            <p className="text-sm font-semibold text-gray-900 truncate">{companyProfile.companyName}</p>
-                          </div>
-                        )}
-                        {companyProfile?.phone && (
-                          <div className="flex items-center gap-2">
-                            <PhoneIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                            <p className="text-xs text-gray-600 truncate">{companyProfile.phone}</p>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-3 pt-1">
-                          <div className="h-10 w-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
-                            {initials}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-gray-900 truncate">{displayName}</p>
-                            <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Menu items */}
-                      <NavLink
-                        to="/settings"
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${
-                            isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
-                          }`
-                        }
-                        onClick={() => setIsDropdownOpen(false)}
-                      >
-                        <UserCircleIcon className="h-4 w-4" />
-                        <span>Your Profile</span>
-                      </NavLink>
-
-                      <NavLink
-                        to="/settings"
-                        className={({ isActive }) =>
-                          `flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${
-                            isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-50'
-                          }`
-                        }
-                        onClick={() => setIsDropdownOpen(false)}
-                      >
-                        <Cog6ToothIcon className="h-4 w-4" />
-                        <span>Settings</span>
-                      </NavLink>
-
-                      <div className="border-t border-gray-100" />
-
-                      <button
-                        onClick={handleLogout}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"
-                      >
-                        <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
-                        <span>Sign out</span>
-                      </button>
+                  )}
+                  {companyProfile?.phone && (
+                    <div className="flex items-center gap-2">
+                      <PhoneIcon className="h-4 w-4 text-slate-400" />
+                      <p className="text-xs text-slate-600 truncate">{companyProfile.phone}</p>
                     </div>
                   )}
                 </div>
-              )}
 
-              {/* Mobile hamburger */}
-              <button
-                className="md:hidden p-1.5 rounded-lg text-gray-600 hover:text-blue-600 hover:bg-gray-100 transition-colors"
-                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                aria-controls="mobile-menu"
-                aria-expanded={isMobileMenuOpen}
-              >
-                <span className="sr-only">Open main menu</span>
-                {isMobileMenuOpen ? (
-                  <XMarkIcon className="h-5 w-5" aria-hidden="true" />
-                ) : (
-                  <Bars3Icon className="h-5 w-5" aria-hidden="true" />
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile menu */}
-        {isMobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white shadow-lg" id="mobile-menu">
-            <nav className="flex flex-col gap-0.5 px-3 py-2">
-              {navItems.map((item) => (
                 <NavLink
-                  key={item.path}
-                  to={item.path}
+                  to="/settings"
                   className={({ isActive }) =>
-                    `block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive
-                        ? "bg-blue-50 text-blue-600"
-                        : "text-gray-700 hover:bg-gray-50 hover:text-blue-600"
+                    `flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${
+                      isActive ? "bg-blue-50 text-blue-600" : "text-slate-700 hover:bg-slate-50"
                     }`
                   }
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  onClick={() => setIsDropdownOpen(false)}
                 >
-                  {item.name}
+                  <UserCircleIcon className="h-4 w-4" />
+                  <span>Your Profile</span>
                 </NavLink>
-              ))}
-            </nav>
+
+                <NavLink
+                  to="/settings"
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 px-4 py-2.5 text-sm transition-colors ${
+                      isActive ? "bg-blue-50 text-blue-600" : "text-slate-700 hover:bg-slate-50"
+                    }`
+                  }
+                  onClick={() => setIsDropdownOpen(false)}
+                >
+                  <Cog6ToothIcon className="h-4 w-4" />
+                  <span>Settings</span>
+                </NavLink>
+
+                <button
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50"
+                >
+                  <ArrowRightStartOnRectangleIcon className="h-4 w-4" />
+                  <span>Sign out</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
-      </header>
-
-      {/* Spacer — push page content below the fixed header */}
-      <div className="h-14 md:h-16" />
-    </>
+      </div>
+    </aside>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useContext, useMemo, memo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Search,
   Plus,
@@ -26,6 +27,26 @@ const ClientManagement = () => {
   const [selectedClient, setSelectedClient] = useState(null);
   const [dropdownOpen, setDropdownOpen] = useState(null);
   const dropdownRef = useRef(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isCustomerCreatePage = location.pathname === "/customers/new";
+
+  useEffect(() => {
+    if (location.pathname === "/customers/new") {
+      setShowAddModal(true);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!showAddModal || isCustomerCreatePage) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showAddModal, isCustomerCreatePage]);
 
   // Get authentication context
   // Get authentication context
@@ -181,11 +202,19 @@ const ClientManagement = () => {
 
 
   const [formData, setFormData] = useState({
-    name: "",
+    customerType: "Business",
+    salutation: "",
+    firstName: "",
+    lastName: "",
+    companyName: "",
+    displayName: "",
     gstin: "",
     phone: "",
+    mobile: "",
     email: "",
     address: "",
+    customerLanguage: "English",
+    notes: "",
   });
 
   const [editFormData, setEditFormData] = useState({
@@ -207,42 +236,87 @@ const ClientManagement = () => {
   };
 
   const handleAddClient = async () => {
-    if (formData.name && formData.email) {
-      // Save form data to variables BEFORE clearing
-      const clientName = formData.name;
-      const clientEmail = formData.email;
-      const clientPhone = formData.phone;
-      const clientAddress = formData.address;
-      const clientGstin = formData.gstin;
+    const customerName =
+      formData.displayName?.trim() ||
+      [formData.firstName, formData.lastName].filter(Boolean).join(" ") ||
+      formData.name ||
+      "";
 
-      // Optimistic UI: Close modal and show notification immediately
-      setFormData({ name: "", gstin: "", phone: "", email: "", address: "" });
-      setShowAddModal(false);
+    if (!customerName || !formData.email) {
+      showError("Please fill in required fields (Display Name and Email)");
+      return;
+    }
 
-      // Create = Green (Success style)
-      success(`Client "${clientName}" added successfully!`, "Added");
+    const clientName = customerName;
+    const clientEmail = formData.email;
+    const clientPhone = formData.phone || formData.mobile || "";
+    const clientAddress = formData.address;
+    const clientGstin = formData.gstin;
 
-      const result = await addCustomer({
-        name: clientName,
-        email: clientEmail,
-        phone: clientPhone,
-        address: clientAddress,
-        company: clientGstin, // Using GSTIN as company identifier
-        taxId: clientGstin,
-      });
+    setFormData({
+      customerType: "Business",
+      salutation: "",
+      firstName: "",
+      lastName: "",
+      companyName: "",
+      displayName: "",
+      gstin: "",
+      phone: "",
+      mobile: "",
+      email: "",
+      address: "",
+      customerLanguage: "English",
+      notes: "",
+    });
+    setShowAddModal(false);
+    if (location.pathname === "/customers/new") {
+      navigate("/clients", { replace: true });
+    }
 
-      // Handle failure
-      if (!result.success) {
-        showError(`Failed to add client: ${result.error}`, "Error");
-      }
-    } else {
-      showError("Please fill in required fields (Name and Email)");
+    success(`Customer "${clientName}" added successfully!`, "Added");
+
+    const result = await addCustomer({
+      name: clientName,
+      email: clientEmail,
+      phone: clientPhone,
+      address: clientAddress,
+      company: formData.companyName || clientGstin,
+      taxId: clientGstin,
+      customerType: formData.customerType,
+      salutation: formData.salutation,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
+      displayName: formData.displayName,
+      mobile: formData.mobile,
+      customerLanguage: formData.customerLanguage,
+      notes: formData.notes,
+    });
+
+    if (!result.success) {
+      showError(`Failed to add customer: ${result.error}`, "Error");
     }
   };
 
   const handleCancel = () => {
-    setFormData({ name: "", gstin: "", phone: "", email: "", address: "" });
+    setFormData({
+      customerType: "Business",
+      salutation: "",
+      firstName: "",
+      lastName: "",
+      companyName: "",
+      displayName: "",
+      gstin: "",
+      phone: "",
+      mobile: "",
+      email: "",
+      address: "",
+      customerLanguage: "English",
+      notes: "",
+    });
     setShowAddModal(false);
+    if (location.pathname === "/customers/new") {
+      navigate("/clients");
+    }
   };
 
   const handleViewClient = (client) => {
@@ -406,14 +480,14 @@ const ClientManagement = () => {
 
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
-      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-28">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-gray-900">
-              Client Management
+              Customer Management
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Manage your client relationships and track business performance
+              Manage your customer relationships and track business performance
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto mt-4 lg:mt-0">
@@ -428,16 +502,16 @@ const ClientManagement = () => {
               />
             </div>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={() => navigate("/customers/new")}
               className="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
             >
               <Plus size={16} />
-              Add Client
+              Add Customer
             </button>
           </div>
         </header>
 
-        <main className="mt-6 flex flex-col gap-6">
+        <main className={`${isCustomerCreatePage ? "hidden" : "mt-6 flex flex-col gap-6"}`}>
           <div className="overflow-x-auto bg-white rounded-xl border border-gray-200 shadow-sm">
             <table className="w-full min-w-[800px]">
               <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
@@ -474,9 +548,12 @@ const ClientManagement = () => {
 
       {/* --- MODALS --- */}
 
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 modal-backdrop flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-auto relative">
+      {showAddModal && isCustomerCreatePage && (
+        <div className={isCustomerCreatePage ? "mt-6 w-full" : "fixed inset-0 bg-black bg-opacity-50 modal-backdrop flex items-start justify-center z-50 overflow-hidden p-4 sm:p-6"}>
+          <div
+            onWheel={(event) => event.stopPropagation()}
+            className={isCustomerCreatePage ? "bg-white rounded-lg border border-gray-200 shadow-sm w-full max-w-6xl mx-auto relative" : "bg-white rounded-lg shadow-xl w-full max-w-xl mx-auto relative h-auto max-h-[90vh] overflow-y-auto overscroll-contain"}
+          >
             <button
               onClick={handleCancel}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
@@ -484,78 +561,191 @@ const ClientManagement = () => {
             >
               <X size={18} />
             </button>
-            <div className="p-6">
+            <div className="p-5 sm:p-6">
               <h2 className="text-lg font-bold text-gray-900 mb-4">
-                Add New Client
+                Add New Customer
               </h2>
               <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">
-                      Client Name *
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Customer Type</label>
+                  <div className="flex items-center gap-4">
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="radio"
+                        name="customerType"
+                        value="Business"
+                        checked={formData.customerType === "Business"}
+                        onChange={handleInputChange}
+                      />
+                      Business
                     </label>
+                    <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                      <input
+                        type="radio"
+                        name="customerType"
+                        value="Individual"
+                        checked={formData.customerType === "Individual"}
+                        onChange={handleInputChange}
+                      />
+                      Individual
+                    </label>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Salutation</label>
+                    <select
+                      name="salutation"
+                      value={formData.salutation}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select</option>
+                      <option value="Mr.">Mr.</option>
+                      <option value="Mrs.">Mrs.</option>
+                      <option value="Ms.">Ms.</option>
+                      <option value="Dr.">Dr.</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">First Name</label>
                     <input
                       type="text"
-                      name="name"
-                      value={formData.name}
+                      name="firstName"
+                      value={formData.firstName}
                       onChange={handleInputChange}
-                      placeholder="Enter Client name"
-                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm text-gray-700 mb-1">
-                      GSTIN *
-                    </label>
+                    <label className="block text-sm text-gray-700 mb-1">Last Name</label>
                     <input
                       type="text"
-                      name="gstin"
-                      value={formData.gstin}
+                      name="lastName"
+                      value={formData.lastName}
                       onChange={handleInputChange}
-                      placeholder="e.g., 27ABCDE1234F1Z5"
-                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">
-                      Contact
-                    </label>
-                    <input
-                      type="text"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      placeholder="+91 900XX 58XXX"
-                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-700 mb-1">
-                      E-mail
-                    </label>
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="contact@example.com"
-                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                </div>
+
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">
-                    Address *
-                  </label>
+                  <label className="block text-sm text-gray-700 mb-1">Company Name</label>
+                  <input
+                    type="text"
+                    name="companyName"
+                    value={formData.companyName}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Display Name *</label>
+                  <input
+                    type="text"
+                    name="displayName"
+                    value={formData.displayName}
+                    onChange={handleInputChange}
+                    placeholder="Select or type to add"
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Email Address *</label>
+                  <input
+                    type="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Phone</label>
+                    <div className="flex gap-2">
+                      <select
+                        name="phoneCode"
+                        value={formData.phoneCode || "+91"}
+                        onChange={handleInputChange}
+                        className="w-24 px-2 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="+91">+91</option>
+                        <option value="+1">+1</option>
+                        <option value="+44">+44</option>
+                      </select>
+                      <input
+                        type="text"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        className="flex-1 px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Mobile</label>
+                    <input
+                      type="text"
+                      name="mobile"
+                      value={formData.mobile}
+                      onChange={handleInputChange}
+                      className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Customer Language</label>
+                  <select
+                    name="customerLanguage"
+                    value={formData.customerLanguage}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="English">English</option>
+                    <option value="Hindi">Hindi</option>
+                    <option value="Marathi">Marathi</option>
+                    <option value="Gujarati">Gujarati</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">GSTIN</label>
+                  <input
+                    type="text"
+                    name="gstin"
+                    value={formData.gstin}
+                    onChange={handleInputChange}
+                    placeholder="e.g., 27ABCDE1234F1Z5"
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Address</label>
                   <textarea
                     name="address"
                     value={formData.address}
                     onChange={handleInputChange}
-                    placeholder="Enter full address"
                     rows={3}
+                    placeholder="Enter full address"
                     className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Remarks</label>
+                  <textarea
+                    name="notes"
+                    value={formData.notes}
+                    onChange={handleInputChange}
+                    rows={3}
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -570,7 +760,7 @@ const ClientManagement = () => {
                   onClick={handleAddClient}
                   className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 transition-colors"
                 >
-                  Add Client
+                  Add Customer
                 </button>
               </div>
             </div>

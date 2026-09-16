@@ -1494,7 +1494,7 @@ const PaymentsPage = () => {
         onSave={handleSaveEditedPayment}
         payment={editingPayment}
       />
-      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-28">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
         <header className="mb-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">

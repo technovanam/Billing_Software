@@ -417,6 +417,61 @@ export const useAllPayments = () => {
   return { payments, error: null, refetch };
 };
 
+// Expenses - users/{uid}/expenses
+export const useExpenses = () => {
+  const uid = useUserId();
+  const [expenses, setExpenses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refetch = useCallback(async () => {
+    if (!uid) {
+      setExpenses([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const snap = await getDocs(collection(db, "users", uid, "expenses"));
+      setExpenses(snapshotToItems(snap).filter((expense) => isInCurrentFY(expense.expenseDate || expense.createdAt)));
+    } catch (err) {
+      setError(err.message);
+      setExpenses([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  const addExpense = useCallback(async (payload) => {
+    if (!uid) return { success: false };
+    const data = sanitizeForFirestore(payload);
+    const ref = await addDoc(collection(db, "users", uid, "expenses"), { ...data, createdAt: serverTimestamp() });
+    setExpenses((prev) => [{ id: ref.id, ...payload }, ...prev]);
+    return { success: true, id: ref.id };
+  }, [uid]);
+
+  const editExpense = useCallback(async (id, patch) => {
+    if (!uid) return { success: false };
+    await updateDoc(doc(db, "users", uid, "expenses", id), sanitizeForFirestore(patch));
+    setExpenses((prev) => prev.map((expense) => (expense.id === id ? { ...expense, ...patch } : expense)));
+    return { success: true };
+  }, [uid]);
+
+  const removeExpense = useCallback(async (id) => {
+    if (!uid) return { success: false };
+    await deleteDoc(doc(db, "users", uid, "expenses", id));
+    setExpenses((prev) => prev.filter((expense) => expense.id !== id));
+    return { success: true };
+  }, [uid]);
+
+  return { expenses, loading, error, addExpense, editExpense, removeExpense, refetch };
+};
+
 // Products — users/{uid}/products
 export const useProducts = (options = {}) => {
   const uid = useUserId();

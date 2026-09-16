@@ -6,6 +6,7 @@ import Invoices from "./pages/invoices/InvoiceManagement";
 import CreateInvoicePage from "./pages/invoices/CreateInvoicePage";
 import Products from "./pages/products/ProductsList";
 import Payments from "./pages/payments/Payment";
+import Expenses from "./pages/expenses/Expenses";
 import Header from "./components/Header";
 import { AuthContext, AuthProvider } from "./context/AuthContext";
 import { CompanyProfileProvider } from "./context/CompanyProfileContext";
@@ -64,18 +65,20 @@ export default function App() {
             path="/*"
             element={
               <ProtectedRoute>
-                <div className="min-h-screen flex flex-col">
+                <div className="min-h-screen bg-slate-100">
                   <Header />
-                  <main className="flex-1 p-6">
+                  <main className="ml-64 flex-1 p-6">
                     <Routes>
                       <Route path="/" element={<Navigate to="/dashboard" replace />} />
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/invoices" element={<Invoices />} />
                       <Route path="/invoices/create" element={<CreateInvoicePage />} />
                       <Route path="/clients" element={<Clients />} />
+                      <Route path="/customers/new" element={<Clients />} />
                       <Route path="/products" element={<Products />} />
                       <Route path="/reports" element={<Report />} />
                       <Route path="/payments" element={<Payments />} />
+                      <Route path="/expenses" element={<Expenses />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/seed-data" element={<DataSeeder />} />
                       <Route path="/clear-and-reseed" element={<ClearAndReseed />} />

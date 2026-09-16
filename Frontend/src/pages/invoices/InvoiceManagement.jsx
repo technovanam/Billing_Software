@@ -111,14 +111,14 @@ const ClientAutocomplete = ({ clients, selectedClient, onSelect }) => {
 
   return (
     <div className="relative" ref={wrapperRef}>
-      <label htmlFor="client-search" className="block text-sm text-gray-700 mb-1">Select Client</label>
+      <label htmlFor="client-search" className="block text-sm text-gray-700 mb-1">Select Customer</label>
       <input
         id="client-search"
         type="text"
         value={searchTerm}
         onChange={handleInputChange}
         onFocus={() => setIsFocused(true)}
-        placeholder="Type to search for a client..."
+        placeholder="Type to search for a customer..."
         className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
       />
       {isFocused && searchTerm && (
@@ -136,7 +136,7 @@ const ClientAutocomplete = ({ clients, selectedClient, onSelect }) => {
               </li>
             ))
           ) : (
-            <li className="px-4 py-2 text-sm text-gray-500">No client found</li>
+            <li className="px-4 py-2 text-sm text-gray-500">No customer found</li>
           )}
         </ul>
       )}
@@ -306,6 +306,18 @@ const InvoicePreview = ({
   onDownloadComplete
 }) => {
   const { error: toastError } = useToast();
+
+  useEffect(() => {
+    if (embedded) return undefined;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [embedded]);
+
   // Prioritize invoiceData (current form) over invoice (previously viewed)
   const previewData = invoiceData || invoice;
   const previewCalcs = invoiceData
@@ -516,8 +528,8 @@ const InvoicePreview = ({
 
   // If not embedded, render the modal
   return (
-    <div className={embedded ? "absolute top-0 left-0 bg-white z-50 w-auto" : "fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"}>
-      <div className={embedded ? "w-full" : "bg-white rounded-lg shadow-2xl max-w-5xl w-full flex flex-col max-h-[90vh]"}>
+    <div className={embedded ? "absolute top-0 left-0 bg-white z-50 w-auto" : "fixed inset-0 overflow-hidden bg-black/50 flex items-center justify-center z-50 p-4"}>
+      <div className={embedded ? "w-full" : "bg-white rounded-lg shadow-2xl max-w-5xl w-full h-[90vh] max-h-[90vh] flex flex-col overflow-hidden"}>
         {!embedded && (
           <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
             <h2 className="text-lg font-bold text-gray-900">Invoice Preview</h2>
@@ -545,7 +557,10 @@ const InvoicePreview = ({
             </div>
           </div>
         )}
-        <div className={embedded ? "bg-white flex justify-center p-0" : "overflow-y-auto bg-gray-100 p-8 flex justify-center"}>
+        <div
+          onWheel={(event) => event.stopPropagation()}
+          className={embedded ? "bg-white flex justify-center p-0" : "min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gray-100 p-8 flex justify-center"}
+        >
 
           {/* Outer Page Wrapper (A4) - Handles the 15mm white space */}
           <div
@@ -815,7 +830,7 @@ const CreateInvoiceComponent = ({
   removeItem,
 }) => (
   <div className="min-h-screen text-slate-800 font-mazzard">
-    <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-28">
+    <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
       <div className="flex justify-between items-center mb-2">
         <div className="flex items-center">
           <button
@@ -938,7 +953,7 @@ const CreateInvoiceComponent = ({
               </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
-                  D.C Number
+                    D.O. Number
                 </label>
                 <input
                   type="text"
@@ -954,7 +969,7 @@ const CreateInvoiceComponent = ({
               </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
-                  D.C Date
+                    D.O. Date
                 </label>
                 <input
                   type="date"
@@ -1369,7 +1384,7 @@ const InvoiceManagementComponent = ({
 
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
-      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-28">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
         <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">

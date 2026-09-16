@@ -30,7 +30,7 @@ export default function CreateInvoiceComponent({
 }) {
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
-      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-28">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center">
             <button
@@ -153,7 +153,7 @@ export default function CreateInvoiceComponent({
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
-                    D.C Number
+                    D.O. Number
                   </label>
                   <input
                     type="text"
@@ -169,7 +169,7 @@ export default function CreateInvoiceComponent({
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
-                    D.C Date
+                    D.O. Date
                   </label>
                   <input
                     type="date"

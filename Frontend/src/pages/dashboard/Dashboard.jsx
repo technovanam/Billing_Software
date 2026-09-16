@@ -19,6 +19,7 @@ import {
   useDashboard,
   useInvoices,
   useAllPayments,
+  useExpenses,
   useProducts,
   useCustomers,
 } from "../../hooks/useFirestore";
@@ -29,6 +30,7 @@ import InvoiceStatus from "./InvoiceStatus";
 const Dashboard = () => {
   const { allInvoices } = useInvoices(); // Use allInvoices for accurate stats
   const { payments } = useAllPayments();
+  const { expenses } = useExpenses();
   const { allProducts } = useProducts(); // Get all products, not just paginated view
   const { allCustomers } = useCustomers(); // Get all customers, not just paginated view
 
@@ -49,17 +51,7 @@ const Dashboard = () => {
       return sum + received;
     }, 0);
 
-    // TDS = Sum of TDS amounts from paid and partial invoices only
-    // TDS is only collected when payment is actually received
-    const totalTDS = activeInvoices.reduce((sum, inv) => {
-      const status = (inv.status || '').toLowerCase();
-      // Only count TDS for paid or partial invoices
-      if (status === 'paid' || status === 'partial') {
-        const tds = Number(inv.tdsAmount || 0);
-        return sum + tds;
-      }
-      return sum;
-    }, 0);
+    const totalExpenses = (expenses || []).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
 
     const paidInvoices = activeInvoices.filter(i => (i.status || '').toLowerCase() === 'paid').length;
     const draftInvoices = activeInvoices.filter(i => (i.status || '').toLowerCase() === 'draft').length;
@@ -131,7 +123,7 @@ const Dashboard = () => {
       draftInvoices,
       overdueInvoices,
       paymentRate, // Percentage of Paid vs Total
-      totalTDS,
+      totalExpenses,
       totalCustomers,
       totalBillAmount,
       totalOutstanding,
@@ -141,7 +133,7 @@ const Dashboard = () => {
       totalIGST,
       financialYearLabel: 'Current FY' // Placeholder
     };
-  }, [allInvoices, allCustomers]);
+  }, [allInvoices, allCustomers, expenses]);
 
   const memoizedPayments = useMemo(() => payments || [], [payments]);
   const memoizedProducts = useMemo(() => allProducts || [], [allProducts]);
@@ -151,7 +143,7 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
       {/* Optimized container for laptop/desktop view */}
-      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-20 md:pt-28">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
         <Header />
         <main className="mt-6 flex flex-col gap-6">
           {/* Stats Grid */}
@@ -279,17 +271,17 @@ const StatsGrid = memo(({ stats, products }) => {
         subtextColor="green"
       />
       
-      {/* Row 2: Total TDS, Total GST, Payment Status */}
+      {/* Row 2: Total Expenses, Total GST, Payment Status */}
       <StatCard
-        title="Total TDS Amount [Received]"
-        value={formatCurrency(stats.totalTDS)}
+        title="Total Expenses"
+        value={formatCurrency(stats.totalExpenses)}
         icon={<Coins className="text-orange-500" />}
         footer={
           <div className="flex items-center gap-2 body-text-small">
             <span className="bg-orange-600 text-white px-2 py-0.5 rounded-full font-medium">
-              TDS
+              Expenses
             </span>
-            <span className="text-slate-500">Collected so far</span>
+            <span className="text-slate-500">Current FY</span>
           </div>
         }
       />
@@ -388,7 +380,7 @@ StatsGrid.propTypes = {
     totalCustomers: PropTypes.number,
     paymentRate: PropTypes.number,
     draftInvoices: PropTypes.number,
-    totalTDS: PropTypes.number,
+    totalExpenses: PropTypes.number,
     totalBillAmount: PropTypes.number,
     totalOutstanding: PropTypes.number,
     totalGST: PropTypes.number,
