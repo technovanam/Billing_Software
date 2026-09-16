@@ -906,7 +906,7 @@ const CreateInvoiceComponent = ({
               </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
-                  P.O. Number <span className="text-red-500">*</span>
+                  P.O. Number
                 </label>
                 <input
                   type="text"
@@ -922,7 +922,7 @@ const CreateInvoiceComponent = ({
               </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
-                  P.O. Date <span className="text-red-500">*</span>
+                  P.O. Date
                 </label>
                 <input
                   type="date"
@@ -938,7 +938,7 @@ const CreateInvoiceComponent = ({
               </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
-                  D.C Number <span className="text-red-500">*</span>
+                  D.C Number
                 </label>
                 <input
                   type="text"
@@ -954,7 +954,7 @@ const CreateInvoiceComponent = ({
               </div>
               <div>
                 <label className="block text-sm text-gray-700 mb-1">
-                  D.C Date <span className="text-red-500">*</span>
+                  D.C Date
                 </label>
                 <input
                   type="date"
@@ -2092,10 +2092,6 @@ const InvoiceManagementSystem = () => {
     if (!invoiceNumber) missingFields.push("Invoice Number");
     if (!invoiceDate) missingFields.push("Invoice Date");
     if (!dueDate) missingFields.push("Due Date");
-    if (!poNumber) missingFields.push("P.O. Number");
-    if (!poDate) missingFields.push("P.O. Date");
-    if (!dcNumber) missingFields.push("D.C Number");
-    if (!dcDate) missingFields.push("D.C Date");
     if (!clientId) missingFields.push("Client Information");
     if (items.length === 0) missingFields.push("At least one item");
     if (missingFields.length > 0) {
@@ -2314,11 +2310,30 @@ const InvoiceManagementSystem = () => {
           endDate.setHours(23, 59, 59, 999);
 
           // Use invoice date for filtering
-          const invoiceDateStr = invoice.invoiceDate;
-          if (!invoiceDateStr) return false;
+          const invoiceDateVal = invoice.invoiceDate;
+          if (!invoiceDateVal) return true;
 
-          const invoiceDate = new Date(invoiceDateStr);
-          if (isNaN(invoiceDate.getTime())) return false;
+          let invoiceDate;
+          if (invoiceDateVal && typeof invoiceDateVal.toDate === "function") {
+            invoiceDate = invoiceDateVal.toDate();
+          } else if (typeof invoiceDateVal === "string") {
+            const trimmed = invoiceDateVal.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+              const [y, m, d] = trimmed.split('-');
+              invoiceDate = new Date(Number(y), Number(m) - 1, Number(d));
+            } else if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+              const [d, m, y] = trimmed.split('-');
+              invoiceDate = new Date(Number(y), Number(m) - 1, Number(d));
+            } else {
+              invoiceDate = new Date(trimmed);
+            }
+          } else if (invoiceDateVal instanceof Date) {
+            invoiceDate = invoiceDateVal;
+          } else {
+            invoiceDate = new Date(invoiceDateVal);
+          }
+
+          if (isNaN(invoiceDate.getTime())) return true;
 
           // Check if date is within range
           if (invoiceDate < startDate || invoiceDate > endDate) return false;
@@ -2505,4 +2520,5 @@ CreateInvoiceComponent.propTypes = {
   removeItem: PropTypes.func.isRequired,
 };
 
+export { InvoicePreview, ClientAutocomplete, ProductAutocomplete, ConfirmationModal };
 export default InvoiceManagementSystem;

@@ -20,11 +20,27 @@ function useUserId() {
   return user?.uid ?? null;
 }
 
-// Firestore doc snapshot -> plain object with id; keep Timestamps as-is for date handling
+// Firestore doc snapshot -> plain object with id; convert Timestamps to string dates for UI consistency
 function docToItem(d) {
   if (!d?.exists?.()) return null;
   const data = d.data();
-  return { id: d.id, ...data };
+  const converted = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v && typeof v.toDate === "function") {
+      const dVal = v.toDate();
+      if (["invoiceDate", "dueDate", "poDate", "dcDate"].includes(k)) {
+        const year = dVal.getFullYear();
+        const month = String(dVal.getMonth() + 1).padStart(2, "0");
+        const day = String(dVal.getDate()).padStart(2, "0");
+        converted[k] = `${year}-${month}-${day}`;
+      } else {
+        converted[k] = dVal;
+      }
+    } else {
+      converted[k] = v;
+    }
+  }
+  return { id: d.id, ...converted };
 }
 function snapshotToItems(snapshot) {
   if (!snapshot?.docs) return [];
@@ -40,7 +56,7 @@ function sanitizeForFirestore(obj) {
     const out = {};
     for (const [k, v] of Object.entries(obj)) {
       if (v instanceof Date) out[k] = Timestamp.fromDate(v);
-      else if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) && !isNaN(Date.parse(v))) out[k] = Timestamp.fromDate(new Date(v));
+      else if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim()) && !isNaN(Date.parse(v))) out[k] = Timestamp.fromDate(new Date(v));
       else out[k] = sanitizeForFirestore(v);
     }
     return out;
@@ -96,23 +112,36 @@ const applyListView = (items, { search = "", page = 1, limit = 20, sortBy, sortD
 
 // Financial Year Helper
 const isInCurrentFY = (dateInput) => {
-  if (!dateInput) return false;
+  if (!dateInput) return true;
 
   // Handle Firestore timestamp or string
   let date;
   if (dateInput && typeof dateInput.toDate === 'function') {
     date = dateInput.toDate();
+  } else if (typeof dateInput === 'string') {
+    const trimmed = dateInput.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      const [y, m, d] = trimmed.split('-');
+      date = new Date(Number(y), Number(m) - 1, Number(d));
+    } else if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+      const [d, m, y] = trimmed.split('-');
+      date = new Date(Number(y), Number(m) - 1, Number(d));
+    } else {
+      date = new Date(trimmed);
+    }
+  } else if (dateInput instanceof Date) {
+    date = dateInput;
   } else {
     date = new Date(dateInput);
   }
 
-  if (isNaN(date.getTime())) return false;
+  if (isNaN(date.getTime())) return true;
 
   // Dynamically compute the current financial year (April 1 – March 31)
   const now = new Date();
   const fyYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
-  const start = new Date(`${fyYear}-04-01T00:00:00`);
-  const end = new Date(`${fyYear + 1}-03-31T23:59:59`);
+  const start = new Date(fyYear, 3, 1, 0, 0, 0);
+  const end = new Date(fyYear + 1, 2, 31, 23, 59, 59);
 
   return date >= start && date <= end;
 };

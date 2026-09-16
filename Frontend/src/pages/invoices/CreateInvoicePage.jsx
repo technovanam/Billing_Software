@@ -1,20 +1,19 @@
-
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useInvoices, useCustomers, useProducts } from "../../hooks/useFirestore";
+import { useToast } from "../../context/ToastContext";
 import CreateInvoiceComponent from "./CreateInvoiceComponent";
-import InvoicePreview from "./InvoiceManagement.jsx";
-
-// Import ClientAutocomplete and ProductAutocomplete if needed for preview or modal
+import { InvoicePreview } from "./InvoiceManagement.jsx";
 
 export default function CreateInvoicePage() {
   const navigate = useNavigate();
+  const { success: toastSuccess, error: toastError } = useToast();
 
   const { customers } = useCustomers();
   const { products, addProduct } = useProducts();
   const { addInvoice, allInvoices } = useInvoices();
 
-  // Generate next invoice number based on allInvoices (copied from InvoiceManagement.jsx)
+  // Generate next invoice number based on allInvoices
   const generateNextInvoiceNumber = () => {
     const today = new Date();
     const currentYear = today.getFullYear();
@@ -22,7 +21,6 @@ export default function CreateInvoicePage() {
     const financialYearEnd = financialYearStart + 1;
     const financialYearString = `${financialYearStart}-${financialYearEnd.toString().slice(2)}`;
 
-    // Use allInvoices instead of paginated invoices
     const invoicesInCurrentYear = (allInvoices || []).filter((inv) => {
       return inv.invoiceNumber && inv.invoiceNumber.endsWith(`/${financialYearString}`);
     });
@@ -73,6 +71,19 @@ export default function CreateInvoicePage() {
     roundOffAmount: 0,
     total: 0,
   });
+
+  // Update invoice number once invoices load if default was 001
+  useEffect(() => {
+    if (allInvoices && allInvoices.length > 0) {
+      const nextNum = generateNextInvoiceNumber();
+      setInvoiceData((prev) => {
+        if (!prev.invoiceNumber || prev.invoiceNumber.startsWith("001/")) {
+          return { ...prev, invoiceNumber: nextNum };
+        }
+        return prev;
+      });
+    }
+  }, [allInvoices]);
 
   useEffect(() => {
     const itemsArray = invoiceData.items || invoiceData.products || [];
@@ -158,27 +169,75 @@ export default function CreateInvoicePage() {
   };
 
   const handleAddNewProduct = async (productName, clientId) => {
-    // ...existing code...
+    if (!productName?.trim()) return;
+    try {
+      const newProduct = {
+        name: productName,
+        hsn: "",
+        price: 0,
+        clientId: clientId || "",
+      };
+      await addProduct(newProduct);
+      toastSuccess(`Product "${productName}" added successfully!`);
+    } catch (err) {
+      toastError("Failed to add new product.");
+    }
+  };
+
+  const validateInvoiceForm = () => {
+    const { invoiceNumber, invoiceDate, dueDate, clientId, items } = invoiceData;
+    const missingFields = [];
+    if (!invoiceNumber) missingFields.push("Invoice Number");
+    if (!invoiceDate) missingFields.push("Invoice Date");
+    if (!dueDate) missingFields.push("Due Date");
+    if (!clientId) missingFields.push("Client Information");
+    if (!items || items.length === 0) missingFields.push("At least one item");
+
+    if (missingFields.length > 0) {
+      toastError(`Please fill in required fields: ${missingFields.join(", ")}`);
+      return false;
+    }
+    return true;
   };
 
   const saveDraft = async () => {
-    const draftInvoice = {
-      ...invoiceData,
-      status: "Draft",
-      amount: calculations.total,
-    };
-    await addInvoice(draftInvoice);
-    navigate("/invoices");
+    try {
+      const draftInvoice = {
+        ...invoiceData,
+        status: "Draft",
+        amount: calculations.total,
+      };
+      const result = await addInvoice(draftInvoice);
+      if (result.success) {
+        toastSuccess("Invoice saved as draft!");
+        navigate("/invoices");
+      } else {
+        toastError("Failed to save draft invoice.");
+      }
+    } catch (err) {
+      toastError("Error saving draft: " + err.message);
+    }
   };
 
   const saveInvoice = async () => {
-    const newInvoice = {
-      ...invoiceData,
-      amount: calculations.total,
-      status: invoiceData.status,
-    };
-    await addInvoice(newInvoice);
-    navigate("/invoices");
+    if (!validateInvoiceForm()) return;
+
+    try {
+      const newInvoice = {
+        ...invoiceData,
+        amount: calculations.total,
+        status: invoiceData.status || "Unpaid",
+      };
+      const result = await addInvoice(newInvoice);
+      if (result.success) {
+        toastSuccess("Invoice created successfully!");
+        navigate("/invoices");
+      } else {
+        toastError("Failed to save invoice.");
+      }
+    } catch (err) {
+      toastError("Error saving invoice: " + err.message);
+    }
   };
 
   const [showPreview, setShowPreview] = useState(false);

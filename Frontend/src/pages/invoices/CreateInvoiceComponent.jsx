@@ -121,7 +121,7 @@ export default function CreateInvoiceComponent({
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
-                    P.O. Number <span className="text-red-500">*</span>
+                    P.O. Number
                   </label>
                   <input
                     type="text"
@@ -137,7 +137,7 @@ export default function CreateInvoiceComponent({
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
-                    P.O. Date <span className="text-red-500">*</span>
+                    P.O. Date
                   </label>
                   <input
                     type="date"
@@ -153,7 +153,7 @@ export default function CreateInvoiceComponent({
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
-                    D.C Number <span className="text-red-500">*</span>
+                    D.C Number
                   </label>
                   <input
                     type="text"
@@ -169,7 +169,7 @@ export default function CreateInvoiceComponent({
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
-                    D.C Date <span className="text-red-500">*</span>
+                    D.C Date
                   </label>
                   <input
                     type="date"
