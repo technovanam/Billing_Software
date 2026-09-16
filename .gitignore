@@ -1,0 +1,6 @@
+node_modules/
+
+# Local credentials and environment files
+Backend/serviceAccountKey.json
+Backend/.env
+Frontend/.env
