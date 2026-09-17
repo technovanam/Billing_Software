@@ -464,6 +464,7 @@ const SystemSettings = () => {
     timeZone: "Asia/Kolkata",
     dateFormat: "DD/MM/YYYY",
     invoicePrefix: "INV",
+    razorpayLink: "https://razorpay.me/@esaengineeringworks",
   });
   const [features, setFeatures] = useState({
     autoInvoice: true,
@@ -604,6 +605,24 @@ const SystemSettings = () => {
               }
               className="w-full bg-gray-100 border-0 rounded-md text-sm p-2.5"
             />
+          </div>
+          <div className="md:col-span-2">
+            <label htmlFor="razorpayLink" className="text-sm text-gray-800 mb-1 block">
+              Razorpay Payment Gateway / UPI Link
+            </label>
+            <input
+              id="razorpayLink"
+              type="text"
+              placeholder="https://razorpay.me/@esaengineeringworks"
+              value={config.razorpayLink || ""}
+              onChange={(e) =>
+                setConfig({ ...config, razorpayLink: e.target.value })
+              }
+              className="w-full bg-gray-100 border-0 rounded-md text-sm p-2.5"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This payment link is embedded into invoice previews and downloaded PDF invoices for client payment redirection.
+            </p>
           </div>
         </div>
         <div className="border-t border-gray-200 pt-6">

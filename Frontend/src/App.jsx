@@ -4,6 +4,8 @@ import AuthTransition from "./components/AuthTransition";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Invoices from "./pages/invoices/InvoiceManagement";
 import CreateInvoicePage from "./pages/invoices/CreateInvoicePage";
+import DeliveryChallans from "./pages/challans/DeliveryChallanManagement";
+import CreateDeliveryChallanPage from "./pages/challans/CreateDeliveryChallanPage";
 import Products from "./pages/products/ProductsList";
 import Payments from "./pages/payments/Payment";
 import Expenses from "./pages/expenses/Expenses";
@@ -73,6 +75,9 @@ export default function App() {
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/invoices" element={<Invoices />} />
                       <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                      <Route path="/delivery-challans" element={<DeliveryChallans />} />
+                      <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
+                      <Route path="/delivery-challans/edit/:id" element={<CreateDeliveryChallanPage />} />
                       <Route path="/clients" element={<Clients />} />
                       <Route path="/customers/new" element={<Clients />} />
                       <Route path="/products" element={<Products />} />
