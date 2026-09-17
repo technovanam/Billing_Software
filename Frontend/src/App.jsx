@@ -11,6 +11,7 @@ import Header from "./components/Header";
 import { AuthContext, AuthProvider } from "./context/AuthContext";
 import { CompanyProfileProvider } from "./context/CompanyProfileContext";
 import { ToastProvider } from "./context/ToastContext";
+import { AIAssistantProvider } from "./context/AIAssistantContext";
 import ToastContainer from "./components/Toast";
 import Clients from "./pages/clients/ClientManagement";
 import Report from "./pages/reports/RevenueLineChart";
@@ -19,7 +20,9 @@ import InactivityDetector from "./components/InactivityDetector";
 import DataSeeder from "./pages/admin/DataSeeder";
 import ClearAndReseed from "./pages/admin/ClearAndReseed";
 import FYArchives from "./pages/admin/FYArchives";
+import AIAssistant from "./pages/ai/AIAssistant";
 import LandingPage from "./pages/landing/LandingPage";
+import ScrollToTop from "./components/ScrollToTop";
 
 import PropTypes from 'prop-types';
 
@@ -53,45 +56,49 @@ export default function App() {
     <AuthProvider>
       <CompanyProfileProvider>
         <ToastProvider>
-          <Router>
-          <Routes>
-          {/* Public */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/signin" element={<AuthTransition key="signin" />} />
-          <Route path="/signup" element={<AuthTransition key="signup" />} />
+          <AIAssistantProvider>
+            <Router>
+              <ScrollToTop />
+              <Routes>
+            {/* Public */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/signin" element={<AuthTransition key="signin" />} />
+            <Route path="/signup" element={<AuthTransition key="signup" />} />
 
-          {/* Protected with header */}
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <div className="min-h-screen bg-slate-100">
-                  <Header />
-                  <main className="ml-64 flex-1 p-6">
-                    <Routes>
-                      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/invoices" element={<Invoices />} />
-                      <Route path="/invoices/create" element={<CreateInvoicePage />} />
-                      <Route path="/clients" element={<Clients />} />
-                      <Route path="/customers/new" element={<Clients />} />
-                      <Route path="/products" element={<Products />} />
-                      <Route path="/reports" element={<Report />} />
-                      <Route path="/payments" element={<Payments />} />
-                      <Route path="/expenses" element={<Expenses />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/seed-data" element={<DataSeeder />} />
-                      <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
-                      <Route path="/fy-archives" element={<FYArchives />} />
-                    </Routes>
-                  </main>
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          </Routes>
-          <ToastContainer />
-        </Router>
+            {/* Protected with header */}
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-100">
+                    <Header />
+                    <main className="ml-64 flex-1 p-6">
+                      <Routes>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/invoices" element={<Invoices />} />
+                        <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                        <Route path="/clients" element={<Clients />} />
+                        <Route path="/customers/new" element={<Clients />} />
+                        <Route path="/products" element={<Products />} />
+                        <Route path="/reports" element={<Report />} />
+                        <Route path="/payments" element={<Payments />} />
+                        <Route path="/expenses" element={<Expenses />} />
+                        <Route path="/ai-assistant" element={<AIAssistant />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/seed-data" element={<DataSeeder />} />
+                        <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
+                        <Route path="/fy-archives" element={<FYArchives />} />
+                      </Routes>
+                    </main>
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            </Routes>
+            <ToastContainer />
+          </Router>
+        </AIAssistantProvider>
         </ToastProvider>
       </CompanyProfileProvider>
     </AuthProvider>

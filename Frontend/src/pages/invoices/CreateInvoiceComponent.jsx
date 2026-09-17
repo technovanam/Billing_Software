@@ -27,6 +27,9 @@ export default function CreateInvoiceComponent({
   addItem,
   updateItem,
   removeItem,
+  handleToggleRoundOff,
+  handleToggleGst,
+  handleToggleAutoInvoice,
 }) {
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
@@ -88,9 +91,33 @@ export default function CreateInvoiceComponent({
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-700 mb-1">
-                    Invoice Number <span className="text-red-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm text-gray-700">
+                      Invoice Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-500 font-medium select-none">Auto Numbering</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleToggleAutoInvoice
+                            ? handleToggleAutoInvoice(!invoiceData.isAutoInvoice)
+                            : setInvoiceData((prev) => ({ ...prev, isAutoInvoice: !prev.isAutoInvoice }))
+                        }
+                        className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                          invoiceData.isAutoInvoice !== false ? "bg-blue-600" : "bg-gray-300"
+                        }`}
+                        title="Toggle Auto Invoice Numbering (Synced with System Settings)"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                            invoiceData.isAutoInvoice !== false ? "translate-x-4" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </div>
                   <input
                     type="text"
                     value={invoiceData.invoiceNumber}
@@ -102,6 +129,11 @@ export default function CreateInvoiceComponent({
                     }
                     className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
                   />
+                  {invoiceData.isAutoInvoice !== false && (
+                    <p className="text-[11px] text-blue-600 mt-1 flex items-center gap-1 font-medium">
+                      ✓ Auto-numbered (Synced with System Settings)
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
@@ -344,85 +376,128 @@ export default function CreateInvoiceComponent({
               <h3 className="mb-4 text-lg font-bold text-gray-900">
                 Tax & Calculation
               </h3>
-              <div className="grid grid-cols-3 gap-4 mb-4">
+
+              {/* GST Calculation Toggle */}
+              <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
                 <div>
-                  <label htmlFor="cgstInput" className="block mb-1 text-sm text-gray-700">
-                    CGST (%)
-                  </label>
-                  <input
-                    id="cgstInput"
-                    type="number"
-                    value={invoiceData.cgst}
-                    onChange={(e) =>
-                      setInvoiceData((prev) => ({
-                        ...prev,
-                        cgst: Number.parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                    min="0"
-                    max="100"
-                  />
+                  <span className="text-sm font-semibold text-gray-800 select-none block">
+                    Enable GST Calculation
+                  </span>
+                  <span className="text-xs text-gray-500">Auto calculate CGST, SGST & IGST</span>
                 </div>
-                <div>
-                  <label htmlFor="sgstInput" className="block mb-1 text-sm text-gray-700">
-                    SGST (%)
-                  </label>
-                  <input
-                    id="sgstInput"
-                    type="number"
-                    value={invoiceData.sgst}
-                    onChange={(e) =>
-                      setInvoiceData((prev) => ({
-                        ...prev,
-                        sgst: Number.parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                    min="0"
-                    max="100"
-                  />
-                </div>
-                <div>
-                  <label htmlFor="igstInput" className="block mb-1 text-sm text-gray-700">
-                    IGST (%)
-                  </label>
-                  <input
-                    id="igstInput"
-                    type="number"
-                    value={invoiceData.igst}
-                    onChange={(e) =>
-                      setInvoiceData((prev) => ({
-                        ...prev,
-                        igst: Number.parseFloat(e.target.value) || 0,
-                      }))
-                    }
-                    className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                    min="0"
-                    max="100"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm font-medium text-gray-700 select-none">
-                  Enable Round Off
-                </span>
                 <button
                   type="button"
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${invoiceData.isRoundOff ? "bg-blue-600" : "bg-gray-200"
-                    }`}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    invoiceData.isGstEnabled !== false ? "bg-blue-600" : "bg-gray-300"
+                  }`}
                   onClick={() =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      isRoundOff: !prev.isRoundOff,
-                    }))
+                    handleToggleGst
+                      ? handleToggleGst(!invoiceData.isGstEnabled)
+                      : setInvoiceData((prev) => ({ ...prev, isGstEnabled: !prev.isGstEnabled }))
                   }
+                  title="Toggle GST Calculation (Synced with System Settings)"
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      invoiceData.isGstEnabled !== false ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {invoiceData.isGstEnabled !== false ? (
+                <div className="grid grid-cols-3 gap-4 mb-4">
+                  <div>
+                    <label htmlFor="cgstInput" className="block mb-1 text-sm text-gray-700">
+                      CGST (%)
+                    </label>
+                    <input
+                      id="cgstInput"
+                      type="number"
+                      value={invoiceData.cgst}
+                      onChange={(e) =>
+                        setInvoiceData((prev) => ({
+                          ...prev,
+                          cgst: Number.parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="sgstInput" className="block mb-1 text-sm text-gray-700">
+                      SGST (%)
+                    </label>
+                    <input
+                      id="sgstInput"
+                      type="number"
+                      value={invoiceData.sgst}
+                      onChange={(e) =>
+                        setInvoiceData((prev) => ({
+                          ...prev,
+                          sgst: Number.parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="igstInput" className="block mb-1 text-sm text-gray-700">
+                      IGST (%)
+                    </label>
+                    <input
+                      id="igstInput"
+                      type="number"
+                      value={invoiceData.igst}
+                      onChange={(e) =>
+                        setInvoiceData((prev) => ({
+                          ...prev,
+                          igst: Number.parseFloat(e.target.value) || 0,
+                        }))
+                      }
+                      className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
+                      min="0"
+                      max="100"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 font-medium">
+                  ⚠️ GST calculation is disabled (Synced with System Settings).
+                </div>
+              )}
+
+              {/* Round Off Toggle */}
+              <div className="flex items-center justify-between py-2 border-t border-gray-100">
+                <div>
+                  <span className="text-sm font-semibold text-gray-800 select-none block">
+                    Enable Round Off
+                  </span>
+                  <span className="text-xs text-gray-500">Round off total invoice amount</span>
+                </div>
+                <button
+                  type="button"
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                    invoiceData.isRoundOff ? "bg-blue-600" : "bg-gray-300"
+                  }`}
+                  onClick={() =>
+                    handleToggleRoundOff
+                      ? handleToggleRoundOff(!invoiceData.isRoundOff)
+                      : setInvoiceData((prev) => ({ ...prev, isRoundOff: !prev.isRoundOff }))
+                  }
+                  title="Toggle Round Off (Synced with System Settings)"
                 >
                   <span className="sr-only">Enable Round Off</span>
                   <span
                     aria-hidden="true"
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${invoiceData.isRoundOff ? "translate-x-5" : "translate-x-0"
-                      }`}
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      invoiceData.isRoundOff ? "translate-x-5" : "translate-x-0"
+                    }`}
                   />
                 </button>
               </div>

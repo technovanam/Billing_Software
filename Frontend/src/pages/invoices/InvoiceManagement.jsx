@@ -1398,14 +1398,14 @@ const InvoiceManagementComponent = ({
         <main className="mt-6 flex flex-col gap-6">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="w-fit lg:w-auto overflow-x-auto pb-1">
-              <div className="flex p-1 bg-gray-100 rounded-lg whitespace-nowrap">
+              <div className="flex p-1 bg-white border border-slate-300 rounded-xl whitespace-nowrap shadow-xs">
                 {tabs.map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-800"
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${activeTab === tab
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium"
                       }`}
                   >
                     {tab}
@@ -1415,13 +1415,13 @@ const InvoiceManagementComponent = ({
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
               <div className="relative w-full sm:w-auto flex-1 lg:flex-none">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search invoices..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full sm:w-80 bg-gray-100 rounded-lg pl-9 pr-4 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-0"
+                  className="w-full sm:w-80 bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 shadow-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
 
@@ -1429,9 +1429,9 @@ const InvoiceManagementComponent = ({
               <div className="relative" ref={filterRef}>
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${hasActiveFilters || showFilters
-                    ? "bg-blue-50 text-blue-600 border-blue-200"
-                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all border shadow-xs ${hasActiveFilters || showFilters
+                    ? "bg-blue-50 text-blue-600 border-blue-300"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                     }`}
                 >
                   <Filter size={16} />
