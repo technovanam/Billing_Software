@@ -531,6 +531,27 @@ const SystemSettings = () => {
     }
   };
 
+  const handleFeatureToggle = async (featureKey) => {
+    const nextFeatures = {
+      ...features,
+      [featureKey]: !features[featureKey],
+    };
+    setFeatures(nextFeatures);
+    try {
+      await updateSettings(
+        "systemSettings",
+        {
+          systemConfig: config,
+          systemFeatures: nextFeatures,
+        },
+        "System configuration and features"
+      );
+      showSystemMessage("System feature updated successfully!", "success");
+    } catch (error) {
+      showSystemMessage("Error updating feature: " + error.message, "error");
+    }
+  };
+
   return (
     <div className="p-6 border border-gray-200 rounded-xl">
       <div className="flex items-center gap-3 mb-6">
@@ -634,28 +655,19 @@ const SystemSettings = () => {
               title="Auto Invoice Numbering"
               description="Automatically generate sequential invoice numbers"
               enabled={features.autoInvoice}
-              onToggle={() =>
-                setFeatures((p) => ({ ...p, autoInvoice: !p.autoInvoice }))
-              }
+              onToggle={() => handleFeatureToggle("autoInvoice")}
             />
             <FeatureItem
               title="GST Calculation"
               description="Enable automatic GST calculation"
               enabled={features.gstCalculation}
-              onToggle={() =>
-                setFeatures((p) => ({
-                  ...p,
-                  gstCalculation: !p.gstCalculation,
-                }))
-              }
+              onToggle={() => handleFeatureToggle("gstCalculation")}
             />
             <FeatureItem
               title="Round Off"
               description="Enable automatic round off for invoice totals"
               enabled={features.roundOff}
-              onToggle={() =>
-                setFeatures((p) => ({ ...p, roundOff: !p.roundOff }))
-              }
+              onToggle={() => handleFeatureToggle("roundOff")}
             />
           </div>
         </div>
