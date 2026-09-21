@@ -10,18 +10,21 @@ export default function AuthTransition() {
   const location = useLocation();
   const isSignUp = location.pathname === "/signup";
   const [isReady, setIsReady] = useState(false);
+  const [transitionDone, setTransitionDone] = useState(false);
 
   useEffect(() => {
     setIsReady(false);
-    let timeoutId;
+    setTransitionDone(false);
+    let doneTimeout;
     const rafId = requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        timeoutId = setTimeout(() => setIsReady(true), 20);
+        setTimeout(() => setIsReady(true), 20);
+        doneTimeout = setTimeout(() => setTransitionDone(true), DURATION_MS + 50);
       });
     });
     return () => {
       cancelAnimationFrame(rafId);
-      if (timeoutId) clearTimeout(timeoutId);
+      if (doneTimeout) clearTimeout(doneTimeout);
     };
   }, [location.pathname]);
 
@@ -29,14 +32,16 @@ export default function AuthTransition() {
   const translateX = isReady ? 0 : fromRight ? 100 : -100;
 
   return (
-    <div className="w-full h-screen overflow-hidden">
+    <div className="w-full min-h-screen">
       <div
-        className="w-full h-full"
+        className="w-full min-h-screen"
         style={{
-          transform: `translateX(${translateX}%)`,
+          transform: transitionDone ? "none" : `translateX(${translateX}%)`,
           opacity: isReady ? 1 : 0.92,
-          transition: `transform ${DURATION_MS}ms ${EASING}, opacity ${DURATION_MS}ms ${EASING}`,
-          willChange: "transform",
+          transition: transitionDone
+            ? "none"
+            : `transform ${DURATION_MS}ms ${EASING}, opacity ${DURATION_MS}ms ${EASING}`,
+          willChange: transitionDone ? "auto" : "transform",
         }}
       >
         {isSignUp ? <SignUp /> : <SignIn />}

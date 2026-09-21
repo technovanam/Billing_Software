@@ -24,7 +24,7 @@ import { useToast } from "../../context/ToastContext";
 
 const STEPS = ["Account", "Company"];
 
-function InputField({ id, label, icon: Icon, type = "text", placeholder, value, onChange, required = true, hint }) {
+function InputField({ id, label, icon: Icon, type = "text", placeholder, value, onChange, required = true, hint, maxLength }) {
   return (
     <div>
       <label htmlFor={id} className="block text-sm font-medium text-gray-700 mb-1">
@@ -43,6 +43,7 @@ function InputField({ id, label, icon: Icon, type = "text", placeholder, value, 
           onChange={onChange}
           placeholder={placeholder}
           required={required}
+          maxLength={maxLength}
           className={`w-full rounded-xl border border-gray-300 py-2.5 text-sm transition-colors focus:border-blue-400 ${Icon ? "pl-9 pr-3" : "px-3"}`}
         />
       </div>
@@ -70,6 +71,7 @@ export default function SignUp() {
   const [companyName, setCompanyName] = useState("");
   const [ownerName, setOwnerName] = useState("");
   const [phone, setPhone] = useState("");
+  const [gstType, setGstType] = useState("non-gst");
   const [gstin, setGstin] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
@@ -135,6 +137,17 @@ export default function SignUp() {
       toastError("Please enter your company name.");
       return;
     }
+    if (gstType === "gst") {
+      const cleanGstin = gstin.trim().toUpperCase();
+      if (!cleanGstin) {
+        toastError("Please enter your 15-digit GSTIN.");
+        return;
+      }
+      if (cleanGstin.length !== 15) {
+        toastError("GSTIN must be exactly 15 characters.");
+        return;
+      }
+    }
     if (!city.trim()) {
       toastError("Please enter your city.");
       return;
@@ -172,12 +185,14 @@ export default function SignUp() {
       setUploadProgress("Saving profile…");
       await updateProfile(userCredential.user, { displayName: ownerName || companyName });
 
+      const finalGstin = gstType === "gst" ? gstin.trim().toUpperCase() : "";
+
       // Step 4 — Write to Firestore AFTER auth is confirmed (avoids "Missing permissions" error)
       await setDoc(doc(db, "users", uid), {
         companyName,
         ownerName,
         phone,
-        gstin: gstin.toUpperCase(),
+        gstin: finalGstin,
         address,
         city,
         state,
@@ -195,7 +210,7 @@ export default function SignUp() {
           ownerName,
           email,
           phone,
-          gstin: gstin.toUpperCase(),
+          gstin: finalGstin,
           address,
           city,
           state,
@@ -207,7 +222,24 @@ export default function SignUp() {
 
       navigate("/dashboard", { replace: true });
     } catch (err) {
-      toastError(err.message || "Something went wrong. Please try again.");
+      if (
+        err.code === "auth/email-already-in-use" ||
+        err.message?.toLowerCase().includes("email-already-in-use") ||
+        err.message?.toLowerCase().includes("already in use")
+      ) {
+        setStep(0);
+        toastError("This email is already registered. Please sign in or use a different email address.");
+      } else if (err.code === "auth/invalid-email") {
+        setStep(0);
+        toastError("Please enter a valid email address.");
+      } else if (err.code === "auth/weak-password") {
+        setStep(0);
+        toastError("Password is too weak. Please use at least 6 characters.");
+      } else if (err.code === "auth/network-request-failed") {
+        toastError("Network error. Please check your internet connection.");
+      } else {
+        toastError(err.message || "Something went wrong. Please try again.");
+      }
     } finally {
       setLoading(false);
       setUploadProgress("");
@@ -215,10 +247,10 @@ export default function SignUp() {
   };
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden">
+    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white">
       {/* Left — Sign Up Form */}
-      <div className="flex-1 flex flex-col h-screen overflow-y-auto">
-        <div className="flex items-center justify-between px-6 sm:px-10 pt-6">
+      <div className="w-full lg:w-[45%] min-h-screen flex flex-col justify-between px-6 sm:px-10 lg:px-12 py-6 flex-shrink-0">
+        <div className="flex items-center justify-between pb-4">
           <button
             onClick={() => (step === 0 ? navigate("/signin") : setStep(0))}
             className="text-sm text-gray-500 hover:text-blue-600 transition-colors"
@@ -236,8 +268,7 @@ export default function SignUp() {
           </div>
         </div>
 
-        <div className="flex-1 flex items-center justify-center px-6 sm:px-10 py-8">
-          <div className="w-full max-w-lg">
+        <div className="w-full max-w-lg mx-auto my-auto py-4">
         {/* Logo + heading */}
         <div className="mb-6 text-center">
           <img src="/logo@4x-8.png" alt="Techno Vanam Billing" className="mx-auto mb-3 h-9 object-contain" />
@@ -418,16 +449,64 @@ export default function SignUp() {
               onChange={(e) => setPhone(e.target.value)}
             />
 
-            <InputField
-              id="gstin"
-              label="GSTIN"
-              icon={IdentificationIcon}
-              placeholder="e.g. 33ABCDE1234F1Z5"
-              value={gstin}
-              onChange={(e) => setGstin(e.target.value.toUpperCase())}
-              required={false}
-              hint="15-digit GST Identification Number (optional)"
-            />
+            {/* GST / Non-GST Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Tax Type <span className="text-red-500">*</span>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setGstType("gst")}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border text-sm font-medium transition-all ${
+                    gstType === "gst"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm ring-2 ring-blue-500/20"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+                  }`}
+                >
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                      gstType === "gst" ? "bg-blue-600" : "bg-gray-300"
+                    }`}
+                  />
+                  GST
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGstType("non-gst");
+                    setGstin("");
+                  }}
+                  className={`flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border text-sm font-medium transition-all ${
+                    gstType === "non-gst"
+                      ? "border-blue-600 bg-blue-50 text-blue-700 shadow-sm ring-2 ring-blue-500/20"
+                      : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50 hover:border-gray-400"
+                  }`}
+                >
+                  <span
+                    className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                      gstType === "non-gst" ? "bg-blue-600" : "bg-gray-300"
+                    }`}
+                  />
+                  Non-GST
+                </button>
+              </div>
+            </div>
+
+            {/* GSTIN Input (only if GST selected) */}
+            {gstType === "gst" && (
+              <InputField
+                id="gstin"
+                label="GSTIN"
+                icon={IdentificationIcon}
+                placeholder="e.g. 33ABCDE1234F1Z5"
+                value={gstin}
+                onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                required={true}
+                maxLength={15}
+                hint="15-digit GST Identification Number"
+              />
+            )}
 
             <InputField
               id="address"
@@ -480,19 +559,19 @@ export default function SignUp() {
           </form>
         )}
 
-        {/* Sign in link */}
-        <p className="mt-5 text-center text-sm text-gray-500">
-          Already have an account?{" "}
-          <Link to="/signin" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
-            Sign In
-          </Link>
-        </p>
           </div>
-        </div>
-      </div>
 
-      {/* Right — Collage */}
-      <AuthCollage />
-    </div>
-  );
-}
+          {/* Sign in link */}
+          <p className="mt-8 pb-4 text-center text-sm text-gray-500">
+            Already have an account?{" "}
+            <Link to="/signin" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
+              Sign In
+            </Link>
+          </p>
+        </div>
+
+        {/* Right — Collage */}
+        <AuthCollage />
+      </div>
+    );
+  }

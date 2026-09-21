@@ -28,7 +28,7 @@ function docToItem(d) {
   for (const [k, v] of Object.entries(data)) {
     if (v && typeof v.toDate === "function") {
       const dVal = v.toDate();
-      if (["invoiceDate", "dueDate", "poDate", "dcDate"].includes(k)) {
+      if (["invoiceDate", "dueDate", "poDate", "dcDate", "startOn", "endsOn", "nextRunDate", "lastRunDate"].includes(k)) {
         const year = dVal.getFullYear();
         const month = String(dVal.getMonth() + 1).padStart(2, "0");
         const day = String(dVal.getDate()).padStart(2, "0");
@@ -470,6 +470,51 @@ export const useExpenses = () => {
   }, [uid]);
 
   return { expenses, loading, error, addExpense, editExpense, removeExpense, refetch };
+};
+
+// Recurring invoices - users/{uid}/recurringInvoices
+export const useRecurringInvoices = () => {
+  const uid = useUserId();
+  const [recurringInvoices, setRecurringInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refetch = useCallback(async () => {
+    if (!uid) { setRecurringInvoices([]); setLoading(false); return; }
+    setLoading(true);
+    try {
+      const snap = await getDocs(collection(db, "users", uid, "recurringInvoices"));
+      setRecurringInvoices(snapshotToItems(snap));
+      setError(null);
+    } catch (err) { setError(err.message); setRecurringInvoices([]); }
+    finally { setLoading(false); }
+  }, [uid]);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  const addRecurringInvoice = useCallback(async (payload) => {
+    if (!uid) return { success: false };
+    const data = sanitizeForFirestore(payload);
+    const ref = await addDoc(collection(db, "users", uid, "recurringInvoices"), { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    setRecurringInvoices((prev) => [{ id: ref.id, ...payload }, ...prev]);
+    return { success: true, id: ref.id };
+  }, [uid]);
+
+  const editRecurringInvoice = useCallback(async (id, patch) => {
+    if (!uid) return { success: false };
+    await updateDoc(doc(db, "users", uid, "recurringInvoices", id), { ...sanitizeForFirestore(patch), updatedAt: serverTimestamp() });
+    setRecurringInvoices((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
+    return { success: true };
+  }, [uid]);
+
+  const removeRecurringInvoice = useCallback(async (id) => {
+    if (!uid) return { success: false };
+    await deleteDoc(doc(db, "users", uid, "recurringInvoices", id));
+    setRecurringInvoices((prev) => prev.filter((item) => item.id !== id));
+    return { success: true };
+  }, [uid]);
+
+  return { recurringInvoices, loading, error, addRecurringInvoice, editRecurringInvoice, removeRecurringInvoice, refetch };
 };
 
 // Products — users/{uid}/products

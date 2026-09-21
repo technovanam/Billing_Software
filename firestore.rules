@@ -53,6 +53,9 @@ service cloud.firestore {
       match /expenses/{docId} {
         allow read, write: if isOwner(userId);
       }
+      match /recurringInvoices/{docId} {
+        allow read, write: if isOwner(userId);
+      }
       match /settings/{docId} {
         allow read, write: if isOwner(userId);
       }

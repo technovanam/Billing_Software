@@ -11,7 +11,7 @@ const IMAGES = [
 
 export default function AuthCollage() {
   return (
-    <div className="hidden lg:block lg:w-[55%] relative bg-gray-100 overflow-hidden p-3">
+    <div className="hidden lg:block lg:w-[55%] sticky top-0 h-screen relative bg-gray-100 overflow-hidden p-3 flex-shrink-0">
       {/* Glass finish overlay */}
       <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-br from-white/40 via-white/15 to-white/35 backdrop-blur-[1px]" />
       <div className="absolute inset-0 z-10 pointer-events-none bg-gradient-to-t from-white/30 via-transparent to-white/20" />

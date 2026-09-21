@@ -1,14 +1,122 @@
+require('dotenv').config();
 const express = require('express');
 const puppeteer = require('puppeteer');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const admin = require('firebase-admin');
+const cron = require('node-cron');
+const nodemailer = require('nodemailer');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = 5000;
 
+const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
+if (!admin.apps.length && fs.existsSync(serviceAccountPath)) {
+    admin.initializeApp({ credential: admin.credential.cert(require(serviceAccountPath)) });
+}
+const firestore = () => admin.firestore();
+const recipientEmail = process.env.RECURRING_INVOICE_EMAIL || 'mohammedsuhail100506@gmail.com';
+const mailer = () => nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: Number(process.env.EMAIL_PORT || 587),
+    secure: Number(process.env.EMAIL_PORT) === 465,
+    auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASSWORD },
+});
+
+function requireAdmin() {
+    if (!admin.apps.length) throw new Error('Firebase Admin is not configured. Add Backend/serviceAccountKey.json.');
+}
+
+async function authenticateRequest(req, res, next) {
+    try {
+        requireAdmin();
+        const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+        if (!token) return res.status(401).json({ error: 'Authentication required' });
+        req.user = await admin.auth().verifyIdToken(token);
+        next();
+    } catch (error) { res.status(401).json({ error: 'Invalid authentication token' }); }
+}
+
+function addSchedule(date, schedule) {
+    const result = new Date(date);
+    if (schedule === 'Week') result.setDate(result.getDate() + 7);
+    else if (schedule === '2 Weeks') result.setDate(result.getDate() + 14);
+    else result.setMonth(result.getMonth() + ({ Month: 1, '2 Months': 2, '3 Months': 3, '6 Months': 6, Year: 12 }[schedule] || 1));
+    return result;
+}
+
+async function sendRecurringEmail(invoice, profile) {
+    if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+        console.warn('Recurring email skipped: SMTP environment variables are not configured.');
+        return;
+    }
+    await mailer().sendMail({
+        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+        to: recipientEmail,
+        subject: `Recurring Invoice Generated - ${invoice.invoiceNumber}`,
+        text: `Hello,\n\nA recurring invoice has been generated successfully.\n\nCustomer: ${invoice.customerName || ''}\nInvoice Number: ${invoice.invoiceNumber}\nInvoice Date: ${invoice.invoiceDate}\nDue Date: ${invoice.dueDate}\nAmount: ₹${invoice.amount}\n\nProfile: ${profile.profileName}\nRepeat Schedule: ${profile.repeatEvery}\n\nRegards,\nTechno Vanam Billing Software`,
+    });
+    console.log(`Recurring invoice email sent to ${recipientEmail} for ${invoice.invoiceNumber}`);
+}
+
+async function processRecurringInvoices(uid) {
+    requireAdmin();
+    const db = firestore();
+    const userIds = uid ? [uid] : (await db.collection('users').get()).docs.map((doc) => doc.id);
+    const processed = [];
+    for (const userId of userIds) {
+        const snapshot = await db.collection('users').doc(userId).collection('recurringInvoices').get();
+        for (const doc of snapshot.docs) {
+            const profile = doc.data();
+            const due = profile.status === 'Active' && profile.nextRunDate && new Date(profile.nextRunDate) <= new Date();
+            if (!due || (!profile.neverExpires && profile.endsOn && profile.nextRunDate > profile.endsOn)) continue;
+            const lockRef = doc.ref.collection('runs').doc(profile.nextRunDate);
+            const lock = await db.runTransaction(async (transaction) => {
+                const existing = await transaction.get(lockRef);
+                if (existing.exists) return false;
+                transaction.create(lockRef, { createdAt: admin.firestore.FieldValue.serverTimestamp() });
+                return true;
+            });
+            if (!lock) continue;
+            const invoiceRef = db.collection('users').doc(userId).collection('invoices').doc();
+            const invoiceNumber = `REC-${invoiceRef.id.slice(0, 8).toUpperCase()}`;
+            const invoice = {
+                invoiceNumber, invoiceDate: profile.nextRunDate, dueDate: profile.paymentTerms === 'Due on Receipt' ? profile.nextRunDate : profile.nextRunDate,
+                customerId: profile.customerId, customerName: profile.customerName, clientId: profile.customerId,
+                items: profile.items || [], amount: profile.total || 0, subtotal: profile.subtotal || 0,
+                discount: profile.discount || 0, tds: profile.tds || 0, status: 'Unpaid',
+                invoiceNotes: profile.customerNotes || '', termsAndConditions: profile.termsAndConditions || '',
+                recurringInvoiceId: doc.id, createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            const nextRunDate = addSchedule(new Date(profile.nextRunDate), profile.repeatEvery).toISOString().slice(0, 10);
+            await invoiceRef.set(invoice);
+            await doc.ref.update({ lastRunDate: profile.nextRunDate, nextRunDate, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            await sendRecurringEmail(invoice, profile);
+            processed.push({ profileId: doc.id, invoiceNumber });
+        }
+    }
+    if (processed.length) console.log(`Processed ${processed.length} recurring invoice(s).`);
+    return processed;
+}
+
 // Increase payload limit for large HTML
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(cors());
+
+app.post('/recurring-invoices/process', authenticateRequest, async (req, res) => {
+    try { res.json({ success: true, processed: await processRecurringInvoices(req.user.uid) }); }
+    catch (error) { console.error('Recurring processing error:', error); res.status(500).json({ error: error.message }); }
+});
+
+app.post('/recurring-invoices/test-email', authenticateRequest, async (req, res) => {
+    try {
+        if (!process.env.EMAIL_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) return res.status(500).json({ error: 'SMTP environment variables are not configured' });
+        await mailer().sendMail({ from: process.env.EMAIL_FROM || process.env.EMAIL_USER, to: recipientEmail, subject: 'Recurring Invoice Test Email', text: 'Recurring invoice email delivery is configured correctly.' });
+        res.json({ success: true, recipient: recipientEmail });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+});
 
 app.post('/generate-pdf', async (req, res) => {
     const { html, css, baseUrl } = req.body;
@@ -84,4 +192,5 @@ app.post('/generate-pdf', async (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`PDF Server running on http://localhost:${PORT}`);
+    if (admin.apps.length) cron.schedule('*/5 * * * *', () => processRecurringInvoices().catch((error) => console.error('Recurring scheduler error:', error)));
 });

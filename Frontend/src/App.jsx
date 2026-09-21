@@ -20,6 +20,7 @@ import DataSeeder from "./pages/admin/DataSeeder";
 import ClearAndReseed from "./pages/admin/ClearAndReseed";
 import FYArchives from "./pages/admin/FYArchives";
 import LandingPage from "./pages/landing/LandingPage";
+import RecurringInvoices from "./pages/recurring-invoices/RecurringInvoices";
 
 import PropTypes from 'prop-types';
 
@@ -73,6 +74,8 @@ export default function App() {
                       <Route path="/dashboard" element={<Dashboard />} />
                       <Route path="/invoices" element={<Invoices />} />
                       <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                      <Route path="/recurring-invoices" element={<RecurringInvoices />} />
+                      <Route path="/recurring-invoices/new" element={<RecurringInvoices />} />
                       <Route path="/clients" element={<Clients />} />
                       <Route path="/customers/new" element={<Clients />} />
                       <Route path="/products" element={<Products />} />
