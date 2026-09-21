@@ -464,6 +464,7 @@ const SystemSettings = () => {
     timeZone: "Asia/Kolkata",
     dateFormat: "DD/MM/YYYY",
     invoicePrefix: "INV",
+    razorpayLink: "https://razorpay.me/@esaengineeringworks",
   });
   const [features, setFeatures] = useState({
     autoInvoice: true,
@@ -527,6 +528,27 @@ const SystemSettings = () => {
         "Error saving system settings: " + error.message,
         "error"
       );
+    }
+  };
+
+  const handleFeatureToggle = async (featureKey) => {
+    const nextFeatures = {
+      ...features,
+      [featureKey]: !features[featureKey],
+    };
+    setFeatures(nextFeatures);
+    try {
+      await updateSettings(
+        "systemSettings",
+        {
+          systemConfig: config,
+          systemFeatures: nextFeatures,
+        },
+        "System configuration and features"
+      );
+      showSystemMessage("System feature updated successfully!", "success");
+    } catch (error) {
+      showSystemMessage("Error updating feature: " + error.message, "error");
     }
   };
 
@@ -605,6 +627,24 @@ const SystemSettings = () => {
               className="w-full bg-gray-100 border-0 rounded-md text-sm p-2.5"
             />
           </div>
+          <div className="md:col-span-2">
+            <label htmlFor="razorpayLink" className="text-sm text-gray-800 mb-1 block">
+              Razorpay Payment Gateway / UPI Link
+            </label>
+            <input
+              id="razorpayLink"
+              type="text"
+              placeholder="https://razorpay.me/@esaengineeringworks"
+              value={config.razorpayLink || ""}
+              onChange={(e) =>
+                setConfig({ ...config, razorpayLink: e.target.value })
+              }
+              className="w-full bg-gray-100 border-0 rounded-md text-sm p-2.5"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              This payment link is embedded into invoice previews and downloaded PDF invoices for client payment redirection.
+            </p>
+          </div>
         </div>
         <div className="border-t border-gray-200 pt-6">
           <h3 className="text-base font-bold text-gray-800 mb-4">
@@ -615,28 +655,19 @@ const SystemSettings = () => {
               title="Auto Invoice Numbering"
               description="Automatically generate sequential invoice numbers"
               enabled={features.autoInvoice}
-              onToggle={() =>
-                setFeatures((p) => ({ ...p, autoInvoice: !p.autoInvoice }))
-              }
+              onToggle={() => handleFeatureToggle("autoInvoice")}
             />
             <FeatureItem
               title="GST Calculation"
               description="Enable automatic GST calculation"
               enabled={features.gstCalculation}
-              onToggle={() =>
-                setFeatures((p) => ({
-                  ...p,
-                  gstCalculation: !p.gstCalculation,
-                }))
-              }
+              onToggle={() => handleFeatureToggle("gstCalculation")}
             />
             <FeatureItem
               title="Round Off"
               description="Enable automatic round off for invoice totals"
               enabled={features.roundOff}
-              onToggle={() =>
-                setFeatures((p) => ({ ...p, roundOff: !p.roundOff }))
-              }
+              onToggle={() => handleFeatureToggle("roundOff")}
             />
           </div>
         </div>

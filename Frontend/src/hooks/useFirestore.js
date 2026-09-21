@@ -349,6 +349,96 @@ export const useInvoices = (options = {}) => {
   return { invoices: view, allInvoices: all, loading, error: invError, pagination: pageInfo, addInvoice, editInvoice, removeInvoice, refetch };
 };
 
+// Delivery Challans — users/{uid}/deliveryChallans
+export const useChallans = (options = {}) => {
+  const uid = useUserId();
+  const [all, setAll] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const refetch = useCallback(async () => {
+    if (!uid) {
+      setAll([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const snap = await getDocs(collection(db, "users", uid, "deliveryChallans"));
+      setAll(snapshotToItems(snap));
+    } catch (err) {
+      setError(err.message);
+      setAll([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  const fyChallans = useMemo(() => {
+    return all.filter((dc) => isInCurrentFY(dc.challanDate || dc.createdAt));
+  }, [all]);
+
+  const filtered = useMemo(() => {
+    let res = fyChallans;
+    if (options.status) {
+      res = res.filter((dc) => (dc.status || "").toLowerCase() === options.status.toLowerCase());
+    }
+    if (options.customerId) {
+      res = res.filter((dc) => dc.clientId === options.customerId || (dc.client && dc.client.id === options.customerId));
+    }
+    return res;
+  }, [fyChallans, options.status, options.customerId]);
+
+  const { data, pagination } = applyListView(filtered, options);
+  const [view, setView] = useState(data);
+  const [pageInfo, setPageInfo] = useState(pagination);
+
+  useEffect(() => {
+    const res = applyListView(filtered, options);
+    setView(res.data);
+    setPageInfo(res.pagination);
+  }, [filtered, options.search, options.page, options.limit, options.sortBy, options.sortDirection]);
+
+  const addChallan = useCallback(
+    async (payload) => {
+      if (!uid) return { success: false };
+      const data = sanitizeForFirestore(payload);
+      const ref = await addDoc(collection(db, "users", uid, "deliveryChallans"), { ...data, createdAt: serverTimestamp() });
+      setAll((prev) => [{ id: ref.id, ...payload }, ...prev]);
+      return { success: true, id: ref.id };
+    },
+    [uid]
+  );
+
+  const editChallan = useCallback(
+    async (id, patch) => {
+      if (!uid) return { success: false };
+      const data = sanitizeForFirestore(patch);
+      await updateDoc(doc(db, "users", uid, "deliveryChallans", id), data);
+      setAll((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+      return { success: true };
+    },
+    [uid]
+  );
+
+  const removeChallan = useCallback(
+    async (id) => {
+      if (!uid) return { success: false };
+      await deleteDoc(doc(db, "users", uid, "deliveryChallans", id));
+      setAll((prev) => prev.filter((c) => c.id !== id));
+      return { success: true };
+    },
+    [uid]
+  );
+
+  return { challans: view, allChallans: all, loading, error, pagination: pageInfo, addChallan, editChallan, removeChallan, refetch };
+};
+
 // Payments — users/{uid}/payments
 export const usePayments = (invoiceId) => {
   const uid = useUserId();

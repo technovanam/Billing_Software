@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useInvoices, useCustomers, useProducts } from "../../hooks/useFirestore";
+import { useInvoices, useCustomers, useProducts, useSettings } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
 import CreateInvoiceComponent from "./CreateInvoiceComponent";
 import { InvoicePreview } from "./InvoiceManagement.jsx";
@@ -12,6 +12,7 @@ export default function CreateInvoicePage() {
   const { customers } = useCustomers();
   const { products, addProduct } = useProducts();
   const { addInvoice, allInvoices } = useInvoices();
+  const { settings, updateSettings } = useSettings();
 
   // Generate next invoice number based on allInvoices
   const generateNextInvoiceNumber = () => {
@@ -58,11 +59,14 @@ export default function CreateInvoicePage() {
     status: "Unpaid",
     declaration:
       "We declare that this invoice shows the actual price of the goods Described and that all Particulars are true and correct.",
-    isRoundOff: false,
+    isRoundOff: true,
+    isGstEnabled: true,
+    isAutoInvoice: true,
     invoiceNotes: "",
   });
 
   const [invoiceData, setInvoiceData] = useState(getInitialInvoiceData);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [calculations, setCalculations] = useState({
     subtotal: 0,
     cgstAmount: 0,
@@ -72,9 +76,31 @@ export default function CreateInvoicePage() {
     total: 0,
   });
 
+  // Sync initial settings from SystemSettings (Firestore)
+  useEffect(() => {
+    if (settings?.systemSettings?.value?.systemFeatures && !settingsLoaded) {
+      const features = settings.systemSettings.value.systemFeatures;
+      const isAuto = features.autoInvoice ?? true;
+      const isGst = features.gstCalculation ?? true;
+      const isRound = features.roundOff ?? true;
+
+      setInvoiceData((prev) => ({
+        ...prev,
+        isRoundOff: isRound,
+        isGstEnabled: isGst,
+        isAutoInvoice: isAuto,
+        invoiceNumber: isAuto ? generateNextInvoiceNumber() : prev.invoiceNumber,
+        cgst: isGst ? (prev.cgst || 9) : 0,
+        sgst: isGst ? (prev.sgst || 9) : 0,
+        igst: isGst ? (prev.igst || 0) : 0,
+      }));
+      setSettingsLoaded(true);
+    }
+  }, [settings, settingsLoaded]);
+
   // Update invoice number once invoices load if default was 001
   useEffect(() => {
-    if (allInvoices && allInvoices.length > 0) {
+    if (allInvoices && allInvoices.length > 0 && invoiceData.isAutoInvoice) {
       const nextNum = generateNextInvoiceNumber();
       setInvoiceData((prev) => {
         if (!prev.invoiceNumber || prev.invoiceNumber.startsWith("001/")) {
@@ -83,17 +109,20 @@ export default function CreateInvoicePage() {
         return prev;
       });
     }
-  }, [allInvoices]);
+  }, [allInvoices, invoiceData.isAutoInvoice]);
 
+  // Calculations Effect
   useEffect(() => {
     const itemsArray = invoiceData.items || invoiceData.products || [];
     const subtotal = itemsArray.reduce(
       (sum, item) => sum + (item.quantity || 0) * (item.rate || item.price || 0),
       0
     );
-    const cgstAmount = (subtotal * invoiceData.cgst) / 100;
-    const sgstAmount = (subtotal * invoiceData.sgst) / 100;
-    const igstAmount = (subtotal * invoiceData.igst) / 100;
+
+    const cgstAmount = invoiceData.isGstEnabled ? (subtotal * invoiceData.cgst) / 100 : 0;
+    const sgstAmount = invoiceData.isGstEnabled ? (subtotal * invoiceData.sgst) / 100 : 0;
+    const igstAmount = invoiceData.isGstEnabled ? (subtotal * invoiceData.igst) / 100 : 0;
+
     let total = subtotal + cgstAmount + sgstAmount + igstAmount;
     let roundOffAmount = 0;
     if (invoiceData.isRoundOff) {
@@ -116,7 +145,67 @@ export default function CreateInvoicePage() {
     invoiceData.sgst,
     invoiceData.igst,
     invoiceData.isRoundOff,
+    invoiceData.isGstEnabled,
   ]);
+
+  // Bi-directional feature update helper to persist setting to SystemSettings in Firestore
+  const updateSystemFeature = async (featureKey, newValue) => {
+    try {
+      const currentVal = settings?.systemSettings?.value || {};
+      const currentFeatures = currentVal.systemFeatures || {
+        autoInvoice: true,
+        gstCalculation: true,
+        roundOff: true,
+      };
+      const updatedFeatures = {
+        ...currentFeatures,
+        [featureKey]: newValue,
+      };
+      await updateSettings(
+        "systemSettings",
+        {
+          systemConfig: currentVal.systemConfig || {
+            currency: "INR",
+            timeZone: "Asia/Kolkata",
+            dateFormat: "DD/MM/YYYY",
+            invoicePrefix: "INV",
+          },
+          systemFeatures: updatedFeatures,
+        },
+        "System configuration and features"
+      );
+    } catch (err) {
+      console.error("Failed to update system setting:", err);
+    }
+  };
+
+  const handleToggleRoundOff = (newValue) => {
+    setInvoiceData((prev) => ({ ...prev, isRoundOff: newValue }));
+    updateSystemFeature("roundOff", newValue);
+  };
+
+  const handleToggleGst = (newValue) => {
+    setInvoiceData((prev) => ({
+      ...prev,
+      isGstEnabled: newValue,
+      cgst: newValue ? 9 : 0,
+      sgst: newValue ? 9 : 0,
+      igst: 0,
+    }));
+    updateSystemFeature("gstCalculation", newValue);
+  };
+
+  const handleToggleAutoInvoice = (newValue) => {
+    setInvoiceData((prev) => {
+      const nextNum = newValue ? generateNextInvoiceNumber() : prev.invoiceNumber;
+      return {
+        ...prev,
+        isAutoInvoice: newValue,
+        invoiceNumber: nextNum,
+      };
+    });
+    updateSystemFeature("autoInvoice", newValue);
+  };
 
   const addItem = () => {
     const newItem = {
@@ -258,6 +347,9 @@ export default function CreateInvoicePage() {
         removeItem={removeItem}
         handleClientSelect={handleClientSelect}
         handleAddNewProduct={handleAddNewProduct}
+        handleToggleRoundOff={handleToggleRoundOff}
+        handleToggleGst={handleToggleGst}
+        handleToggleAutoInvoice={handleToggleAutoInvoice}
       />
       {showPreview && (
         <InvoicePreview

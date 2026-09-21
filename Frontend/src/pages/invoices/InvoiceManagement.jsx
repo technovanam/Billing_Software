@@ -305,7 +305,7 @@ const InvoicePreview = ({
   autoDownload = false,
   onDownloadComplete
 }) => {
-  const { error: toastError } = useToast();
+  const { error: toastError, success: toastSuccess } = useToast();
 
   useEffect(() => {
     if (embedded) return undefined;
@@ -385,7 +385,91 @@ const InvoicePreview = ({
     return words.trim() + " Only";
   };
 
+  const { settings } = useSettings();
   const amountInWords = convertToWords(Math.floor(previewCalcs.total));
+
+  const baseRazorpayLink =
+    previewData?.razorpayLink ||
+    settings?.systemSettings?.value?.systemConfig?.razorpayLink ||
+    "https://razorpay.me/@esaengineeringworks";
+
+  const razorpayUrl = baseRazorpayLink.includes("?")
+    ? `${baseRazorpayLink}&amount=${previewCalcs.total.toFixed(2)}`
+    : `${baseRazorpayLink}?amount=${previewCalcs.total.toFixed(2)}`;
+
+  const handleOpenRazorpayCheckout = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const amount = previewCalcs.total;
+    if (!amount || amount <= 0) {
+      if (toastError) toastError("Invalid invoice amount");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:5000/create-razorpay-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount: amount,
+          receipt: previewData?.invoiceNumber || `inv_${Date.now()}`,
+          notes: {
+            customerName: previewData?.clientName || "",
+            invoiceNumber: previewData?.invoiceNumber || ""
+          }
+        })
+      });
+
+      const orderData = await res.json();
+      if (!orderData.success) {
+        throw new Error(orderData.error || "Failed to create Razorpay order");
+      }
+
+      const keyId = orderData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_Tcxout7GfUZzbE";
+
+      if (window.Razorpay) {
+        const options = {
+          key: keyId,
+          amount: orderData.amount,
+          currency: orderData.currency || "INR",
+          name: "Techno Vanam Billing",
+          description: `Payment for Invoice #${previewData?.invoiceNumber || ""}`,
+          order_id: orderData.orderId,
+          handler: async function (response) {
+            try {
+              const verifyRes = await fetch("http://localhost:5000/verify-razorpay-payment", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(response)
+              });
+              const verifyData = await verifyRes.json();
+              if (verifyData.success) {
+                if (toastSuccess) toastSuccess("Payment Successful! ID: " + response.razorpay_payment_id);
+              } else {
+                if (toastError) toastError("Payment Verification Failed");
+              }
+            } catch (err) {
+              if (toastError) toastError("Error verifying payment: " + err.message);
+            }
+          },
+          prefill: {
+            name: previewData?.clientName || "",
+            email: previewData?.clientEmail || "",
+            contact: previewData?.clientPhone || ""
+          },
+          theme: {
+            color: "#2563eb"
+          }
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        window.open(razorpayUrl, "_blank");
+      }
+    } catch (err) {
+      console.error("Razorpay error:", err);
+      window.open(razorpayUrl, "_blank");
+    }
+  };
 
 
 
@@ -759,11 +843,38 @@ const InvoicePreview = ({
                   <tr>
                     {/* LEFT SIDE — Rupees spans 2 rows */}
                     <td
-                      className="border-t p-1  pt-2align-top"
+                      className="border-t p-2 align-middle"
                       colSpan={2}
                       rowSpan={2}
                     >
-                      Rupees : <span className="font-normal">{amountInWords}</span>
+                      <div className="flex flex-row items-center justify-between gap-4 w-full h-full min-h-[44px]">
+                        <div>
+                          <span className="font-bold">Rupees :</span>{" "}
+                          <span className="font-normal">{amountInWords}</span>
+                        </div>
+                        <div>
+                          <a
+                            href={razorpayUrl}
+                            onClick={handleOpenRazorpayCheckout}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded shadow-sm transition-colors border border-blue-700 no-underline cursor-pointer"
+                            style={{
+                              backgroundColor: "#2563eb",
+                              color: "#ffffff",
+                              textDecoration: "none",
+                              display: "inline-block",
+                              padding: "6px 12px",
+                              borderRadius: "4px",
+                              fontSize: "12px",
+                              fontWeight: "bold",
+                              border: "1px solid #1d4ed8"
+                            }}
+                          >
+                            💳 Pay via Razorpay (₹{previewCalcs.total.toFixed(2)})
+                          </a>
+                        </div>
+                      </div>
                     </td>
 
                     {/* RIGHT SIDE — ROUND OFF */}
@@ -1398,14 +1509,14 @@ const InvoiceManagementComponent = ({
         <main className="mt-6 flex flex-col gap-6">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="w-fit lg:w-auto overflow-x-auto pb-1">
-              <div className="flex p-1 bg-gray-100 rounded-lg whitespace-nowrap">
+              <div className="flex p-1 bg-white border border-slate-300 rounded-xl whitespace-nowrap shadow-xs">
                 {tabs.map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeTab === tab
-                      ? "bg-white text-gray-900 shadow-sm"
-                      : "text-gray-600 hover:text-gray-800"
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${activeTab === tab
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium"
                       }`}
                   >
                     {tab}
@@ -1415,13 +1526,13 @@ const InvoiceManagementComponent = ({
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
               <div className="relative w-full sm:w-auto flex-1 lg:flex-none">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search invoices..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full sm:w-80 bg-gray-100 rounded-lg pl-9 pr-4 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-0"
+                  className="w-full sm:w-80 bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 shadow-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
 
@@ -1429,9 +1540,9 @@ const InvoiceManagementComponent = ({
               <div className="relative" ref={filterRef}>
                 <button
                   onClick={() => setShowFilters(!showFilters)}
-                  className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${hasActiveFilters || showFilters
-                    ? "bg-blue-50 text-blue-600 border-blue-200"
-                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all border shadow-xs ${hasActiveFilters || showFilters
+                    ? "bg-blue-50 text-blue-600 border-blue-300"
+                    : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                     }`}
                 >
                   <Filter size={16} />

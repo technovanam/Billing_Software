@@ -76,28 +76,18 @@ export const convertToWords = (num) => {
   return words.trim() + " Only";
 };
 
-export const generateInvoiceHTML = (invoice, settings = null) => {
-  // Calculate totals if not present
-  const itemsArray = invoice.items || invoice.products || [];
+export const generateChallanHTML = (challan, settings = null) => {
+  const itemsArray = challan.items || challan.products || [];
   const subtotal = itemsArray.reduce((sum, item) => sum + (item.amount || item.total || 0), 0);
 
-  const cgstAmount = (subtotal * (invoice.cgst || 0)) / 100;
-  const sgstAmount = (subtotal * (invoice.sgst || 0)) / 100;
-  const igstAmount = (subtotal * (invoice.igst || 0)) / 100;
+  const cgstAmount = (subtotal * (challan.cgst || 0)) / 100;
+  const sgstAmount = (subtotal * (challan.sgst || 0)) / 100;
+  const igstAmount = (subtotal * (challan.igst || 0)) / 100;
 
-  const roundOffAmount = invoice.isRoundOff ? Math.round(invoice.amount) - invoice.amount : 0;
-  const finalTotal = invoice.amount || (subtotal + cgstAmount + sgstAmount + igstAmount + roundOffAmount);
+  const roundOffAmount = challan.isRoundOff ? Math.round(challan.amount) - challan.amount : 0;
+  const finalTotal = challan.amount || (subtotal + cgstAmount + sgstAmount + igstAmount + roundOffAmount);
 
   const amountInWords = convertToWords(Math.floor(finalTotal));
-
-  const baseRazorpayLink =
-    invoice.razorpayLink ||
-    settings?.systemSettings?.value?.systemConfig?.razorpayLink ||
-    "https://razorpay.me/@esaengineeringworks";
-
-  const razorpayUrl = baseRazorpayLink.includes("?")
-    ? `${baseRazorpayLink}&amount=${finalTotal.toFixed(2)}`
-    : `${baseRazorpayLink}?amount=${finalTotal.toFixed(2)}`;
 
   const formatDate = (dateVal) => {
     if (!dateVal) return "";
@@ -107,7 +97,6 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
     return dateVal;
   };
 
-  // Determine filler rows to ensure A4 coverage (approx 25 rows fit nicely on A4 with this font size)
   const MIN_ROWS = 25;
   const fillerRowCount = Math.max(0, MIN_ROWS - itemsArray.length);
 
@@ -115,7 +104,7 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>Invoice ${invoice.invoiceNumber}</title>
+      <title>Delivery Challan ${challan.challanNumber || challan.dcNumber}</title>
       <style>
         * { box-sizing: border-box; }
         body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #fff; font-size: 14px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -149,7 +138,6 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
         .po-row { border-bottom: 1px solid black; padding: 5px 10px; height: 32px; display: flex; align-items: center; }
         .last-po-row { padding: 5px 10px; height: 32px; display: flex; align-items: center; }
         
-        /* Standard Table grid for items */
         .items-table { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; border-bottom: 1px solid black; }
         .items-table th { border-right: 1px solid black; border-bottom: 1px solid black; padding: 4px; text-align: center; font-weight: bold; }
         .items-table td { border-right: 1px solid black; padding: 4px; vertical-align: top; }
@@ -194,25 +182,25 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
         </div>
 
         <div class="title-bar">
-          <div class="title-no"><span class="font-bold">NO :</span> <span class="ml-2">${invoice.invoiceNumber}</span></div>
-          <div class="title-center">INVOICE</div>
-          <div class="title-date"><span class="font-bold">DATE :</span> <span class="ml-2">${formatDate(invoice.invoiceDate)}</span></div>
+          <div class="title-no"><span class="font-bold">DC NO :</span> <span class="ml-2">${challan.challanNumber || challan.dcNumber}</span></div>
+          <div class="title-center">DELIVERY CHALLAN</div>
+          <div class="title-date"><span class="font-bold">DATE :</span> <span class="ml-2">${formatDate(challan.challanDate)}</span></div>
         </div>
 
         <div class="client-section">
           <div class="client-left">
             <div class="client-info">
               <div>To, M/s,</div>
-              <div class="font-bold ml-4">${invoice.client?.name || ""}</div>
-              <div class="ml-4">${invoice.client?.address || ""}</div>
+              <div class="font-bold ml-4">${challan.client?.name || ""}</div>
+              <div class="ml-4">${challan.client?.address || ""}</div>
             </div>
-            <div class="gst-row">GSTIN : ${invoice.client?.taxId || invoice.client?.company || invoice.client?.gst || ""}</div>
+            <div class="gst-row">GSTIN : ${challan.client?.taxId || challan.client?.company || challan.client?.gst || ""}</div>
           </div>
           <div class="client-right">
-            <div class="po-row"><span class="font-bold">P.O. No :</span> <span class="ml-2">${invoice.poNumber || ""}</span></div>
-            <div class="po-row"><span class="font-bold">P.O. Date :</span> <span class="ml-2">${formatDate(invoice.poDate) || ""}</span></div>
-            <div class="po-row"><span class="font-bold">D.C. No :</span> <span class="ml-2">${invoice.dcNumber || ""}</span></div>
-            <div class="last-po-row"><span class="font-bold">D.C. Date :</span> <span class="ml-2">${formatDate(invoice.dcDate) || ""}</span></div>
+            <div class="po-row"><span class="font-bold">Challan Type :</span> <span class="ml-2">${challan.challanType || "Others"}</span></div>
+            <div class="po-row"><span class="font-bold">Ref. No :</span> <span class="ml-2">${challan.referenceNumber || challan.poNumber || ""}</span></div>
+            <div class="po-row"><span class="font-bold">Ref. Date :</span> <span class="ml-2">${formatDate(challan.poDate) || ""}</span></div>
+            <div class="last-po-row"><span class="font-bold">Vehicle No :</span> <span class="ml-2">${challan.vehicleNumber || ""}</span></div>
           </div>
         </div>
 
@@ -262,25 +250,8 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
         <table class="footer-table">
           <tr class="footer-row">
             <td class="left-panel">
-               <div style="padding: 5px;">
-                  ${invoice.invoiceNotes ? `<div style="font-weight: bold;">Notes:</div><div>${invoice.invoiceNotes}</div>` : ''}
-                  <div style="margin-top: 5px; display: flex;">
-                     <div style="width: 100px;">Bank Details :</div>
-                     <div>Bank Name : State Bank Of India</div>
-                  </div>
-                  <div style="margin-left: 100px;">A/C No : 42455711572</div>
-                  <div style="margin-left: 100px;">IFSC Code : SBIN0015017</div>
-                  <div style="margin-left: 100px;">Branch : Malumichampatti</div>
-               </div>
-               <div style="padding: 6px 10px; border-top: 1px solid black; border-bottom: 1px solid black; display: flex; justify-content: space-between; align-items: center;">
-                  <div>
-                     <strong>Rupees :</strong> <span style="font-weight: normal;">${amountInWords}</span>
-                  </div>
-                  <div>
-                     <a href="${razorpayUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb !important; color: #ffffff !important; padding: 6px 12px; border-radius: 4px; text-decoration: none !important; font-weight: bold; font-size: 12px; border: 1px solid #1d4ed8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                        💳 Pay via Razorpay (₹${finalTotal.toFixed(2)})
-                     </a>
-                  </div>
+               <div style="padding: 10px; height: 100%; display: flex; align-items: flex-end;">
+                  <strong>Rupees :</strong> <span style="font-weight: normal; margin-left: 6px;">${amountInWords}</span>
                </div>
             </td>
             <td class="right-panel">
@@ -290,15 +261,15 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${subtotal.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="border-bottom: 1px solid black; padding: 4px;">CGST <span style="margin-left: 10px;">${invoice.cgst || 0}%</span></td>
+                       <td style="border-bottom: 1px solid black; padding: 4px;">CGST <span style="margin-left: 10px;">${challan.cgst || 0}%</span></td>
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${cgstAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="border-bottom: 1px solid black; padding: 4px;">SGST <span style="margin-left: 10px;">${invoice.sgst || 0}%</span></td>
+                       <td style="border-bottom: 1px solid black; padding: 4px;">SGST <span style="margin-left: 10px;">${challan.sgst || 0}%</span></td>
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${sgstAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="border-bottom: 1px solid black; padding: 4px;">IGST <span style="margin-left: 10px;">${invoice.igst || 0}%</span></td>
+                       <td style="border-bottom: 1px solid black; padding: 4px;">IGST <span style="margin-left: 10px;">${challan.igst || 0}%</span></td>
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${igstAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
@@ -316,11 +287,11 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
           <tr style="height: 100px;">
              <td style="border-right: 1px solid black; vertical-align: top; padding: 5px;">
                 <div class="font-bold">Declaration</div>
-                <div style="font-size: 11px;">We declare that this invoice shows the actual price of the goods Described and that all Particulars are true and correct</div>
+                <div style="font-size: 11px;">${challan.declaration || "We declare that this delivery challan shows the actual price of the goods Described and that all Particulars are true and correct"}</div>
              </td>
              <td style="vertical-align: bottom; text-align: right; padding: 5px;">
-               <div style="font-weight: bold; color: #d00000; margin-bottom: 40px; text-align: center;">For ESA Engineering Works</div>
-               <div style="text-align: center;">Authorized Signatory</div>
+                <div style="font-weight: bold; color: #d00000; margin-bottom: 40px; text-align: center;">For ESA Engineering Works</div>
+                <div style="text-align: center;">Authorized Signatory</div>
              </td>
           </tr>
         </table>
