@@ -1627,6 +1627,7 @@ const PaymentsPage = () => {
                         <div className="relative">
                           <input
                             type="date"
+                            max="9999-12-31"
                             value={filterFromDate}
                             onChange={(e) => setFilterFromDate(e.target.value)}
                             className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1638,6 +1639,7 @@ const PaymentsPage = () => {
                         <div className="relative">
                           <input
                             type="date"
+                            max="9999-12-31"
                             value={filterToDate}
                             onChange={(e) => setFilterToDate(e.target.value)}
                             className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"

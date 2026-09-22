@@ -18,45 +18,69 @@ import {
   ChevronDown,
   ChevronUp,
   PieChart,
+  Mic,
+  MicOff,
+  ShieldCheck,
+  Calendar,
 } from "lucide-react";
 import { useAIAssistant } from "../../context/AIAssistantContext";
 
-// Exactly 5 default questions
 const DEFAULT_QUESTIONS = [
   {
     id: 1,
-    icon: TrendingUp,
-    bgColor: "bg-blue-600",
-    label: "Revenue & Profit",
-    question: "What is my total revenue & net profit for this FY?",
+    icon: Calendar,
+    bgColor: "bg-emerald-600",
+    label: "Today's Sales",
+    question: "What was today's sales and revenue?",
   },
   {
     id: 2,
-    icon: AlertCircle,
-    bgColor: "bg-amber-600",
-    label: "Unpaid Invoices",
-    question: "List all unpaid and overdue invoices with customer names.",
+    icon: TrendingUp,
+    bgColor: "bg-blue-600",
+    label: "Top Product",
+    question: "Which product sold the most?",
   },
   {
     id: 3,
-    icon: PieChart,
-    bgColor: "bg-purple-600",
-    label: "GST Tax Collected",
-    question: "How much GST (CGST, SGST, IGST) have we collected so far?",
+    icon: AlertCircle,
+    bgColor: "bg-rose-600",
+    label: "Who Owes Money?",
+    question: "Who owes me money and which invoices are overdue?",
   },
   {
     id: 4,
-    icon: DollarSign,
-    bgColor: "bg-orange-600",
-    label: "Expense Breakdown",
-    question: "What are our total business expenses by category?",
+    icon: PieChart,
+    bgColor: "bg-purple-600",
+    label: "GST Tax",
+    question: "How much GST (CGST, SGST, IGST) did I collect?",
   },
   {
     id: 5,
+    icon: DollarSign,
+    bgColor: "bg-amber-600",
+    label: "Monthly Profit",
+    question: "Show last month vs this month profit and expenses.",
+  },
+  {
+    id: 6,
     icon: Package,
-    bgColor: "bg-emerald-600",
-    label: "Products & Customers",
-    question: "Which are our top selling products and registered customers?",
+    bgColor: "bg-indigo-600",
+    label: "Stock Prediction",
+    question: "Which products are low in stock and need reordering?",
+  },
+  {
+    id: 7,
+    icon: Users,
+    bgColor: "bg-teal-600",
+    label: "Customer Insights",
+    question: "Show top customer insights and VIP clients.",
+  },
+  {
+    id: 8,
+    icon: ShieldCheck,
+    bgColor: "bg-cyan-600",
+    label: "Validate GSTIN",
+    question: "Validate GSTIN 33ABCDE1234F1Z5",
   },
 ];
 
@@ -69,6 +93,8 @@ export default function AIAssistant() {
     copiedIndex,
     showQuickQuestions,
     setShowQuickQuestions,
+    isListening,
+    toggleVoiceRecognition,
     handleSendMessage,
     handleCopy,
     handleClearChat,
@@ -256,18 +282,37 @@ export default function AIAssistant() {
                 e.preventDefault();
                 handleSendMessage();
               }}
-              className="flex items-center gap-3"
+              className="flex items-center gap-2.5"
             >
               <div className="relative flex-1">
                 <input
                   type="text"
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  placeholder="Ask AI about invoices, unpaid totals, expenses, GST taxes..."
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-10 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-xs"
+                  placeholder={isListening ? "Listening... Speak your question..." : "Ask AI: today sales, who owes money, top product, GST, validate GSTIN..."}
+                  className={`w-full rounded-xl border px-4 py-3 pr-10 text-sm text-slate-800 placeholder-slate-400 outline-none transition-all shadow-xs ${
+                    isListening
+                      ? "border-red-400 bg-red-50/30 ring-2 ring-red-200 animate-pulse"
+                      : "border-slate-200 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  }`}
                 />
                 <Bot className="absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
               </div>
+
+              {/* Voice Input Button */}
+              <button
+                type="button"
+                onClick={toggleVoiceRecognition}
+                className={`inline-flex items-center justify-center h-11 w-11 rounded-xl transition-all cursor-pointer shadow-xs ${
+                  isListening
+                    ? "bg-red-600 text-white animate-pulse hover:bg-red-700 ring-2 ring-red-300"
+                    : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-blue-600"
+                }`}
+                title={isListening ? "Stop listening" : "Speak question (Voice AI)"}
+                aria-label={isListening ? "Stop listening" : "Speak question"}
+              >
+                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+              </button>
 
               <button
                 type="submit"

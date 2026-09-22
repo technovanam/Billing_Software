@@ -327,15 +327,16 @@ const InvoicePreview = ({
       const itemsArray = invoice.items || invoice.products || [];
       const subtotal = itemsArray.reduce((sum, item) => sum + (item.amount || item.total || 0), 0);
 
+      const invoiceTotal = Number(invoice?.amount ?? invoice?.total ?? subtotal ?? 0);
       return {
         subtotal: subtotal,
-        cgstAmount: (subtotal * (invoice.cgst || 0)) / 100,
-        sgstAmount: (subtotal * (invoice.sgst || 0)) / 100,
-        igstAmount: (subtotal * (invoice.igst || 0)) / 100,
-        roundOffAmount: invoice.isRoundOff
-          ? Math.round(invoice.amount) - invoice.amount
+        cgstAmount: (subtotal * (invoice?.cgst || 0)) / 100,
+        sgstAmount: (subtotal * (invoice?.sgst || 0)) / 100,
+        igstAmount: (subtotal * (invoice?.igst || 0)) / 100,
+        roundOffAmount: invoice?.isRoundOff
+          ? Math.round(invoiceTotal) - invoiceTotal
           : 0,
-        total: invoice.isRoundOff ? Math.round(invoice.amount) : invoice.amount,
+        total: invoice?.isRoundOff ? Math.round(invoiceTotal) : invoiceTotal,
       };
     })();
 
@@ -386,7 +387,8 @@ const InvoicePreview = ({
   };
 
   const { settings } = useSettings();
-  const amountInWords = convertToWords(Math.floor(previewCalcs.total));
+  const validTotal = Number(previewCalcs?.total || 0);
+  const amountInWords = convertToWords(Math.floor(validTotal));
 
   const baseRazorpayLink =
     previewData?.razorpayLink ||
@@ -394,8 +396,8 @@ const InvoicePreview = ({
     "https://razorpay.me/@esaengineeringworks";
 
   const razorpayUrl = baseRazorpayLink.includes("?")
-    ? `${baseRazorpayLink}&amount=${previewCalcs.total.toFixed(2)}`
-    : `${baseRazorpayLink}?amount=${previewCalcs.total.toFixed(2)}`;
+    ? `${baseRazorpayLink}&amount=${validTotal.toFixed(2)}`
+    : `${baseRazorpayLink}?amount=${validTotal.toFixed(2)}`;
 
   const handleOpenRazorpayCheckout = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -800,7 +802,7 @@ const InvoicePreview = ({
                     <td className="w-[55%] p-1">Bank Name : State Bank Of India</td>
                     <th scope="row" className="w-[16%] border-l border-b border-black p-1 font-normal text-left">SUB TOTAL</th>
                     <td className="w-[16%] border-l border-b border-black p-1 text-right">
-                      {previewCalcs.subtotal.toFixed(2)}
+                      {(Number(previewCalcs?.subtotal || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -812,7 +814,7 @@ const InvoicePreview = ({
                       CGST <span className="ml-6">{previewData.cgst}%</span>
                     </th>
                     <td className="border-l border-b border-black p-1 text-right">
-                      {previewCalcs.cgstAmount.toFixed(2)}
+                      {(Number(previewCalcs?.cgstAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -824,7 +826,7 @@ const InvoicePreview = ({
                       SGST <span className="ml-6">{previewData.sgst}%</span>
                     </th>
                     <td className="border-l border-b border-black p-1 text-right">
-                      {previewCalcs.sgstAmount.toFixed(2)}
+                      {(Number(previewCalcs?.sgstAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -836,8 +838,7 @@ const InvoicePreview = ({
                       IGST <span className="ml-6">{previewData.igst}%</span>
                     </th>
                     <td className="border-l border-b border-black p-1 text-right">
-                      {previewCalcs.igstAmount.toFixed(2)}
-
+                      {(Number(previewCalcs?.igstAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -882,7 +883,7 @@ const InvoicePreview = ({
                       ROUND OFF
                     </td>
                     <td className="border-b border-l  text-right">
-                      {(previewCalcs.roundOffAmount || 0).toFixed(2)}
+                      {(Number(previewCalcs?.roundOffAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
 
@@ -892,7 +893,7 @@ const InvoicePreview = ({
                       NET TOTAL
                     </td>
                     <td className="border-b border-l text-right font-bold">
-                      {previewCalcs.total.toFixed(2)}
+                      {(Number(previewCalcs?.total || 0)).toFixed(2)}
                     </td>
                   </tr>
 
@@ -1767,7 +1768,7 @@ const InvoiceManagementComponent = ({
                           {invoice.client?.name || "Unknown"}
                         </td>
                         <td className="px-6 py-4 font-medium text-gray-900">
-                          ₹{(Number(invoice.amount || invoice.total || 0)).toLocaleString()}
+                          ₹{Number(invoice?.amount ?? invoice?.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                         </td>
                         <td className="px-6 py-4 text-gray-700">
                           {invoice.dueDate}
