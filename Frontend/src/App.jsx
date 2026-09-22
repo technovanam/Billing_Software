@@ -26,6 +26,7 @@ import FYArchives from "./pages/admin/FYArchives";
 import AIAssistant from "./pages/ai/AIAssistant";
 import LandingPage from "./pages/landing/LandingPage";
 import ScrollToTop from "./components/ScrollToTop";
+import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
 
 import PropTypes from 'prop-types';
 
@@ -55,6 +56,9 @@ ProtectedRoute.propTypes = {
 };
 
 export default function App() {
+  // Global Enter key navigation across all forms in the application
+  useFormKeyboardNavigation();
+
   return (
     <AuthProvider>
       <CompanyProfileProvider>

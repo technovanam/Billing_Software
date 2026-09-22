@@ -1088,6 +1088,7 @@ const ReportsAnalytics = () => {
                             value={fromDate}
                             onChange={(e) => setFromDate(e.target.value)}
                             type="date"
+                            max="9999-12-31"
                             className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
                           />
                         </div>
@@ -1097,6 +1098,7 @@ const ReportsAnalytics = () => {
                             value={toDate}
                             onChange={(e) => setToDate(e.target.value)}
                             type="date"
+                            max="9999-12-31"
                             className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm px-3 py-2 focus:outline-none focus:border-blue-500 focus:bg-white transition-all"
                           />
                         </div>

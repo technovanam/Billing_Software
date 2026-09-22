@@ -871,7 +871,7 @@ const InvoicePreview = ({
                               border: "1px solid #1d4ed8"
                             }}
                           >
-                            💳 Pay via Razorpay (₹{previewCalcs.total.toFixed(2)})
+                            Pay
                           </a>
                         </div>
                       </div>
@@ -1020,6 +1020,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.invoiceDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1052,6 +1053,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.poDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1084,6 +1086,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.dcDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1100,6 +1103,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.dueDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1658,6 +1662,7 @@ const InvoiceManagementComponent = ({
                             <div className="relative">
                               <input
                                 type="date"
+                                max="9999-12-31"
                                 value={filterFromDate}
                                 onChange={(e) => setFilterFromDate(e.target.value)}
                                 className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1669,6 +1674,7 @@ const InvoiceManagementComponent = ({
                             <div className="relative">
                               <input
                                 type="date"
+                                max="9999-12-31"
                                 value={filterToDate}
                                 onChange={(e) => setFilterToDate(e.target.value)}
                                 className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1761,7 +1767,7 @@ const InvoiceManagementComponent = ({
                           {invoice.client?.name || "Unknown"}
                         </td>
                         <td className="px-6 py-4 font-medium text-gray-900">
-                          ₹{invoice.amount.toLocaleString()}
+                          ₹{(Number(invoice.amount || invoice.total || 0)).toLocaleString()}
                         </td>
                         <td className="px-6 py-4 text-gray-700">
                           {invoice.dueDate}

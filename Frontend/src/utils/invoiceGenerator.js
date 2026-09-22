@@ -276,11 +276,11 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
                   <div>
                      <strong>Rupees :</strong> <span style="font-weight: normal;">${amountInWords}</span>
                   </div>
-                  <div>
-                     <a href="${razorpayUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb !important; color: #ffffff !important; padding: 6px 12px; border-radius: 4px; text-decoration: none !important; font-weight: bold; font-size: 12px; border: 1px solid #1d4ed8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                        💳 Pay via Razorpay (₹${finalTotal.toFixed(2)})
-                     </a>
-                  </div>
+                   <div>
+                      <a href="${razorpayUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb !important; color: #ffffff !important; padding: 6px 16px; border-radius: 4px; text-decoration: none !important; font-weight: bold; font-size: 12px; border: 1px solid #1d4ed8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                         Pay
+                      </a>
+                   </div>
                </div>
             </td>
             <td class="right-panel">
