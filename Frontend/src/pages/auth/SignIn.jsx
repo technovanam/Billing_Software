@@ -15,7 +15,8 @@ export default function SignIn() {
   const { error: toastError } = useToast();
 
   const handleLogin = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
+    if (loading) return;
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       toastError("Please enter your email address.");
@@ -48,6 +49,24 @@ export default function SignIn() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePasswordKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleLogin(e);
+    }
+  };
+
+  const handleEmailKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!password) {
+        document.getElementById("password")?.focus();
+      } else {
+        handleLogin(e);
+      }
     }
   };
 
@@ -97,6 +116,7 @@ export default function SignIn() {
                 id="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={handleEmailKeyDown}
                 type="email"
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm placeholder:text-gray-400 focus:border-blue-500 transition-colors"
                 placeholder="Email Address"
@@ -110,6 +130,7 @@ export default function SignIn() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handlePasswordKeyDown}
                 type={showPassword ? "text" : "password"}
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-11 text-sm placeholder:text-gray-400 focus:border-blue-500 transition-colors"
                 placeholder="Password"
@@ -133,9 +154,10 @@ export default function SignIn() {
 
             {/* Login button */}
             <button
+              id="login-button"
               type="submit"
               disabled={loading}
-              className="w-full rounded-xl bg-blue-600 py-3 text-white font-semibold hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed shadow-sm"
+              className="w-full rounded-xl bg-blue-600 py-3 text-white font-semibold hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed shadow-sm active:scale-[0.99]"
             >
               {loading ? "Signing in…" : "Login"}
             </button>
