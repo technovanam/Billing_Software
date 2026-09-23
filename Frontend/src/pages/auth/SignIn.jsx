@@ -12,6 +12,7 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
 import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
+import { enterPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -134,6 +135,9 @@ export default function SignIn() {
           ownerUid: matchedOwnerUid || matchedCashier.ownerUid || "",
         };
         localStorage.setItem("pos_cashier_session", JSON.stringify(cashierSession));
+        // Open the POS terminal in fullscreen like a dedicated billing machine
+        sessionStorage.removeItem("pos_fullscreen_opt_out");
+        enterPOSFullscreen();
 
         toastSuccess(`Welcome ${cashierSession.cashierName} (${cashierSession.cashierId})! Opening POS terminal...`);
         navigate("/pos", { replace: true });

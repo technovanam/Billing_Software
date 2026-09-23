@@ -74,7 +74,7 @@ export default function POSLogin() {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         {/* Company Logo & Branding */}
         <div className="flex justify-center">
-          <div className="flex items-center justify-center h-16 w-16 rounded-2xl bg-white shadow-md border border-slate-200 p-2">
+          <div className="flex items-center justify-center h-16 w-16 rounded-lg bg-white shadow-md border border-slate-200 p-2">
             <img src={companyLogo} alt="Logo" className="h-full w-full object-contain" />
           </div>
         </div>
@@ -94,7 +94,7 @@ export default function POSLogin() {
           <form className="space-y-4" onSubmit={handleLogin}>
             {/* If not signed in to Firebase, require store credentials */}
             {!user ? (
-              <div className="space-y-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+              <div className="space-y-4 p-4 rounded-lg bg-slate-50 border border-slate-200">
                 <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">
                   1. Store Account Credentials
                 </p>
@@ -102,7 +102,7 @@ export default function POSLogin() {
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                     Store Email Address
                   </label>
-                  <div className="relative rounded-xl shadow-2xs">
+                  <div className="relative rounded-lg shadow-2xs">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                       <Mail className="h-4 w-4" />
                     </div>
@@ -112,7 +112,7 @@ export default function POSLogin() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="store@example.com"
-                      className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 bg-white"
                     />
                   </div>
                 </div>
@@ -121,7 +121,7 @@ export default function POSLogin() {
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                     Store Password
                   </label>
-                  <div className="relative rounded-xl shadow-2xs">
+                  <div className="relative rounded-lg shadow-2xs">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                       <Lock className="h-4 w-4" />
                     </div>
@@ -131,13 +131,13 @@ export default function POSLogin() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 bg-white"
+                      className="block w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-blue-500 bg-white"
                     />
                   </div>
                 </div>
               </div>
             ) : (
-              <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-800">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                 <span className="truncate">Store Account Connected ({user.email})</span>
               </div>
@@ -148,7 +148,7 @@ export default function POSLogin() {
               <label htmlFor="cashierId" className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
                 Cashier ID / Terminal ID
               </label>
-              <div className="mt-1 relative rounded-xl shadow-2xs">
+              <div className="mt-1 relative rounded-lg shadow-2xs">
                 <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                   <User className="h-4 w-4" />
                 </div>
@@ -159,7 +159,7 @@ export default function POSLogin() {
                   value={cashierId}
                   onChange={(e) => setCashierId(e.target.value)}
                   placeholder="e.g. BAL/086430"
-                  className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+                  className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
                 />
               </div>
             </div>
@@ -173,7 +173,7 @@ export default function POSLogin() {
                 id="counter"
                 value={counterNumber}
                 onChange={(e) => setCounterNumber(e.target.value)}
-                className="mt-1 block w-full px-3 py-2.5 border border-slate-300 bg-white rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-500"
+                className="mt-1 block w-full px-3 py-2.5 border border-slate-300 bg-white rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-500"
               >
                 <option value="Counter 01">Counter 01 (Main Billing Desk)</option>
                 <option value="Counter 02">Counter 02 (Express Checkout)</option>
@@ -230,7 +230,7 @@ export default function POSLogin() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition cursor-pointer"
+                className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-lg shadow-md text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition cursor-pointer"
               >
                 <span>{isLoading ? "Starting Shift..." : "Sign In & Open POS Terminal"}</span>
                 <ArrowRight className="h-4 w-4" />
