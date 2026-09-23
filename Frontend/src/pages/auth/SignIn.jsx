@@ -5,6 +5,7 @@ import { auth } from "../../lib/firebase/config";
 import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
+import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -13,6 +14,7 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { error: toastError } = useToast();
+  const { login: superAdminLogin } = useSuperAdminAuth();
 
   const handleLogin = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -28,6 +30,32 @@ export default function SignIn() {
     }
     setLoading(true);
     try {
+      // 1. Try Super Admin Auth first
+      let isSuperAdmin = false;
+      try {
+        const res = await superAdminLogin(trimmedEmail, password, true);
+        if (res?.require2FA) {
+          navigate("/super-admin/2fa", { replace: true });
+        } else {
+          navigate("/super-admin/dashboard", { replace: true });
+        }
+        isSuperAdmin = true;
+      } catch (saErr) {
+        // If it's the master admin email but auth failed, don't fall through to Firebase
+        if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
+          toastError("Invalid Super Admin password. Please use 'SuperAdmin@2026!'");
+          setLoading(false);
+          return;
+        }
+        // Otherwise, fall through to normal auth
+        isSuperAdmin = false;
+      }
+
+      if (isSuperAdmin) {
+        return; // Stop execution as we've already navigated
+      }
+
+      // 2. Normal Business Auth
       await setPersistence(auth, browserSessionPersistence);
       await signInWithEmailAndPassword(auth, trimmedEmail, password);
       navigate("/dashboard", { replace: true });
