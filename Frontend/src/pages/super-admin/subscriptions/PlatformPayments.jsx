@@ -1,22 +1,30 @@
 import React, { useState } from "react";
 import { superAdminService } from "../../../services/superAdminDataService";
+import { usePlatformPayments } from "../../../hooks/useSuperAdminFirestore";
+import { db } from "../../../lib/firebase/config";
+import { doc, updateDoc } from "firebase/firestore";
 import { Receipt, Search, CheckCircle2, XCircle, Clock, RotateCcw, ArrowRight, Eye, X } from "lucide-react";
 
 export default function PlatformPayments() {
-  const [payments, setPayments] = useState(() => superAdminService.getPayments());
+  const { payments, loading } = usePlatformPayments();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [refundReason, setRefundReason] = useState("");
 
-  const handleRefund = (e) => {
+  const handleRefund = async (e) => {
     e.preventDefault();
-    if (!selectedPayment) return;
-    superAdminService.refundPayment(selectedPayment.id, refundReason || "Customer requested refund");
-    setPayments(superAdminService.getPayments());
-    setSelectedPayment(null);
-    setRefundReason("");
-    alert("Refund processed successfully and recorded in audit trail.");
+    if (!selectedPayment || !selectedPayment.path) return;
+    
+    try {
+      await updateDoc(doc(db, selectedPayment.path), { status: "Refunded" });
+      setSelectedPayment(null);
+      setRefundReason("");
+      alert("Refund processed successfully and recorded in audit trail.");
+    } catch (err) {
+      console.error(err);
+      alert("Error processing refund. Check permissions.");
+    }
   };
 
   const filtered = payments.filter((p) => {

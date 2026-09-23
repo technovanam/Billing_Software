@@ -1,33 +1,41 @@
 import React, { useState } from "react";
 import { superAdminService } from "../../../services/superAdminDataService";
+import { usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
+import { db } from "../../../lib/firebase/config";
+import { doc, updateDoc } from "firebase/firestore";
 import { CreditCard, Search, Clock, Play, Pause, XCircle, CheckCircle2, ChevronRight, Layers } from "lucide-react";
 
 export default function SubscriptionsList() {
-  const [businesses, setBusinesses] = useState(() => superAdminService.getBusinesses());
+  const { businesses, loading } = usePlatformBusinesses();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  const handleAction = (id, actionType) => {
+  const handleAction = async (id, actionType) => {
     const bus = businesses.find((b) => b.id === id);
     if (!bus) return;
 
-    if (actionType === "extend") {
-      const d = new Date(bus.subscriptionExpiry || Date.now());
-      d.setDate(d.getDate() + 30);
-      superAdminService.updateBusiness(id, { subscriptionExpiry: d.toISOString().slice(0, 10) });
-      alert(`Extended subscription for ${bus.name} by 30 days.`);
-    } else if (actionType === "pause") {
-      superAdminService.updateBusiness(id, { status: "Suspended" });
-      alert(`Paused subscription for ${bus.name}.`);
-    } else if (actionType === "resume") {
-      superAdminService.updateBusiness(id, { status: "Active" });
-      alert(`Resumed subscription for ${bus.name}.`);
-    } else if (actionType === "cancel") {
-      if (confirm(`Cancel subscription for ${bus.name}?`)) {
-        superAdminService.updateBusiness(id, { status: "Suspended" });
+    try {
+      if (actionType === "extend") {
+        const d = new Date(bus.subscriptionExpiry || Date.now());
+        d.setDate(d.getDate() + 30);
+        const newExp = d.toISOString().slice(0, 10);
+        await updateDoc(doc(db, "users", id), { subscriptionExpiry: newExp });
+        alert(`Extended subscription for ${bus.name} by 30 days.`);
+      } else if (actionType === "pause") {
+        await updateDoc(doc(db, "users", id), { status: "Suspended" });
+        alert(`Paused subscription for ${bus.name}.`);
+      } else if (actionType === "resume") {
+        await updateDoc(doc(db, "users", id), { status: "Active" });
+        alert(`Resumed subscription for ${bus.name}.`);
+      } else if (actionType === "cancel") {
+        if (confirm(`Cancel subscription for ${bus.name}?`)) {
+          await updateDoc(doc(db, "users", id), { status: "Suspended" });
+        }
       }
+    } catch (err) {
+      console.error(err);
+      alert("Error updating subscription status.");
     }
-    setBusinesses(superAdminService.getBusinesses());
   };
 
   const filtered = businesses.filter((b) => {

@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { superAdminService } from "../../../services/superAdminDataService";
 import { TicketPercent, Plus, Search, Calendar, Tag, CheckCircle2, X } from "lucide-react";
+import { usePlatformCoupons } from "../../../hooks/useSuperAdminFirestore";
+import { db } from "../../../lib/firebase/config";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function CouponsManagement() {
-  const [coupons, setCoupons] = useState(() => superAdminService.getCoupons());
+  const { coupons, loading } = usePlatformCoupons();
   const [modalOpen, setModalOpen] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [discountPercent, setDiscountPercent] = useState(20);
@@ -11,23 +13,28 @@ export default function CouponsManagement() {
   const [usageLimit, setUsageLimit] = useState(100);
   const [expiry, setExpiry] = useState("2026-12-31");
 
-  const handleCreateCoupon = (e) => {
+  const handleCreateCoupon = async (e) => {
     e.preventDefault();
     if (!newCode.trim()) return;
 
-    superAdminService.addCoupon({
-      code: newCode.trim().toUpperCase(),
-      discountPercentage: Number(discountPercent) || 0,
-      fixedDiscount: Number(fixedDiscount) || 0,
-      maxDiscount: 5000,
-      usageLimit: Number(usageLimit) || 100,
-      expiry,
-      applicablePlans: ["plan_professional", "plan_business"],
-    });
-
-    setCoupons(superAdminService.getCoupons());
-    setModalOpen(false);
-    setNewCode("");
+    try {
+      await addDoc(collection(db, "coupons"), {
+        code: newCode.trim().toUpperCase(),
+        discountPercentage: Number(discountPercent) || 0,
+        fixedDiscount: Number(fixedDiscount) || 0,
+        maxDiscount: 5000,
+        usageLimit: Number(usageLimit) || 100,
+        usedCount: 0,
+        expiry,
+        applicablePlans: ["plan_professional", "plan_business"],
+        status: "Active",
+        createdAt: serverTimestamp()
+      });
+      setModalOpen(false);
+      setNewCode("");
+    } catch (error) {
+      console.error("Error creating coupon:", error);
+    }
   };
 
   return (

@@ -66,9 +66,9 @@ export default function GodownsList() {
                   <td className="p-3.5 px-4 text-gray-500">{g.branch}</td>
                   <td className="p-3.5 px-4 text-gray-700">{g.manager}</td>
                   <td className="p-3.5 px-4 font-mono text-gray-600">{g.productCount} SKUs</td>
-                  <td className="p-3.5 px-4 font-mono text-gray-800 font-medium">{g.stockQuantity.toLocaleString()} units</td>
+                  <td className="p-3.5 px-4 font-mono text-gray-800 font-medium">{(g.stockQuantity || 0).toLocaleString()} units</td>
                   <td className="p-3.5 px-4 font-mono font-bold text-emerald-600">
-                    ₹{(g.stockValue / 100000).toFixed(2)} Lakhs
+                    ₹{((g.stockValue || 0) / 100000).toFixed(2)} Lakhs
                   </td>
                   <td className="p-3.5 px-4">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">

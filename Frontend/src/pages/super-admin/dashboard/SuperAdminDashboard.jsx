@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { superAdminService } from "../../../services/superAdminDataService";
+import { usePlatformBusinesses, usePlatformInvoices, usePlatformPayments } from "../../../hooks/useSuperAdminFirestore";
 import {
   Building2,
   Users,
@@ -27,9 +28,12 @@ export default function SuperAdminDashboard() {
   const [timeRange, setTimeRange] = useState("30d");
   const navigate = useNavigate();
 
-  // Dynamic values from service
-  const businesses = useMemo(() => superAdminService.getBusinesses(), []);
-  const payments = useMemo(() => superAdminService.getPayments(), []);
+  // Dynamic values from live Firestore hooks
+  const { businesses, loading: businessesLoading } = usePlatformBusinesses();
+  const { invoices, loading: invoicesLoading } = usePlatformInvoices();
+  const { payments, loading: paymentsLoading } = usePlatformPayments();
+
+  // Mock data for unimplemented platform features
   const tickets = useMemo(() => superAdminService.getTickets(), []);
   const auditLogs = useMemo(() => superAdminService.getAuditLogs(), []);
   const plans = useMemo(() => superAdminService.getPlans(), []);
@@ -38,13 +42,20 @@ export default function SuperAdminDashboard() {
   const activeCount = businesses.filter((b) => b.status === "Active").length;
   const trialCount = businesses.filter((b) => b.status === "Trial").length;
   const suspendedCount = businesses.filter((b) => b.status === "Suspended").length;
+  
+  // Calculate total invoice revenue
+  const totalRevenue = invoices.reduce((sum, inv) => sum + (Number(inv.amount || inv.total) || 0), 0);
+  
+  // Platform users count (sum of all tenant users)
+  const totalUsers = businesses.reduce((sum, bus) => sum + (Number(bus.usersCount) || 1), 0);
+  
   const failedPaymentsCount = payments.filter((p) => p.status === "Failed").length;
 
   const kpis = [
     {
       label: "Total Businesses",
-      value: "1,248",
-      sub: "+12.4% this month",
+      value: businessesLoading ? "..." : businesses.length.toString(),
+      sub: "Platform total",
       pillText: "All Tenants",
       pillClass: "bg-blue-600 text-white",
       icon: Building2,
@@ -53,7 +64,7 @@ export default function SuperAdminDashboard() {
     },
     {
       label: "Active Businesses",
-      value: `${1080 + activeCount}`,
+      value: businessesLoading ? "..." : activeCount.toString(),
       sub: "Healthy tenant fleet",
       pillText: "Active Fleet",
       pillClass: "bg-emerald-600 text-white",
@@ -63,7 +74,7 @@ export default function SuperAdminDashboard() {
     },
     {
       label: "Trial Businesses",
-      value: `${80 + trialCount}`,
+      value: businessesLoading ? "..." : trialCount.toString(),
       sub: "Active 14-day trials",
       pillText: "14-Day Trials",
       pillClass: "bg-amber-500 text-white",
@@ -73,7 +84,7 @@ export default function SuperAdminDashboard() {
     },
     {
       label: "Suspended Businesses",
-      value: `${20 + suspendedCount}`,
+      value: businessesLoading ? "..." : suspendedCount.toString(),
       sub: "Overdue / Action required",
       pillText: "Suspended",
       pillClass: "bg-rose-500 text-white",
@@ -83,8 +94,8 @@ export default function SuperAdminDashboard() {
     },
     {
       label: "Total Platform Users",
-      value: "6,482",
-      sub: "+8.1% vs last month",
+      value: businessesLoading ? "..." : totalUsers.toLocaleString(),
+      sub: "Across all tenants",
       pillText: "Platform Users",
       pillClass: "bg-purple-600 text-white",
       icon: Users,
@@ -92,18 +103,18 @@ export default function SuperAdminDashboard() {
       link: "/super-admin/users",
     },
     {
-      label: "Monthly Revenue (MRR)",
-      value: "₹18.42L",
-      sub: "+14.2% YoY growth",
-      pillText: "Current Month",
+      label: "Total Invoiced (Platform)",
+      value: invoicesLoading ? "..." : `₹${totalRevenue.toLocaleString("en-IN")}`,
+      sub: "All time total",
+      pillText: "Platform Revenue",
       pillClass: "bg-emerald-600 text-white",
       icon: TrendingUp,
       iconColor: "text-emerald-600",
       link: "/super-admin/revenue",
     },
     {
-      label: "POS & Billing Transactions",
-      value: "2.84M",
+      label: "Total Invoices Created",
+      value: invoicesLoading ? "..." : invoices.length.toLocaleString(),
       sub: "Across all counters",
       pillText: "All Terminals",
       pillClass: "bg-blue-600 text-white",
@@ -113,7 +124,7 @@ export default function SuperAdminDashboard() {
     },
     {
       label: "Failed Payments",
-      value: `${15 + failedPaymentsCount}`,
+      value: paymentsLoading ? "..." : failedPaymentsCount.toString(),
       sub: "Attention needed",
       pillText: "Failed Invoices",
       pillClass: "bg-rose-500 text-white",

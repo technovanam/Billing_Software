@@ -176,7 +176,7 @@ export default function SuperAdminLayout() {
 
       {/* Sidebar - Pure White Light Theme Matching Billing Portal */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-white border-r border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 flex flex-col ${
+        className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 flex flex-col overflow-hidden ${
           collapsed ? "w-20" : "w-64"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
@@ -217,7 +217,7 @@ export default function SuperAdminLayout() {
         </div>
 
         {/* Navigation items list */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin">
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-4 space-y-6 scrollbar-thin">
           {navGroups.map((group, gIdx) => (
             <div key={gIdx}>
               {!collapsed && (
@@ -310,70 +310,6 @@ export default function SuperAdminLayout() {
 
           {/* Right: Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Global Search Button */}
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-gray-500 hover:text-gray-800 hover:border-slate-300 text-xs transition shadow-sm"
-            >
-              <Search className="w-3.5 h-3.5 text-gray-400" />
-              <span className="hidden sm:inline">Search platform…</span>
-              <kbd className="hidden md:inline px-1.5 py-0.5 rounded bg-white border border-gray-200 text-[10px] text-gray-400 font-mono">
-                ⌘K
-              </kbd>
-            </button>
-
-            {/* System Health Status Indicator */}
-            <Link
-              to="/super-admin/system-health"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition"
-              title="Click to view live System Health telemetry"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>All Systems Operational</span>
-            </Link>
-
-            {/* Notifications Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-gray-500 hover:text-gray-800 relative transition"
-                aria-label="Platform Notifications"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600" />
-              </button>
-
-              {notificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 shadow-xl p-4 z-50 animate-fadeIn">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">Platform Alerts</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold border border-blue-100">
-                      3 Unread
-                    </span>
-                  </div>
-                  <div className="space-y-2.5 my-3 text-xs">
-                    <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60">
-                      <div className="text-amber-800 font-semibold mb-0.5">Expiring Subscriptions</div>
-                      <div className="text-amber-700 text-[11px]">32 businesses expire within the next 7 days.</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/60">
-                      <div className="text-rose-800 font-semibold mb-0.5">Failed Payment Alert</div>
-                      <div className="text-rose-700 text-[11px]">Prime Hardware subscription payment failed.</div>
-                    </div>
-                  </div>
-                  <Link
-                    to="/super-admin/dashboard"
-                    onClick={() => setNotificationsOpen(false)}
-                    className="block text-center text-xs font-semibold text-blue-600 hover:text-blue-700 pt-2 border-t border-slate-100"
-                  >
-                    View All in Dashboard
-                  </Link>
-                </div>
-              )}
-            </div>
 
             {/* Admin Profile Dropdown */}
             <div className="relative">

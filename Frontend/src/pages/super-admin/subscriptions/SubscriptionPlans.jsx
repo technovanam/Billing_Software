@@ -60,11 +60,11 @@ export default function SubscriptionPlans() {
 
               <div className="mb-4 pb-4 border-b border-gray-100">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-bold text-gray-900">₹{plan.monthlyPrice.toLocaleString()}</span>
+                  <span className="text-2xl font-bold text-gray-900">₹{(plan.monthlyPrice || plan.price || 0).toLocaleString()}</span>
                   <span className="text-xs text-gray-400">/mo</span>
                 </div>
                 <div className="text-[11px] text-gray-500 mt-0.5">
-                  ₹{plan.annualPrice.toLocaleString()}/year billed annually
+                  ₹{(plan.annualPrice || (plan.price * 10) || 0).toLocaleString()}/year billed annually
                 </div>
               </div>
 
@@ -72,27 +72,27 @@ export default function SubscriptionPlans() {
               <div className="space-y-2 text-xs mb-6 text-gray-700">
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <span className="text-gray-400">User Seats:</span>
-                  <strong className="font-mono text-gray-800">{plan.limits.users}</strong>
+                  <strong className="font-mono text-gray-800">{plan.limits?.users || 1}</strong>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <span className="text-gray-400">Branches:</span>
-                  <strong className="font-mono text-gray-800">{plan.limits.branches}</strong>
+                  <strong className="font-mono text-gray-800">{plan.limits?.branches || 1}</strong>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <span className="text-gray-400">Godowns:</span>
-                  <strong className="font-mono text-gray-800">{plan.limits.godowns}</strong>
+                  <strong className="font-mono text-gray-800">{plan.limits?.godowns || 1}</strong>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <span className="text-gray-400">POS Terminals:</span>
-                  <strong className="font-mono text-gray-800">{plan.limits.terminals}</strong>
+                  <strong className="font-mono text-gray-800">{plan.limits?.terminals || 1}</strong>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <span className="text-gray-400">Products limit:</span>
-                  <strong className="font-mono text-gray-800">{plan.limits.products.toLocaleString()}</strong>
+                  <strong className="font-mono text-gray-800">{(plan.limits?.products || 50).toLocaleString()}</strong>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-100">
                   <span className="text-gray-400">Invoices/mo:</span>
-                  <strong className="font-mono text-gray-800">{plan.limits.invoices.toLocaleString()}</strong>
+                  <strong className="font-mono text-gray-800">{(plan.limits?.invoices || 100).toLocaleString()}</strong>
                 </div>
               </div>
 
@@ -140,7 +140,7 @@ export default function SubscriptionPlans() {
                   <label className="block text-gray-600 font-medium mb-1">Monthly Price (₹)</label>
                   <input
                     type="number"
-                    value={editingPlan.monthlyPrice}
+                    value={editingPlan.monthlyPrice || editingPlan.price || 0}
                     onChange={(e) => setEditingPlan({ ...editingPlan, monthlyPrice: Number(e.target.value) })}
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
                   />
@@ -149,7 +149,7 @@ export default function SubscriptionPlans() {
                   <label className="block text-gray-600 font-medium mb-1">Annual Price (₹)</label>
                   <input
                     type="number"
-                    value={editingPlan.annualPrice}
+                    value={editingPlan.annualPrice || (editingPlan.price * 10) || 0}
                     onChange={(e) => setEditingPlan({ ...editingPlan, annualPrice: Number(e.target.value) })}
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
                   />
@@ -161,11 +161,11 @@ export default function SubscriptionPlans() {
                   <label className="block text-gray-600 font-medium mb-1">Max Users</label>
                   <input
                     type="number"
-                    value={editingPlan.limits.users}
+                    value={editingPlan.limits?.users || 1}
                     onChange={(e) =>
                       setEditingPlan({
                         ...editingPlan,
-                        limits: { ...editingPlan.limits, users: Number(e.target.value) },
+                        limits: { ...(editingPlan.limits || {}), users: Number(e.target.value) },
                       })
                     }
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
@@ -175,11 +175,11 @@ export default function SubscriptionPlans() {
                   <label className="block text-gray-600 font-medium mb-1">Max Branches</label>
                   <input
                     type="number"
-                    value={editingPlan.limits.branches}
+                    value={editingPlan.limits?.branches || 1}
                     onChange={(e) =>
                       setEditingPlan({
                         ...editingPlan,
-                        limits: { ...editingPlan.limits, branches: Number(e.target.value) },
+                        limits: { ...(editingPlan.limits || {}), branches: Number(e.target.value) },
                       })
                     }
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
@@ -189,11 +189,11 @@ export default function SubscriptionPlans() {
                   <label className="block text-gray-600 font-medium mb-1">Max Terminals</label>
                   <input
                     type="number"
-                    value={editingPlan.limits.terminals}
+                    value={editingPlan.limits?.terminals || 1}
                     onChange={(e) =>
                       setEditingPlan({
                         ...editingPlan,
-                        limits: { ...editingPlan.limits, terminals: Number(e.target.value) },
+                        limits: { ...(editingPlan.limits || {}), terminals: Number(e.target.value) },
                       })
                     }
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
