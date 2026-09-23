@@ -34,7 +34,7 @@ const ModalWrapper = ({ children, onClose, maxWidth = "max-w-md" }) => (
     aria-modal="true"
   >
     <div
-      className={`bg-white rounded-2xl shadow-2xl w-full ${maxWidth} relative overflow-hidden border border-slate-200`}
+      className={`bg-white rounded-lg shadow-xl w-full ${maxWidth} relative overflow-hidden border border-slate-200`}
       onClick={(e) => e.stopPropagation()}
     >
       {children}
@@ -114,7 +114,7 @@ const CashierFormModal = ({
     <ModalWrapper onClose={onClose} maxWidth="max-w-lg">
       <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-xs">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white shadow-xs">
             <Users className="h-5 w-5" />
           </div>
           <div>
@@ -134,7 +134,7 @@ const CashierFormModal = ({
 
       <form onSubmit={handleSubmit} className="p-6 space-y-4">
         {formError && (
-          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
             <span>{formError}</span>
           </div>
@@ -152,7 +152,7 @@ const CashierFormModal = ({
               value={cashierId}
               onChange={(e) => setCashierId(e.target.value)}
               placeholder="e.g. CSH-001"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
             />
           </div>
 
@@ -167,7 +167,7 @@ const CashierFormModal = ({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Sahanaa K"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -178,7 +178,7 @@ const CashierFormModal = ({
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
               Phone Number (+91)
             </label>
-            <div className="relative flex rounded-xl border border-slate-300 bg-slate-50 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+            <div className="relative flex rounded-lg border border-slate-300 bg-slate-50 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
               <span className="inline-flex items-center px-3 text-xs font-bold text-slate-600 bg-slate-100 border-r border-slate-300 select-none">
                 +91
               </span>
@@ -207,7 +207,7 @@ const CashierFormModal = ({
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="cashier@store.com"
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -242,7 +242,7 @@ const CashierFormModal = ({
                 value={customCounterName}
                 onChange={(e) => setCustomCounterName(e.target.value)}
                 placeholder="e.g. Counter 05 / Express Desk"
-                className="w-full px-3.5 py-2.5 bg-white border border-blue-400 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-white border border-blue-400 rounded-lg text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 autoFocus
               />
             ) : (
@@ -255,7 +255,7 @@ const CashierFormModal = ({
                     setCounter(e.target.value);
                   }
                 }}
-                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 {existingCounters.map((cnt) => (
                   <option key={cnt} value={cnt}>
@@ -285,7 +285,7 @@ const CashierFormModal = ({
                   setPin(digits);
                 }}
                 placeholder="1234"
-                className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest font-mono"
+                className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest tabular-nums"
               />
               <button
                 type="button"
@@ -308,7 +308,7 @@ const CashierFormModal = ({
             {["Active", "Inactive"].map((st) => (
               <label
                 key={st}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl border cursor-pointer text-xs font-bold transition ${
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg border cursor-pointer text-xs font-bold transition ${
                   status === st
                     ? st === "Active"
                       ? "bg-emerald-50 border-emerald-300 text-emerald-800"
@@ -335,13 +335,13 @@ const CashierFormModal = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition"
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md shadow-blue-500/20 transition"
+            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition"
           >
             {cashierToEdit ? "Save Changes" : "Create Cashier"}
           </button>
@@ -459,111 +459,130 @@ export default function CashierManagement() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+    <div className="min-h-screen text-slate-800 font-mazzard">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
+      {/* Header Section (Matching Admin Dashboard) */}
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Cashier Management</h1>
-          <p className="text-xs text-slate-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900">Cashier Management</h1>
+          <p className="text-sm text-gray-600 mt-1">
             Configure counter staff credentials, terminal IDs, PINs, and assigned counters
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setCashierToEdit(null);
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition cursor-pointer shrink-0"
-        >
-          <Plus className="h-4 w-4" />
-          <span>Add New Cashier</span>
-        </button>
+        <div className="flex items-center gap-2 mt-3 sm:mt-0">
+          <button
+            onClick={() => {
+              setCashierToEdit(null);
+              setIsModalOpen(true);
+            }}
+            className="bg-blue-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors cursor-pointer shrink-0"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add New Cashier</span>
+          </button>
+        </div>
+      </header>
+
+      <main className="mt-6 flex flex-col gap-6">
+      {/* Stats Grid (Matching Admin Dashboard Stat Cards) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-sm font-medium text-gray-600">Total Cashiers</h3>
+            <div className="p-1 bg-gray-50 rounded-md"><Users className="text-blue-600" /></div>
+          </div>
+          <div className="mt-1">
+            <p className="text-xl font-bold text-gray-900">{stats.total}</p>
+            <div className="flex items-center gap-2 body-text-small mt-2">
+              <span className="bg-blue-600 text-white px-2 py-0.5 rounded-full font-medium">
+                Staff with POS access
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-sm font-medium text-gray-600">Active Cashiers</h3>
+            <div className="p-1 bg-gray-50 rounded-md"><UserCheck className="text-green-500" /></div>
+          </div>
+          <div className="mt-1">
+            <p className="text-xl font-bold text-gray-900">{stats.active}</p>
+            <div className="flex items-center gap-2 body-text-small mt-2">
+              <span className="bg-green-600 text-white px-2 py-0.5 rounded-full font-medium">
+                Ready for counter shifts
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-sm font-medium text-gray-600">Inactive Cashiers</h3>
+            <div className="p-1 bg-gray-50 rounded-md"><UserX className="text-red-500" /></div>
+          </div>
+          <div className="mt-1">
+            <p className="text-xl font-bold text-gray-900">{stats.inactive}</p>
+            <div className="flex items-center gap-2 body-text-small mt-2">
+              <span className="bg-red-600 text-white px-2 py-0.5 rounded-full font-medium">
+                Disabled accounts
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+          <div className="flex justify-between items-start mb-2">
+            <h3 className="text-sm font-medium text-gray-600">Active Counters</h3>
+            <div className="p-1 bg-gray-50 rounded-md"><Store className="text-indigo-600" /></div>
+          </div>
+          <div className="mt-1">
+            <p className="text-xl font-bold text-gray-900">{stats.uniqueCounters}</p>
+            <div className="flex items-center gap-2 body-text-small mt-2">
+              <span className="bg-indigo-600 text-white px-2 py-0.5 rounded-full font-medium">
+                Assigned billing desks
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 4 Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Total Cashiers
-            </span>
-            <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
-              <Users className="h-5 w-5" />
-            </div>
+      {/* Status Tabs & Search Bar (Matching Invoices Page) */}
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+        <div className="w-fit lg:w-auto overflow-x-auto pb-1">
+          <div className="flex p-1 bg-white border border-slate-300 rounded-xl whitespace-nowrap shadow-xs">
+            {[
+              { value: "All", label: "All", count: stats.total },
+              { value: "Active", label: "Active", count: stats.active },
+              { value: "Inactive", label: "Inactive", count: stats.inactive },
+            ].map((tab) => (
+              <button
+                key={tab.value}
+                onClick={() => setStatusFilter(tab.value)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${statusFilter === tab.value
+                  ? "bg-blue-600 text-white shadow-xs"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium"
+                  }`}
+              >
+                {tab.label} ({tab.count})
+              </button>
+            ))}
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">{stats.total}</p>
-          <p className="text-[11px] text-slate-500 font-medium mt-1">Staff with POS access</p>
         </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Active Cashiers
-            </span>
-            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
-              <UserCheck className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-emerald-600 mt-2">{stats.active}</p>
-          <p className="text-[11px] text-emerald-600 font-medium mt-1">Ready for counter shifts</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Inactive Cashiers
-            </span>
-            <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center border border-slate-200">
-              <UserX className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-slate-700 mt-2">{stats.inactive}</p>
-          <p className="text-[11px] text-slate-500 font-medium mt-1">Disabled accounts</p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Active Counters
-            </span>
-            <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
-              <Store className="h-5 w-5" />
-            </div>
-          </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">{stats.uniqueCounters}</p>
-          <p className="text-[11px] text-slate-500 font-medium mt-1">Assigned billing desks</p>
-        </div>
-      </div>
-
-      {/* Cashiers Table Container */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
-        {/* Filter / Search Bar */}
-        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+          <div className="relative w-full sm:w-auto flex-1 lg:flex-none">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input
               type="text"
+              placeholder="Search cashiers..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search by Cashier ID, name, counter, phone..."
-              className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full sm:w-80 bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 shadow-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
             />
           </div>
-
-          <div className="flex items-center gap-2">
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="All">All Statuses</option>
-              <option value="Active">Active Only</option>
-              <option value="Inactive">Inactive Only</option>
-            </select>
-          </div>
         </div>
+      </div>
 
+      {/* Cashiers Table */}
+      <div className="overflow-hidden bg-white rounded-xl border border-gray-200 shadow-sm">
         {/* Table Content */}
         <div className="overflow-x-auto">
           {loading ? (
@@ -579,35 +598,35 @@ export default function CashierManagement() {
               </p>
             </div>
           ) : (
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            <table className="w-full min-w-[800px] text-left text-sm">
+              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-500 uppercase">
                 <tr>
-                  <th className="py-3 px-4">Cashier ID</th>
-                  <th className="py-3 px-4">Staff Name</th>
-                  <th className="py-3 px-4">Assigned Counter</th>
-                  <th className="py-3 px-4">Contact</th>
-                  <th className="py-3 px-4">Terminal PIN</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4 text-center">Actions</th>
+                  <th scope="col" className="px-6 py-3">Cashier ID</th>
+                  <th scope="col" className="px-6 py-3">Staff Name</th>
+                  <th scope="col" className="px-6 py-3">Assigned Counter</th>
+                  <th scope="col" className="px-6 py-3">Contact</th>
+                  <th scope="col" className="px-6 py-3">Terminal PIN</th>
+                  <th scope="col" className="px-6 py-3">Status</th>
+                  <th scope="col" className="px-6 py-3 text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-gray-200">
                 {filteredCashiers.map((cashier) => {
                   const isPinShown = revealedPins[cashier.id];
 
                   return (
-                    <tr key={cashier.id} className="hover:bg-slate-50/70 transition">
+                    <tr key={cashier.id} className="transition-colors hover:bg-gray-50">
                       {/* Cashier ID */}
-                      <td className="py-3.5 px-4 font-bold text-slate-900 font-mono">
+                      <td className="px-6 py-4 font-bold text-slate-900 tabular-nums">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200">
                           {cashier.cashierId || "BAL/086430"}
                         </span>
                       </td>
 
                       {/* Staff Name & Initials Avatar */}
-                      <td className="py-3.5 px-4 font-semibold text-slate-900">
+                      <td className="px-6 py-4 font-semibold text-slate-900">
                         <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 text-xs font-bold border border-slate-200">
                             {(cashier.name || "C")[0].toUpperCase()}
                           </div>
                           <div>
@@ -618,7 +637,7 @@ export default function CashierManagement() {
                       </td>
 
                       {/* Assigned Counter */}
-                      <td className="py-3.5 px-4 text-slate-700 font-medium">
+                      <td className="px-6 py-4 text-slate-700 font-medium">
                         <span className="inline-flex items-center gap-1">
                           <Store className="h-3.5 w-3.5 text-slate-400" />
                           <span>{cashier.counter || "Counter 01"}</span>
@@ -626,13 +645,13 @@ export default function CashierManagement() {
                       </td>
 
                       {/* Contact */}
-                      <td className="py-3.5 px-4 text-slate-600">
+                      <td className="px-6 py-4 text-slate-600">
                         <p>{cashier.phone || "—"}</p>
                         {cashier.email && <p className="text-[10px] text-slate-400">{cashier.email}</p>}
                       </td>
 
                       {/* Terminal PIN */}
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-800">
+                      <td className="px-6 py-4 tabular-nums font-bold text-slate-800">
                         <div className="flex items-center gap-2">
                           <span>{isPinShown ? cashier.pin || "1234" : "••••"}</span>
                           <button
@@ -646,7 +665,7 @@ export default function CashierManagement() {
                       </td>
 
                       {/* Status */}
-                      <td className="py-3.5 px-4">
+                      <td className="px-6 py-4">
                         <button
                           onClick={() => toggleStatus(cashier.id)}
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition ${
@@ -668,7 +687,7 @@ export default function CashierManagement() {
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3.5 px-4 text-center">
+                      <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
                             onClick={() => {
@@ -698,6 +717,9 @@ export default function CashierManagement() {
         </div>
       </div>
 
+      </main>
+      </div>
+
       {/* Add / Edit Cashier Modal */}
       {isModalOpen && (
         <CashierFormModal
@@ -716,7 +738,7 @@ export default function CashierManagement() {
       {cashierToDelete && (
         <ModalWrapper onClose={() => setCashierToDelete(null)} maxWidth="max-w-sm">
           <div className="p-6 text-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600 mx-auto mb-3 border border-red-100">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-50 text-red-600 mx-auto mb-3 border border-red-100">
               <AlertCircle className="h-6 w-6" />
             </div>
             <h3 className="text-base font-bold text-slate-900">Remove Cashier?</h3>
@@ -726,13 +748,13 @@ export default function CashierManagement() {
             <div className="flex gap-2.5 mt-5">
               <button
                 onClick={() => setCashierToDelete(null)}
-                className="flex-1 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                className="flex-1 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
               >
                 Cancel
               </button>
               <button
                 onClick={() => handleDelete(cashierToDelete.id)}
-                className="flex-1 py-2 rounded-xl bg-red-600 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm"
+                className="flex-1 py-2 rounded-lg bg-red-600 text-xs font-bold text-white hover:bg-red-700 transition shadow-sm"
               >
                 Yes, Remove
               </button>

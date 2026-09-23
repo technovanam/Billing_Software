@@ -1,9 +1,67 @@
-/* Font Face Definitions */
+@import "tailwindcss";
+
+/* Mazzard is the only typeface used across the app (files in public/fonts/Mazzard Font) */
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-Thin.otf') format('opentype');
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-ThinItalic.otf') format('opentype');
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-ExtraLight.otf') format('opentype');
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-ExtraLightItalic.otf') format('opentype');
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-LightItalic.otf') format('opentype');
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+
 @font-face {
   font-family: 'Mazzard';
   src: url('/fonts/Mazzard Font/MazzardM-Regular.otf') format('opentype');
   font-weight: 400;
   font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-Italic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
   font-display: swap;
 }
 
@@ -17,9 +75,25 @@
 
 @font-face {
   font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-MediumItalic.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
   src: url('/fonts/Mazzard Font/MazzardM-SemiBold.otf') format('opentype');
   font-weight: 600;
   font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-SemiBoldItalic.otf') format('opentype');
+  font-weight: 600;
+  font-style: italic;
   font-display: swap;
 }
 
@@ -31,7 +105,61 @@
   font-display: swap;
 }
 
-@import "tailwindcss";
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-BoldItalic.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-ExtraBold.otf') format('opentype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-ExtraBoldItalic.otf') format('opentype');
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Mazzard';
+  src: url('/fonts/Mazzard Font/MazzardM-BlackItalic.otf') format('opentype');
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: "Mazzard", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Mazzard", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Mazzard", ui-sans-serif, system-ui, sans-serif;
+  --font-mazzard: "Mazzard", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Form controls don't inherit the page font by default in every browser */
+button,
+input,
+select,
+textarea,
+optgroup {
+  font-family: inherit;
+}
 
 /* Minimal Thin Sleek Scrollbar globally */
 ::-webkit-scrollbar {
@@ -159,7 +287,7 @@ button:focus-visible {
   --font-bold: 700;
 }
 
-/* Apply Poppins globally for consistency */
+/* Apply Mazzard globally for consistency */
 body {
   font-family: "Mazzard", sans-serif;
   font-size: var(--font-base);

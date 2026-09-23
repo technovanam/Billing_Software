@@ -103,7 +103,7 @@ export default function QRScannerModal({ isOpen, onClose, onScanSuccess }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-fade-in-up">
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200">
+      <div className="relative w-full max-w-md overflow-hidden rounded-lg bg-white shadow-2xl border border-slate-200">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
           <div className="flex items-center gap-2.5">
@@ -126,12 +126,12 @@ export default function QRScannerModal({ isOpen, onClose, onScanSuccess }) {
 
         {/* Scanner Viewport */}
         <div className="p-5 flex flex-col items-center">
-          <div className="relative w-full aspect-square max-w-[320px] rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center border-2 border-dashed border-blue-400 shadow-inner">
+          <div className="relative w-full aspect-square max-w-[320px] rounded-lg overflow-hidden bg-slate-900 flex items-center justify-center border-2 border-dashed border-blue-400 shadow-inner">
             <div id={scannerContainerId} className="w-full h-full" />
 
             {/* Target Reticle Overlay */}
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="w-48 h-48 border-2 border-emerald-400/80 rounded-xl relative">
+              <div className="w-48 h-48 border-2 border-emerald-400/80 rounded-lg relative">
                 <span className="absolute -top-1 -left-1 w-4 h-4 border-t-2 border-l-2 border-emerald-400"></span>
                 <span className="absolute -top-1 -right-1 w-4 h-4 border-t-2 border-r-2 border-emerald-400"></span>
                 <span className="absolute -bottom-1 -left-1 w-4 h-4 border-b-2 border-l-2 border-emerald-400"></span>
@@ -142,7 +142,7 @@ export default function QRScannerModal({ isOpen, onClose, onScanSuccess }) {
           </div>
 
           {cameraError ? (
-            <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-red-50 p-3 text-left text-xs text-red-700 border border-red-200 w-full">
+            <div className="mt-4 flex items-start gap-2.5 rounded-lg bg-red-50 p-3 text-left text-xs text-red-700 border border-red-200 w-full">
               <AlertCircle className="h-4 w-4 shrink-0 text-red-500 mt-0.5" />
               <div>
                 <p className="font-semibold">Camera Access Issue</p>
@@ -166,7 +166,7 @@ export default function QRScannerModal({ isOpen, onClose, onScanSuccess }) {
         <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50 px-5 py-3">
           <button
             onClick={onClose}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-50 transition"
           >
             Done / Close
           </button>

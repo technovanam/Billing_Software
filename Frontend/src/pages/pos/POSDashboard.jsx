@@ -77,7 +77,7 @@ export default function POSDashboard() {
   return (
     <div className="space-y-6">
       {/* Top Header Banner matching Admin Dashboard */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-lg border border-slate-200 shadow-2xs">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold text-slate-900">Cashier Shift Dashboard</h1>
@@ -92,7 +92,7 @@ export default function POSDashboard() {
 
         <button
           onClick={() => navigate("/pos/billing")}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md shadow-blue-500/20 transition cursor-pointer shrink-0"
+          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold shadow-sm transition cursor-pointer shrink-0"
         >
           <Plus className="h-4 w-4" />
           <span>Open Billing Terminal & Scanner</span>
@@ -102,16 +102,16 @@ export default function POSDashboard() {
       {/* 4 Stats Cards following Admin Dashboard Style */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Card 1: Today's Total Shift Revenue */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               Shift Revenue
             </span>
-            <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
+            <div className="h-10 w-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-100">
               <TrendingUp className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+          <p className="text-2xl font-bold text-slate-900 mt-2">
             ₹{stats.totalSales.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
           </p>
           <p className="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
@@ -120,46 +120,46 @@ export default function POSDashboard() {
         </div>
 
         {/* Card 2: Total Bills Generated */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               Bills Generated
             </span>
-            <div className="h-10 w-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
+            <div className="h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
               <FileText className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">{stats.totalBills}</p>
+          <p className="text-2xl font-bold text-slate-900 mt-2">{stats.totalBills}</p>
           <p className="text-[11px] text-slate-500 font-medium mt-1">Invoices issued this shift</p>
         </div>
 
         {/* Card 3: Cash Collected */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               Cash Tendered
             </span>
-            <div className="h-10 w-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
+            <div className="h-10 w-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center border border-amber-100">
               <Banknote className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+          <p className="text-2xl font-bold text-slate-900 mt-2">
             ₹{stats.cashSales.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
           </p>
           <p className="text-[11px] text-slate-500 font-medium mt-1">Cash drawer settlement</p>
         </div>
 
         {/* Card 4: UPI / Card Payments */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-5 rounded-lg border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
               UPI & Digital
             </span>
-            <div className="h-10 w-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
+            <div className="h-10 w-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100">
               <CreditCard className="h-5 w-5" />
             </div>
           </div>
-          <p className="text-2xl font-black text-slate-900 mt-2">
+          <p className="text-2xl font-bold text-slate-900 mt-2">
             ₹{stats.upiSales.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
           </p>
           <p className="text-[11px] text-slate-500 font-medium mt-1">Electronic transactions</p>
@@ -167,7 +167,7 @@ export default function POSDashboard() {
       </div>
 
       {/* Recent Shift Bills Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+      <div className="bg-white rounded-lg border border-slate-200 shadow-2xs overflow-hidden">
         {/* Table Header & Search Bar */}
         <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
           <div>
@@ -182,7 +182,7 @@ export default function POSDashboard() {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="Search bill number..."
-              className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
@@ -200,7 +200,7 @@ export default function POSDashboard() {
               </p>
               <button
                 onClick={() => navigate("/pos/billing")}
-                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
+                className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition"
               >
                 <span>Go to Billing Terminal</span>
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -222,7 +222,7 @@ export default function POSDashboard() {
               <tbody className="divide-y divide-slate-100">
                 {filteredInvoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-slate-50/70 transition">
-                    <td className="py-3 px-4 font-bold text-slate-900 font-mono">
+                    <td className="py-3 px-4 font-bold text-slate-900 tabular-nums">
                       {inv.invoiceNumber}
                     </td>
                     <td className="py-3 px-4 text-slate-600">
@@ -239,7 +239,7 @@ export default function POSDashboard() {
                         {inv.paymentMode || "Cash"}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-right font-extrabold text-slate-900">
+                    <td className="py-3 px-4 text-right font-bold text-slate-900">
                       ₹{Number(inv.amount || 0).toFixed(2)}
                     </td>
                     <td className="py-3 px-4 text-center">

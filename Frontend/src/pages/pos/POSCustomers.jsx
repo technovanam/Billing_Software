@@ -311,7 +311,7 @@ export default function POSCustomers() {
   };
 
   return (
-    <div className="min-h-screen text-slate-800 font-mazzard">
+    <div className="h-full overflow-y-auto text-slate-800 font-mazzard">
       {/* Optimized container matching Admin Dashboard layout */}
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
         
@@ -434,7 +434,7 @@ export default function POSCustomers() {
                               : "hover:bg-gray-50"
                           }`}
                         >
-                          <td className="py-3 px-4 text-center text-gray-400 font-mono">
+                          <td className="py-3 px-4 text-center text-gray-400 tabular-nums">
                             {idx + 1}
                           </td>
                           <td className="py-3 px-4 font-semibold text-gray-900">
@@ -445,7 +445,7 @@ export default function POSCustomers() {
                               <span className="truncate">{cust.name}</span>
                             </div>
                           </td>
-                          <td className="py-3 px-4 text-gray-600 font-mono text-[11px]">
+                          <td className="py-3 px-4 text-gray-600 tabular-nums text-[11px]">
                             {cust.phone}
                           </td>
                           <td className="py-3 px-4 text-center">
@@ -482,24 +482,24 @@ export default function POSCustomers() {
             {selectedCustomer ? (
               <div className="bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
                 {/* Customer Profile Header */}
-                <div className="p-5 border-b border-gray-200 bg-gray-900 text-white">
+                <div className="p-4 lg:p-5 border-b border-gray-200 bg-gray-50/50">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 bg-blue-950 px-2 py-0.5 rounded border border-blue-800/50">
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-white bg-blue-600 px-2 py-0.5 rounded-full">
                         Customer Profile
                       </span>
-                      <h3 className="text-lg font-bold mt-1 text-white truncate">
+                      <h3 className="text-lg font-semibold mt-1.5 text-gray-900 truncate">
                         {selectedCustomer.name}
                       </h3>
-                      <div className="flex items-center gap-2 mt-1 text-xs text-gray-300 font-mono">
-                        <Phone className="h-3.5 w-3.5 text-blue-400" />
+                      <div className="flex items-center gap-2 mt-1 text-sm text-gray-600 tabular-nums">
+                        <Phone className="h-3.5 w-3.5 text-blue-600" />
                         <span>{selectedCustomer.phone}</span>
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p className="text-[10px] text-gray-400 font-semibold uppercase">Total Spent</p>
-                      <p className="text-xl font-bold text-emerald-400">
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-medium text-gray-600">Total Spent</p>
+                      <p className="text-xl font-bold text-green-600">
                         ₹{selectedCustomer.totalPaid.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </p>
                     </div>
@@ -529,7 +529,7 @@ export default function POSCustomers() {
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-gray-900">
+                              <span className="tabular-nums text-xs font-bold text-gray-900">
                                 #{bill.invoiceNumber}
                               </span>
                               <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-gray-200 text-gray-700">
@@ -566,7 +566,7 @@ export default function POSCustomers() {
               </div>
             ) : (
               <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200 text-center flex flex-col items-center justify-center min-h-[300px]">
-                <div className="h-12 w-12 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mb-3">
+                <div className="h-12 w-12 rounded-lg bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center mb-3">
                   <Receipt className="h-6 w-6" />
                 </div>
                 <h4 className="text-sm font-semibold text-gray-900">Select a Customer</h4>
