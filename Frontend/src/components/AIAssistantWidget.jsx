@@ -19,44 +19,70 @@ import {
   ChevronDown,
   ChevronUp,
   MessageSquare,
+  Mic,
+  MicOff,
+  ShieldCheck,
+  Calendar,
+  Users,
 } from "lucide-react";
 import { useAIAssistant } from "../context/AIAssistantContext";
 
 const DEFAULT_QUESTIONS = [
   {
     id: 1,
-    icon: TrendingUp,
-    bgColor: "bg-blue-600",
-    label: "Revenue & Profit",
-    question: "What is my total revenue & net profit for this FY?",
+    icon: Calendar,
+    bgColor: "bg-emerald-600",
+    label: "Today's Sales",
+    question: "What was today's sales and revenue?",
   },
   {
     id: 2,
-    icon: AlertCircle,
-    bgColor: "bg-amber-600",
-    label: "Unpaid Invoices",
-    question: "List all unpaid and overdue invoices with customer names.",
+    icon: TrendingUp,
+    bgColor: "bg-blue-600",
+    label: "Top Product",
+    question: "Which product sold the most?",
   },
   {
     id: 3,
-    icon: PieChart,
-    bgColor: "bg-purple-600",
-    label: "GST Tax Collected",
-    question: "How much GST (CGST, SGST, IGST) have we collected so far?",
+    icon: AlertCircle,
+    bgColor: "bg-rose-600",
+    label: "Who Owes Money?",
+    question: "Who owes me money and which invoices are overdue?",
   },
   {
     id: 4,
-    icon: DollarSign,
-    bgColor: "bg-orange-600",
-    label: "Expense Breakdown",
-    question: "What are our total business expenses by category?",
+    icon: PieChart,
+    bgColor: "bg-purple-600",
+    label: "GST Tax",
+    question: "How much GST (CGST, SGST, IGST) did I collect?",
   },
   {
     id: 5,
+    icon: DollarSign,
+    bgColor: "bg-amber-600",
+    label: "Monthly Profit",
+    question: "Show last month vs this month profit and expenses.",
+  },
+  {
+    id: 6,
     icon: Package,
-    bgColor: "bg-emerald-600",
-    label: "Products & Customers",
-    question: "Which are our top selling products and registered customers?",
+    bgColor: "bg-indigo-600",
+    label: "Stock Prediction",
+    question: "Which products are low in stock and need reordering?",
+  },
+  {
+    id: 7,
+    icon: Users,
+    bgColor: "bg-teal-600",
+    label: "Customer Insights",
+    question: "Show top customer insights and VIP clients.",
+  },
+  {
+    id: 8,
+    icon: ShieldCheck,
+    bgColor: "bg-cyan-600",
+    label: "Validate GSTIN",
+    question: "Validate GSTIN 33ABCDE1234F1Z5",
   },
 ];
 
@@ -69,6 +95,8 @@ export default function AIAssistantWidget() {
     copiedIndex,
     showQuickQuestions,
     setShowQuickQuestions,
+    isListening,
+    toggleVoiceRecognition,
     handleSendMessage,
     handleCopy,
     handleClearChat,
@@ -289,19 +317,35 @@ export default function AIAssistantWidget() {
                     e.preventDefault();
                     handleSendMessage();
                   }}
-                  className="flex items-center gap-2 mt-1.5"
+                  className="flex items-center gap-1.5 mt-1.5"
                 >
                   <input
                     type="text"
                     value={inputMessage}
                     onChange={(e) => setInputMessage(e.target.value)}
-                    placeholder="Ask AI a question..."
-                    className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    placeholder={isListening ? "Listening... Speak now" : "Ask AI: today sales, top product, who owes..."}
+                    className={`flex-1 rounded-lg border px-3 py-2 text-xs text-slate-800 placeholder-slate-400 outline-none transition-all ${
+                      isListening
+                        ? "border-red-400 bg-red-50/40 ring-2 ring-red-200 animate-pulse"
+                        : "border-slate-200 bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    }`}
                   />
+                  <button
+                    type="button"
+                    onClick={toggleVoiceRecognition}
+                    className={`p-2 rounded-lg transition-colors cursor-pointer ${
+                      isListening
+                        ? "bg-red-600 text-white animate-pulse"
+                        : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                    }`}
+                    title={isListening ? "Stop listening" : "Speak (Voice AI)"}
+                  >
+                    {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                  </button>
                   <button
                     type="submit"
                     disabled={!inputMessage.trim() || isTyping}
-                    className="inline-flex items-center justify-center rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700 disabled:opacity-50"
+                    className="inline-flex items-center justify-center rounded-lg bg-blue-600 p-2 text-white hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
                     title="Send"
                   >
                     <Send className="h-3.5 w-3.5" />

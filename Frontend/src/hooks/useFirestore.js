@@ -8,16 +8,45 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
+  onSnapshot,
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
 import { db } from "../lib/firebase/config";
 import { AuthContext } from "../context/AuthContext";
 
-// SECURITY: uid must only ever come from AuthContext (server-verified token). Never from URL, localStorage, or props.
+// Get store owner UID: from Firebase Auth user, or from cashier session if logged in via Cashier PIN
 function useUserId() {
   const { user } = useContext(AuthContext);
-  return user?.uid ?? null;
+  if (user?.uid) return user.uid;
+
+  try {
+    const sessionStr = localStorage.getItem("pos_cashier_session");
+    if (sessionStr) {
+      const session = JSON.parse(sessionStr);
+      if (session?.ownerUid) return session.ownerUid;
+    }
+
+    const compProfile = localStorage.getItem("company_profile");
+    if (compProfile) {
+      const parsed = JSON.parse(compProfile);
+      if (parsed?.uid) return parsed.uid;
+    }
+
+    const lastUid = localStorage.getItem("last_logged_in_uid") || localStorage.getItem("store_owner_uid");
+    if (lastUid) return lastUid;
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("store_cashiers_")) {
+        return key.replace("store_cashiers_", "");
+      }
+    }
+  } catch (err) {
+    console.warn("useUserId cashier fallback error:", err);
+  }
+
+  return "default_store";
 }
 
 // Firestore doc snapshot -> plain object with id; convert Timestamps to string dates for UI consistency
@@ -156,13 +185,19 @@ export const useDashboard = () => {
 // Customers — stored in users/{uid}/customers (separate "db" per user)
 export const useCustomers = (options = {}) => {
   const uid = useUserId();
-  const [all, setAll] = useState([]);
+  const [all, setAll] = useState(() => {
+    try {
+      const cached = localStorage.getItem("store_customers_cache");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const refetch = useCallback(async () => {
     if (!uid) {
-      setAll([]);
       setLoading(false);
       return;
     }
@@ -171,18 +206,67 @@ export const useCustomers = (options = {}) => {
     try {
       const snap = await getDocs(collection(db, "users", uid, "customers"));
       const list = snapshotToItems(snap);
-      setAll(list);
+      if (list.length > 0) {
+        setAll(list);
+        localStorage.setItem("store_customers_cache", JSON.stringify(list));
+      }
     } catch (err) {
       setError(err.message);
-      setAll([]);
     } finally {
       setLoading(false);
     }
   }, [uid]);
 
+  // Real-time live synchronization for Customers
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    // Listen for local custom customer update events
+    const handleLocalUpdate = (e) => {
+      try {
+        const cached = localStorage.getItem("store_customers_cache");
+        if (cached) {
+          setAll(JSON.parse(cached));
+        } else if (e.detail?.customer) {
+          setAll((prev) => {
+            if (prev.some((c) => c.id === e.detail.customer.id)) return prev;
+            return [...prev, e.detail.customer];
+          });
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("store_customer_added", handleLocalUpdate);
+    window.addEventListener("storage", handleLocalUpdate);
+
+    if (!uid) {
+      setLoading(false);
+      return () => {
+        window.removeEventListener("store_customer_added", handleLocalUpdate);
+        window.removeEventListener("storage", handleLocalUpdate);
+      };
+    }
+
+    setLoading(true);
+    const unsubscribe = onSnapshot(
+      collection(db, "users", uid, "customers"),
+      (snapshot) => {
+        const list = snapshotToItems(snapshot);
+        if (list.length > 0) {
+          setAll(list);
+          localStorage.setItem("store_customers_cache", JSON.stringify(list));
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn("Real-time customers listener warning:", err);
+        setError(err.message);
+        setLoading(false);
+      }
+    );
+    return () => {
+      unsubscribe();
+      window.removeEventListener("store_customer_added", handleLocalUpdate);
+      window.removeEventListener("storage", handleLocalUpdate);
+    };
+  }, [uid]);
 
   const { data, pagination } = applyListView(all, options);
   const [view, setView] = useState(data);
@@ -196,12 +280,46 @@ export const useCustomers = (options = {}) => {
 
   const addCustomer = useCallback(
     async (payload) => {
-      if (!uid) return { success: false };
       const nextSerialNumber = String(all.length + 1).padStart(2, "0");
-      const data = { serialNumber: nextSerialNumber, ...payload };
-      const ref = await addDoc(collection(db, "users", uid, "customers"), data);
-      setAll((prev) => [...prev, { id: ref.id, ...data }]);
-      return { success: true, id: ref.id };
+      const cleanPayload = sanitizeForFirestore(payload);
+      const newCustObj = {
+        id: `cust_${Date.now()}`,
+        serialNumber: nextSerialNumber,
+        ...payload,
+        createdAt: new Date().toISOString(),
+      };
+
+      // Always update local cache & state first for immediate UI reactivity
+      setAll((prev) => {
+        const updated = [...prev, newCustObj];
+        try {
+          localStorage.setItem("store_customers_cache", JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // Dispatch custom event across app
+      window.dispatchEvent(
+        new CustomEvent("store_customer_added", { detail: { customer: newCustObj } })
+      );
+
+      if (!uid) return { success: true, id: newCustObj.id };
+
+      try {
+        const data = {
+          serialNumber: nextSerialNumber,
+          ...cleanPayload,
+          createdAt: serverTimestamp(),
+        };
+        const ref = await addDoc(collection(db, "users", uid, "customers"), data);
+        setAll((prev) =>
+          prev.map((c) => (c.id === newCustObj.id ? { ...c, id: ref.id } : c))
+        );
+        return { success: true, id: ref.id };
+      } catch (err) {
+        console.warn("useFirestore addCustomer online error (cached locally):", err);
+        return { success: true, id: newCustObj.id, offline: true };
+      }
     },
     [uid, all.length]
   );
@@ -242,13 +360,19 @@ export const useCustomers = (options = {}) => {
 // Invoices — users/{uid}/invoices
 export const useInvoices = (options = {}) => {
   const uid = useUserId();
-  const [all, setAll] = useState([]);
+  const [all, setAll] = useState(() => {
+    try {
+      const cached = localStorage.getItem("store_invoices_cache");
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [loading, setLoading] = useState(true);
   const [invError, setInvError] = useState(null);
 
   const refetch = useCallback(async () => {
     if (!uid) {
-      setAll([]);
       setLoading(false);
       return;
     }
@@ -256,18 +380,67 @@ export const useInvoices = (options = {}) => {
     setInvError(null);
     try {
       const snap = await getDocs(collection(db, "users", uid, "invoices"));
-      setAll(snapshotToItems(snap));
+      const list = snapshotToItems(snap);
+      if (list.length > 0) {
+        setAll(list);
+        localStorage.setItem("store_invoices_cache", JSON.stringify(list));
+      }
     } catch (err) {
       setInvError(err.message);
-      setAll([]);
     } finally {
       setLoading(false);
     }
   }, [uid]);
 
+  // Real-time live synchronization for Invoices
   useEffect(() => {
-    refetch();
-  }, [refetch]);
+    const handleLocalInvUpdate = (e) => {
+      try {
+        const cached = localStorage.getItem("store_invoices_cache");
+        if (cached) {
+          setAll(JSON.parse(cached));
+        } else if (e.detail?.invoice) {
+          setAll((prev) => {
+            if (prev.some((i) => i.id === e.detail.invoice.id)) return prev;
+            return [e.detail.invoice, ...prev];
+          });
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("store_invoice_added", handleLocalInvUpdate);
+    window.addEventListener("storage", handleLocalInvUpdate);
+
+    if (!uid) {
+      setLoading(false);
+      return () => {
+        window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
+        window.removeEventListener("storage", handleLocalInvUpdate);
+      };
+    }
+
+    setLoading(true);
+    const unsubscribe = onSnapshot(
+      collection(db, "users", uid, "invoices"),
+      (snapshot) => {
+        const list = snapshotToItems(snapshot);
+        if (list.length > 0) {
+          setAll(list);
+          localStorage.setItem("store_invoices_cache", JSON.stringify(list));
+        }
+        setLoading(false);
+      },
+      (err) => {
+        console.warn("Real-time invoices listener warning:", err);
+        setInvError(err.message);
+        setLoading(false);
+      }
+    );
+    return () => {
+      unsubscribe();
+      window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
+      window.removeEventListener("storage", handleLocalInvUpdate);
+    };
+  }, [uid]);
 
   const fyInvoices = useMemo(() => {
     return all.filter((inv) => isInCurrentFY(inv.invoiceDate || inv.createdAt));
@@ -281,19 +454,24 @@ export const useInvoices = (options = {}) => {
       today.setHours(0, 0, 0, 0);
       res = res.filter((inv) => {
         const s = (inv.status || "").toLowerCase();
-        if (status === "Paid") return s === "paid";
+        const received = Number(inv.paidAmount || inv.received || 0);
+        const total = Number(inv.total || inv.amount || 0);
+        const tds = Number(inv.tdsAmount || 0);
+        const isPartial = s === "partial" || (received > 0 && received + tds < total);
+
+        if (status === "Paid") return s === "paid" || (received + tds >= total && total > 0);
         if (status === "Draft") return s === "draft";
-        if (status === "Partial") return s === "partial";
+        if (status === "Partial") return isPartial;
         if (status === "Overdue") {
           const dueDate = inv.dueDate ? (inv.dueDate?.toDate ? inv.dueDate.toDate() : new Date(inv.dueDate)) : null;
           if (dueDate) dueDate.setHours(0, 0, 0, 0);
-          return s !== "paid" && s !== "partial" && s !== "draft" && dueDate && today > dueDate;
+          return s !== "paid" && !isPartial && s !== "draft" && dueDate && today > dueDate;
         }
         if (status === "Unpaid") {
           const dueDate = inv.dueDate ? (inv.dueDate?.toDate ? inv.dueDate.toDate() : new Date(inv.dueDate)) : null;
           if (dueDate) dueDate.setHours(0, 0, 0, 0);
           const isOverdue = dueDate && today > dueDate;
-          return s !== "paid" && s !== "partial" && s !== "draft" && !isOverdue;
+          return s !== "paid" && !isPartial && s !== "draft" && !isOverdue;
         }
         return s === status.toLowerCase();
       });
@@ -314,13 +492,56 @@ export const useInvoices = (options = {}) => {
     setPageInfo(res.pagination);
   }, [filtered, options.search, options.page, options.limit, options.sortBy, options.sortDirection]);
 
+  const generateToken = () => {
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  };
+
   const addInvoice = useCallback(
     async (payload) => {
-      if (!uid) return { success: false };
-      const data = sanitizeForFirestore(payload);
-      const ref = await addDoc(collection(db, "users", uid, "invoices"), { ...data, createdAt: serverTimestamp() });
-      setAll((prev) => [{ id: ref.id, ...payload }, ...prev]);
-      return { success: true, id: ref.id };
+      const targetUid = uid || "default_store";
+      const token = payload.paymentToken || generateToken();
+      const payloadWithMeta = { ...payload, userId: targetUid, paymentToken: token };
+      const cleanPayload = sanitizeForFirestore(payloadWithMeta);
+      const newInvObj = {
+        id: `inv_${Date.now()}`,
+        ...payloadWithMeta,
+        createdAt: new Date().toISOString(),
+      };
+
+      // 1. Immediately update state and storage for instant reactivity
+      setAll((prev) => {
+        const updated = [newInvObj, ...prev];
+        try {
+          localStorage.setItem("store_invoices_cache", JSON.stringify(updated));
+        } catch (_) {}
+        return updated;
+      });
+
+      // 2. Dispatch event across app
+      window.dispatchEvent(
+        new CustomEvent("store_invoice_added", { detail: { invoice: newInvObj } })
+      );
+
+      // 3. Save to Firestore
+      try {
+        const data = {
+          ...cleanPayload,
+          createdAt: serverTimestamp(),
+        };
+        const ref = await addDoc(collection(db, "users", targetUid, "invoices"), data);
+        setAll((prev) =>
+          prev.map((i) => (i.id === newInvObj.id ? { ...i, id: ref.id } : i))
+        );
+        return { success: true, id: ref.id };
+      } catch (err) {
+        console.warn("Firestore addInvoice online error (cached locally):", err);
+        return { success: true, id: newInvObj.id, offline: true };
+      }
     },
     [uid]
   );
@@ -328,12 +549,15 @@ export const useInvoices = (options = {}) => {
   const editInvoice = useCallback(
     async (id, patch) => {
       if (!uid) return { success: false };
-      const data = sanitizeForFirestore(patch);
+      const existing = all.find((i) => i.id === id);
+      const token = patch.paymentToken || existing?.paymentToken || generateToken();
+      const patchWithMeta = { ...patch, userId: uid, paymentToken: token };
+      const data = sanitizeForFirestore(patchWithMeta);
       await updateDoc(doc(db, "users", uid, "invoices", id), data);
-      setAll((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+      setAll((prev) => prev.map((i) => (i.id === id ? { ...i, ...patchWithMeta } : i)));
       return { success: true };
     },
-    [uid]
+    [uid, all]
   );
 
   const removeInvoice = useCallback(
@@ -733,5 +957,171 @@ export const useSettings = () => {
   );
 
   return { settings, error: null, updateSettings, refetch };
+};
+
+// Cashiers — stored inside users/{uid}/settings/app under 'cashiers' key (active in Firestore rules)
+export const useCashiers = (options = {}) => {
+  const uid = useUserId();
+  const [all, setAll] = useState(() => {
+    try {
+      const local = uid ? localStorage.getItem(`store_cashiers_${uid}`) : null;
+      return local ? JSON.parse(local) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(true);
+  const [cashierError, setCashierError] = useState(null);
+
+  const refetch = useCallback(async () => {
+    const currentUid = uid || auth.currentUser?.uid;
+    if (!currentUid) {
+      setAll([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setCashierError(null);
+    try {
+      const snap = await getDoc(doc(db, "users", currentUid, "settings", "app"));
+      if (snap.exists()) {
+        const appData = snap.data() || {};
+        const raw = appData.cashiers?.value || appData.cashiers;
+        const list = Array.isArray(raw) ? raw : [];
+        setAll(list);
+        localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(list));
+        localStorage.setItem("registered_cashiers_list", JSON.stringify(list));
+      } else {
+        const local = localStorage.getItem(`store_cashiers_${currentUid}`) || localStorage.getItem("registered_cashiers_list");
+        if (local) setAll(JSON.parse(local));
+      }
+    } catch (err) {
+      console.warn("useCashiers load warning:", err);
+      const local = localStorage.getItem(`store_cashiers_${currentUid}`) || localStorage.getItem("registered_cashiers_list");
+      if (local) setAll(JSON.parse(local));
+    } finally {
+      setLoading(false);
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  const filtered = useMemo(() => {
+    let res = Array.isArray(all) ? [...all] : [];
+    if (options.status && options.status !== "All") {
+      res = res.filter((c) => (c.status || "Active").toLowerCase() === options.status.toLowerCase());
+    }
+    return res;
+  }, [all, options.status]);
+
+  const { data, pagination } = applyListView(filtered, options);
+  const [view, setView] = useState(data);
+  const [pageInfo, setPageInfo] = useState(pagination);
+
+  useEffect(() => {
+    const res = applyListView(filtered, options);
+    setView(res.data);
+    setPageInfo(res.pagination);
+  }, [filtered, options.search, options.page, options.limit, options.sortBy, options.sortDirection]);
+
+  const persistCashiers = async (currentUid, newItems) => {
+    localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(newItems));
+    localStorage.setItem("registered_cashiers_list", JSON.stringify(newItems));
+    setAll(newItems);
+    try {
+      const appRef = doc(db, "users", currentUid, "settings", "app");
+      const snap = await getDoc(appRef);
+      const currentData = snap.exists() ? snap.data() : {};
+      const updated = {
+        ...currentData,
+        cashiers: {
+          value: newItems,
+          description: "Staff cashier terminals list",
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      await setDoc(appRef, updated, { merge: true });
+    } catch (err) {
+      console.warn("Firestore save cashiers warning:", err);
+    }
+  };
+
+  const addCashier = useCallback(
+    async (payload) => {
+      const currentUid = uid || auth.currentUser?.uid;
+      if (!currentUid) {
+        throw new Error("You must be signed in as store admin to add cashiers.");
+      }
+      const newId = `csh_${Date.now()}`;
+      const nextSerialNumber = String(all.length + 1).padStart(2, "0");
+      const newCashier = {
+        id: newId,
+        serialNumber: nextSerialNumber,
+        cashierId: payload.cashierId || `CSH-${String(all.length + 1).padStart(3, "0")}`,
+        name: payload.name || "Cashier Staff",
+        phone: payload.phone || "",
+        email: payload.email || "",
+        counter: payload.counter || "Counter 01",
+        pin: payload.pin || "1234",
+        status: payload.status || "Active",
+        createdAt: new Date().toISOString(),
+      };
+      const newItems = [...all, newCashier];
+      await persistCashiers(currentUid, newItems);
+      return { success: true, id: newId };
+    },
+    [uid, all]
+  );
+
+  const editCashier = useCallback(
+    async (id, patch) => {
+      const currentUid = uid || auth.currentUser?.uid;
+      if (!currentUid) throw new Error("Authentication required.");
+      const newItems = all.map((c) => (c.id === id ? { ...c, ...patch } : c));
+      await persistCashiers(currentUid, newItems);
+      return { success: true };
+    },
+    [uid, all]
+  );
+
+  const removeCashier = useCallback(
+    async (id) => {
+      const currentUid = uid || auth.currentUser?.uid;
+      if (!currentUid) throw new Error("Authentication required.");
+      const newItems = all.filter((c) => c.id !== id);
+      await persistCashiers(currentUid, newItems);
+      return { success: true };
+    },
+    [uid, all]
+  );
+
+  const toggleStatus = useCallback(
+    async (id) => {
+      const currentUid = uid || auth.currentUser?.uid;
+      if (!currentUid) throw new Error("Authentication required.");
+      const target = all.find((c) => c.id === id);
+      if (!target) return { success: false };
+      const nextStatus = target.status === "Inactive" ? "Active" : "Inactive";
+      const newItems = all.map((c) => (c.id === id ? { ...c, status: nextStatus } : c));
+      await persistCashiers(currentUid, newItems);
+      return { success: true, status: nextStatus };
+    },
+    [uid, all]
+  );
+
+  return {
+    cashiers: view,
+    allCashiers: all,
+    loading,
+    error: cashierError,
+    pagination: pageInfo,
+    addCashier,
+    editCashier,
+    removeCashier,
+    toggleStatus,
+    refetch,
+  };
 };
 

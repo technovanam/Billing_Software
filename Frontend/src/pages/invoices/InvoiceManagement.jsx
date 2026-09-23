@@ -22,6 +22,7 @@ import { useInvoices, useSettings, useCustomers, useProducts } from "../../hooks
 import { AuthContext } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { generateInvoiceHTML } from "../../utils/invoiceGenerator";
+import { loadRazorpayScript } from "../../utils/loadRazorpay";
 import PropTypes from "prop-types";
 // Removed jsPDF and html2canvas imports
 
@@ -296,6 +297,171 @@ const ProductAutocomplete = ({
   );
 };
 
+const PaymentLinkControls = ({ invoice, onUpdateInvoice }) => {
+  const { success: toastSuccess } = useToast();
+  const [token, setToken] = useState(invoice?.paymentToken || "");
+  const [disabled, setDisabled] = useState(
+    invoice?.paymentTokenStatus === "DISABLED" || invoice?.paymentLinkDisabled === true
+  );
+
+  useEffect(() => {
+    setToken(invoice?.paymentToken || "");
+    setDisabled(
+      invoice?.paymentTokenStatus === "DISABLED" || invoice?.paymentLinkDisabled === true
+    );
+  }, [invoice]);
+
+  const origin = typeof window !== "undefined" && window.location?.origin
+    ? window.location.origin
+    : "http://localhost:5173";
+
+  const isPaid =
+    (invoice?.status || "").toLowerCase() === "paid" ||
+    (invoice?.paymentStatus || "").toUpperCase() === "PAID";
+
+  const isCancelled = (invoice?.status || "").toLowerCase() === "cancelled";
+
+  const generateToken = () => {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  };
+
+  const handleGenerateLink = async (isRegenerate = false) => {
+    if (!invoice?.id) return;
+    const newToken = generateToken();
+    const patch = {
+      paymentToken: newToken,
+      paymentTokenCreatedAt: new Date().toISOString(),
+      paymentTokenStatus: "ACTIVE",
+      paymentLinkDisabled: false,
+    };
+
+    if (onUpdateInvoice) {
+      await onUpdateInvoice(invoice.id, patch);
+    }
+    setToken(newToken);
+    setDisabled(false);
+    toastSuccess(isRegenerate ? "Payment link regenerated!" : "Payment link generated!");
+  };
+
+  const handleDisableLink = async () => {
+    if (!invoice?.id) return;
+    const patch = {
+      paymentTokenStatus: "DISABLED",
+      paymentLinkDisabled: true,
+    };
+    if (onUpdateInvoice) {
+      await onUpdateInvoice(invoice.id, patch);
+    }
+    setDisabled(true);
+    toastSuccess("Payment link disabled!");
+  };
+
+  const linkUrl = `${origin}/pay/${token}`;
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(linkUrl);
+    toastSuccess("Payment link copied to clipboard!");
+  };
+
+  if (isPaid) {
+    return (
+      <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-emerald-900 mb-4 max-w-[210mm] mx-auto w-full">
+        <div className="flex items-center gap-2">
+          <span className="font-bold bg-emerald-600 text-white text-xs px-2.5 py-0.5 rounded-full">
+            ✓ PAID
+          </span>
+          <span>
+            Payment ID: <code className="font-mono text-xs text-emerald-800 font-semibold">{invoice.gatewayPaymentId || invoice.transactionId || "pay_completed"}</code>
+          </span>
+        </div>
+        <div className="text-xs text-emerald-700 font-medium">
+          Paid On: {invoice.paidAt ? new Date(invoice.paidAt).toLocaleDateString("en-IN") : "Settled"}
+        </div>
+      </div>
+    );
+  }
+
+  if (isCancelled) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700 font-semibold mb-4 max-w-[210mm] mx-auto w-full">
+        Payment Status: CANCELLED (This invoice is no longer payable)
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2 text-sm mb-4 max-w-[210mm] mx-auto w-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 font-bold text-gray-800">
+          <span>Payment Status:</span>
+          <span className={disabled ? "text-amber-600 font-bold" : "text-blue-600 font-bold"}>
+            {disabled ? "DISABLED" : "PENDING"}
+          </span>
+        </div>
+        {!token ? (
+          <button
+            onClick={() => handleGenerateLink(false)}
+            className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition cursor-pointer"
+          >
+            Generate Payment Link
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => handleGenerateLink(true)}
+              className="px-2.5 py-1 bg-gray-200 text-gray-800 rounded-md text-xs font-medium hover:bg-gray-300 transition cursor-pointer"
+            >
+              Regenerate
+            </button>
+            {!disabled ? (
+              <button
+                onClick={handleDisableLink}
+                className="px-2.5 py-1 bg-red-100 text-red-700 rounded-md text-xs font-medium hover:bg-red-200 transition cursor-pointer"
+              >
+                Disable
+              </button>
+            ) : (
+              <button
+                onClick={() => handleGenerateLink(false)}
+                className="px-2.5 py-1 bg-emerald-100 text-emerald-700 rounded-md text-xs font-medium hover:bg-emerald-200 transition cursor-pointer"
+              >
+                Enable
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {token && !disabled && (
+        <div className="flex items-center gap-2 bg-white p-2 border border-slate-300 rounded-lg">
+          <input
+            type="text"
+            readOnly
+            value={linkUrl}
+            className="flex-1 bg-transparent text-xs font-mono text-blue-700 outline-none truncate"
+          />
+          <button
+            onClick={copyToClipboard}
+            className="px-3 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-bold hover:bg-blue-100 transition cursor-pointer"
+          >
+            Copy Link
+          </button>
+          <a
+            href={linkUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1 bg-slate-800 text-white rounded-md text-xs font-bold hover:bg-slate-900 transition text-center"
+          >
+            Open Link
+          </a>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const InvoicePreview = ({
   invoice,
   invoiceData,
@@ -303,7 +469,8 @@ const InvoicePreview = ({
   setShowPreview,
   embedded = false,
   autoDownload = false,
-  onDownloadComplete
+  onDownloadComplete,
+  onUpdateInvoice,
 }) => {
   const { error: toastError, success: toastSuccess } = useToast();
 
@@ -327,15 +494,16 @@ const InvoicePreview = ({
       const itemsArray = invoice.items || invoice.products || [];
       const subtotal = itemsArray.reduce((sum, item) => sum + (item.amount || item.total || 0), 0);
 
+      const invoiceTotal = Number(invoice?.amount ?? invoice?.total ?? subtotal ?? 0);
       return {
         subtotal: subtotal,
-        cgstAmount: (subtotal * (invoice.cgst || 0)) / 100,
-        sgstAmount: (subtotal * (invoice.sgst || 0)) / 100,
-        igstAmount: (subtotal * (invoice.igst || 0)) / 100,
-        roundOffAmount: invoice.isRoundOff
-          ? Math.round(invoice.amount) - invoice.amount
+        cgstAmount: (subtotal * (invoice?.cgst || 0)) / 100,
+        sgstAmount: (subtotal * (invoice?.sgst || 0)) / 100,
+        igstAmount: (subtotal * (invoice?.igst || 0)) / 100,
+        roundOffAmount: invoice?.isRoundOff
+          ? Math.round(invoiceTotal) - invoiceTotal
           : 0,
-        total: invoice.isRoundOff ? Math.round(invoice.amount) : invoice.amount,
+        total: invoice?.isRoundOff ? Math.round(invoiceTotal) : invoiceTotal,
       };
     })();
 
@@ -385,17 +553,30 @@ const InvoicePreview = ({
     return words.trim() + " Only";
   };
 
+  const { user } = useContext(AuthContext);
   const { settings } = useSettings();
-  const amountInWords = convertToWords(Math.floor(previewCalcs.total));
+  const validTotal = Number(previewCalcs?.total || 0);
+  const amountInWords = convertToWords(Math.floor(validTotal));
 
-  const baseRazorpayLink =
-    previewData?.razorpayLink ||
-    settings?.systemSettings?.value?.systemConfig?.razorpayLink ||
-    "https://razorpay.me/@esaengineeringworks";
+  const origin = (typeof window !== "undefined" && window.location && window.location.origin)
+    ? window.location.origin
+    : "http://localhost:5173";
 
-  const razorpayUrl = baseRazorpayLink.includes("?")
-    ? `${baseRazorpayLink}&amount=${previewCalcs.total.toFixed(2)}`
-    : `${baseRazorpayLink}?amount=${previewCalcs.total.toFixed(2)}`;
+  const currentUserId = user?.uid || previewData?.userId || previewData?.uid || "";
+  const rawId = previewData?.id || previewData?.invoiceNumber || "";
+  const currentInvoiceId = previewData?.id ? previewData.id : String(rawId).replace(/\//g, "_");
+
+  let razorpayUrl = "";
+  if (currentUserId && currentInvoiceId) {
+    razorpayUrl = `${origin}/pay/${currentUserId}/${encodeURIComponent(currentInvoiceId)}`;
+  } else if (previewData?.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink) {
+    const baseLink = previewData?.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink;
+    razorpayUrl = baseLink.includes("?")
+      ? `${baseLink}&amount=${previewCalcs.total.toFixed(2)}`
+      : `${baseLink}?amount=${previewCalcs.total.toFixed(2)}`;
+  } else {
+    razorpayUrl = `${origin}/pay/invoice/${encodeURIComponent(currentInvoiceId || 'latest')}`;
+  }
 
   const handleOpenRazorpayCheckout = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -406,6 +587,11 @@ const InvoicePreview = ({
     }
 
     try {
+      const sdkLoaded = await loadRazorpayScript();
+      if (!sdkLoaded) {
+        if (toastError) toastError("Razorpay SDK failed to load. Check your internet connection.");
+        return;
+      }
       const res = await fetch("http://localhost:5000/create-razorpay-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -643,8 +829,9 @@ const InvoicePreview = ({
         )}
         <div
           onWheel={(event) => event.stopPropagation()}
-          className={embedded ? "bg-white flex justify-center p-0" : "min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gray-100 p-8 flex justify-center"}
+          className={embedded ? "bg-white flex justify-center p-0" : "min-h-0 flex-1 overflow-y-auto overscroll-contain bg-gray-100 p-8 flex flex-col items-center"}
         >
+          {!embedded && <PaymentLinkControls invoice={previewData || invoice} onUpdateInvoice={onUpdateInvoice} />}
 
           {/* Outer Page Wrapper (A4) - Handles the 15mm white space */}
           <div
@@ -800,7 +987,7 @@ const InvoicePreview = ({
                     <td className="w-[55%] p-1">Bank Name : State Bank Of India</td>
                     <th scope="row" className="w-[16%] border-l border-b border-black p-1 font-normal text-left">SUB TOTAL</th>
                     <td className="w-[16%] border-l border-b border-black p-1 text-right">
-                      {previewCalcs.subtotal.toFixed(2)}
+                      {(Number(previewCalcs?.subtotal || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -812,7 +999,7 @@ const InvoicePreview = ({
                       CGST <span className="ml-6">{previewData.cgst}%</span>
                     </th>
                     <td className="border-l border-b border-black p-1 text-right">
-                      {previewCalcs.cgstAmount.toFixed(2)}
+                      {(Number(previewCalcs?.cgstAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -824,7 +1011,7 @@ const InvoicePreview = ({
                       SGST <span className="ml-6">{previewData.sgst}%</span>
                     </th>
                     <td className="border-l border-b border-black p-1 text-right">
-                      {previewCalcs.sgstAmount.toFixed(2)}
+                      {(Number(previewCalcs?.sgstAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -836,8 +1023,7 @@ const InvoicePreview = ({
                       IGST <span className="ml-6">{previewData.igst}%</span>
                     </th>
                     <td className="border-l border-b border-black p-1 text-right">
-                      {previewCalcs.igstAmount.toFixed(2)}
-
+                      {(Number(previewCalcs?.igstAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
                   <tr>
@@ -853,26 +1039,43 @@ const InvoicePreview = ({
                           <span className="font-normal">{amountInWords}</span>
                         </div>
                         <div>
-                          <a
-                            href={razorpayUrl}
-                            onClick={handleOpenRazorpayCheckout}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-block px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded shadow-sm transition-colors border border-blue-700 no-underline cursor-pointer"
-                            style={{
-                              backgroundColor: "#2563eb",
-                              color: "#ffffff",
-                              textDecoration: "none",
-                              display: "inline-block",
-                              padding: "6px 12px",
-                              borderRadius: "4px",
-                              fontSize: "12px",
-                              fontWeight: "bold",
-                              border: "1px solid #1d4ed8"
-                            }}
-                          >
-                            💳 Pay via Razorpay (₹{previewCalcs.total.toFixed(2)})
-                          </a>
+                          {isPaid ? (
+                            <span
+                              className="inline-block px-3 py-1.5 bg-emerald-600 text-white font-bold text-xs rounded shadow-sm border border-emerald-700"
+                              style={{
+                                backgroundColor: "#10b981",
+                                color: "#ffffff",
+                                padding: "6px 12px",
+                                borderRadius: "4px",
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                border: "1px solid #059669"
+                              }}
+                            >
+                              ✓ PAID IN FULL
+                            </span>
+                          ) : (
+                            <a
+                              href={razorpayUrl}
+                              onClick={handleOpenRazorpayCheckout}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-block px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded shadow-sm transition-colors border border-blue-700 no-underline cursor-pointer"
+                              style={{
+                                backgroundColor: "#2563eb",
+                                color: "#ffffff",
+                                textDecoration: "none",
+                                display: "inline-block",
+                                padding: "6px 12px",
+                                borderRadius: "4px",
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                border: "1px solid #1d4ed8"
+                              }}
+                            >
+                              {paidAmount > 0 ? `Pay Balance (₹${balanceDue.toFixed(2)})` : 'Pay'}
+                            </a>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -882,7 +1085,7 @@ const InvoicePreview = ({
                       ROUND OFF
                     </td>
                     <td className="border-b border-l  text-right">
-                      {(previewCalcs.roundOffAmount || 0).toFixed(2)}
+                      {(Number(previewCalcs?.roundOffAmount || 0)).toFixed(2)}
                     </td>
                   </tr>
 
@@ -892,9 +1095,30 @@ const InvoicePreview = ({
                       NET TOTAL
                     </td>
                     <td className="border-b border-l text-right font-bold">
-                      {previewCalcs.total.toFixed(2)}
+                      {(Number(previewCalcs?.total || 0)).toFixed(2)}
                     </td>
                   </tr>
+
+                  {paidAmount > 0 && (
+                    <>
+                      <tr>
+                        <td className="border-b border-l text-right text-emerald-700 font-bold text-xs">
+                          PAID / RECEIVED
+                        </td>
+                        <td className="border-b border-l text-right text-emerald-700 font-bold text-xs">
+                          -{(Number(paidAmount)).toFixed(2)}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="border-b border-l text-right text-red-700 font-bold text-sm">
+                          BALANCE DUE
+                        </td>
+                        <td className="border-b border-l text-right text-red-700 font-bold text-sm">
+                          {(Number(balanceDue)).toFixed(2)}
+                        </td>
+                      </tr>
+                    </>
+                  )}
 
                   <tr>
                     <td className=" border-t border-black align-top" colSpan="2" rowSpan="2">
@@ -1020,6 +1244,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.invoiceDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1052,6 +1277,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.poDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1084,6 +1310,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.dcDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1100,6 +1327,7 @@ const CreateInvoiceComponent = ({
                 </label>
                 <input
                   type="date"
+                  max="9999-12-31"
                   value={invoiceData.dueDate}
                   onChange={(e) =>
                     setInvoiceData((prev) => ({
@@ -1658,6 +1886,7 @@ const InvoiceManagementComponent = ({
                             <div className="relative">
                               <input
                                 type="date"
+                                max="9999-12-31"
                                 value={filterFromDate}
                                 onChange={(e) => setFilterFromDate(e.target.value)}
                                 className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1669,6 +1898,7 @@ const InvoiceManagementComponent = ({
                             <div className="relative">
                               <input
                                 type="date"
+                                max="9999-12-31"
                                 value={filterToDate}
                                 onChange={(e) => setFilterToDate(e.target.value)}
                                 className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1761,7 +1991,13 @@ const InvoiceManagementComponent = ({
                           {invoice.client?.name || "Unknown"}
                         </td>
                         <td className="px-6 py-4 font-medium text-gray-900">
-                          ₹{invoice.amount.toLocaleString()}
+                          <div>₹{Number(invoice?.amount ?? invoice?.total ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                          {Number(invoice?.paidAmount || 0) > 0 && Number(invoice?.paidAmount || 0) < Number(invoice?.amount ?? invoice?.total ?? 0) && (
+                            <div className="text-xs space-y-0.5 mt-0.5">
+                              <span className="text-emerald-600 font-medium block">Received: ₹{Number(invoice.paidAmount).toLocaleString("en-IN")}</span>
+                              <span className="text-red-600 font-bold block">Balance Due: ₹{(Number(invoice?.amount ?? invoice?.total ?? 0) - Number(invoice.paidAmount)).toLocaleString("en-IN")}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4 text-gray-700">
                           {invoice.dueDate}
@@ -2028,16 +2264,31 @@ const InvoiceManagementSystem = () => {
   // Sample invoices removed - now using data
 
   const getDynamicStatus = (invoice) => {
-    if (invoice.status === "Paid" || invoice.status === "paid") return "Paid";
     if (invoice.status === "Draft" || invoice.status === "draft")
       return "Draft";
 
-    const today = new Date();
-    const dueDate = new Date(invoice.dueDate);
-    today.setHours(0, 0, 0, 0);
-    dueDate.setHours(0, 0, 0, 0);
+    const received = Number(invoice.paidAmount || invoice.received || 0);
+    const total = Number(invoice.total || invoice.amount || 0);
+    const tds = Number(invoice.tdsAmount || 0);
 
-    if (invoice.dueDate && today > dueDate) return "Overdue";
+    if (total > 0 && (received + tds >= total || Math.abs(total - (received + tds)) < 1)) {
+      return "Paid";
+    }
+
+    if (invoice.status === "Paid" || invoice.status === "paid") return "Paid";
+
+    if (received > 0 && (received + tds < total)) {
+      return "Partial";
+    }
+
+    const today = new Date();
+    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    if (dueDate && !isNaN(dueDate.getTime())) {
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
+
+      if (today > dueDate) return "Overdue";
+    }
     return "Unpaid";
   };
 
@@ -2115,6 +2366,8 @@ const InvoiceManagementSystem = () => {
     switch (status) {
       case "Paid":
         return "bg-green-500";
+      case "Partial":
+        return "bg-purple-500";
       case "Draft":
         return "bg-yellow-500";
       case "Overdue":
@@ -2397,8 +2650,18 @@ const InvoiceManagementSystem = () => {
     setCurrentPage("edit");
   };
   const handleDownloadInvoice = (invoice) => {
-    // Trigger hidden download
-    setDownloadingInvoice(invoice);
+    let invToDownload = invoice;
+    if (!invoice?.userId && user?.uid) {
+      invToDownload = { ...invToDownload, userId: user.uid };
+    }
+    if (!invToDownload?.paymentToken) {
+      const bytes = new Uint8Array(16);
+      if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
+      const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") || Math.random().toString(36).slice(2);
+      invToDownload = { ...invToDownload, paymentToken: token };
+      if (invoice?.id) editInvoice(invoice.id, { paymentToken: token, userId: user?.uid });
+    }
+    setDownloadingInvoice(invToDownload);
   };
 
   // generateInvoicePDF and generateInvoiceHTML removed
@@ -2547,6 +2810,7 @@ const InvoiceManagementSystem = () => {
           invoiceData={currentPage !== "management" ? invoiceData : null}
           calculations={calculations}
           setShowPreview={setShowPreview}
+          onUpdateInvoice={editInvoice}
           productConfirmation={productConfirmation}
           handleProductConfirmationSkip={handleProductConfirmationSkip}
           handleProductConfirmationConfirm={handleProductConfirmationConfirm}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import Pagination from "../../components/Pagination";
 import {
@@ -12,6 +12,8 @@ import {
   FileText,
   Filter,
   Calendar,
+  ChevronDown,
+  Edit,
 } from "lucide-react";
 import { useChallans, useCustomers } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
@@ -325,19 +327,71 @@ export default function DeliveryChallanManagement() {
   const itemsPerPage = 10;
 
   const { challans = [], loading, error, removeChallan } = useChallans();
+  const { customers = [] } = useCustomers();
 
   const [selectedChallan, setSelectedChallan] = useState(null);
   const [downloadingChallan, setDownloadingChallan] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null, dcNumber: "" });
 
-  const filteredChallans = challans.filter((c) => {
-    const num = (c.challanNumber || c.dcNumber || "").toLowerCase();
-    const clientName = (c.client?.name || c.customerName || "").toLowerCase();
-    const matchesSearch = num.includes(searchTerm.toLowerCase()) || clientName.includes(searchTerm.toLowerCase());
-    const matchesTab = activeTab === "All Challans" || (c.status || "Sent").toLowerCase() === "draft";
-    return matchesSearch && matchesTab;
-  });
+  // Filter Dropdown state
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterClientId, setFilterClientId] = useState("");
+  const [filterFromDate, setFilterFromDate] = useState("");
+  const [filterToDate, setFilterToDate] = useState("");
+  const filterRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (filterRef.current && !filterRef.current.contains(event.target)) {
+        setShowFilters(false);
+      }
+    };
+    if (showFilters) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showFilters]);
+
+  const clearFilters = () => {
+    setFilterClientId("");
+    setFilterFromDate("");
+    setFilterToDate("");
+  };
+
+  const hasActiveFilters = filterClientId !== "" || filterFromDate !== "" || filterToDate !== "";
+  const tabs = ["All Challans", "Delivered", "Sent", "Drafts"];
+
+  const filteredChallans = useMemo(() => {
+    return challans.filter((c) => {
+      const num = (c.challanNumber || c.dcNumber || c.id || "").toLowerCase();
+      const clientName = (c.client?.name || c.customerName || "").toLowerCase();
+      const matchesSearch = !searchTerm || num.includes(searchTerm.toLowerCase()) || clientName.includes(searchTerm.toLowerCase());
+
+      const status = (c.status || "Sent").toLowerCase();
+      let matchesTab = true;
+      if (activeTab === "Drafts") matchesTab = status === "draft";
+      else if (activeTab === "Sent") matchesTab = status === "sent";
+      else if (activeTab === "Delivered") matchesTab = status === "delivered";
+
+      if (!matchesSearch || !matchesTab) return false;
+
+      if (filterClientId && c.customerId !== filterClientId && c.client?.id !== filterClientId) {
+        return false;
+      }
+
+      if (filterFromDate && filterToDate) {
+        const cDate = c.challanDate || c.date;
+        if (cDate && (cDate < filterFromDate || cDate > filterToDate)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [challans, searchTerm, activeTab, filterClientId, filterFromDate, filterToDate]);
 
   const totalPages = Math.max(1, Math.ceil(filteredChallans.length / itemsPerPage));
   const paginatedChallans = filteredChallans.slice(
@@ -381,15 +435,18 @@ export default function DeliveryChallanManagement() {
         <main className="mt-6 flex flex-col gap-6">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div className="w-fit lg:w-auto overflow-x-auto pb-1">
-              <div className="flex p-1 bg-gray-100 rounded-lg whitespace-nowrap">
-                {["All Challans", "Drafts"].map((tab) => (
+              <div className="flex p-1 bg-white border border-slate-300 rounded-xl whitespace-nowrap shadow-xs">
+                {tabs.map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                    onClick={() => {
+                      setActiveTab(tab);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
                       activeTab === tab
-                        ? "bg-white text-gray-900 shadow-sm"
-                        : "text-gray-600 hover:text-gray-800"
+                        ? "bg-blue-600 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium"
                     }`}
                   >
                     {tab}
@@ -400,7 +457,7 @@ export default function DeliveryChallanManagement() {
 
             <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
               <div className="relative w-full sm:w-auto flex-1 lg:flex-none">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
                   type="text"
                   placeholder="Search challans..."
@@ -409,21 +466,106 @@ export default function DeliveryChallanManagement() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  className="w-full sm:w-80 bg-gray-100 rounded-lg pl-9 pr-4 py-2 text-sm placeholder-gray-500 focus:outline-none focus:ring-0"
+                  className="w-full sm:w-80 bg-white border border-slate-300 rounded-xl pl-9 pr-4 py-2 text-sm text-slate-800 placeholder-slate-400 shadow-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
+              </div>
+
+              {/* Filter Button & Dropdown */}
+              <div className="relative" ref={filterRef}>
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl transition-all border shadow-xs ${
+                    hasActiveFilters || showFilters
+                      ? "bg-blue-50 text-blue-600 border-blue-300"
+                      : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
+                  }`}
+                >
+                  <Filter size={16} />
+                  Filter
+                  {hasActiveFilters && <span className="w-2 h-2 bg-blue-600 rounded-full"></span>}
+                </button>
+
+                {showFilters && (
+                  <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200 z-50 p-4">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-gray-900">Filters</h3>
+                      <button
+                        onClick={clearFilters}
+                        className="text-xs text-red-500 hover:text-red-700 hover:underline"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {/* Customer Filter */}
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Customer</label>
+                        <div className="relative">
+                          <select
+                            value={filterClientId}
+                            onChange={(e) => setFilterClientId(e.target.value)}
+                            className="w-full appearance-none bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 pr-8 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
+                          >
+                            <option value="">All Customers</option>
+                            {customers.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                            <ChevronDown size={14} />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Date Range Filters */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">From Date</label>
+                          <input
+                            type="date"
+                            max="9999-12-31"
+                            value={filterFromDate}
+                            onChange={(e) => setFilterFromDate(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:outline-none focus:border-blue-500 focus:bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-500 mb-1">To Date</label>
+                          <input
+                            type="date"
+                            max="9999-12-31"
+                            value={filterToDate}
+                            onChange={(e) => setFilterToDate(e.target.value)}
+                            className="w-full bg-gray-50 border border-gray-200 rounded-lg text-sm px-2 py-1.5 focus:outline-none focus:border-blue-500 focus:bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => setShowFilters(false)}
+                        className="w-full mt-2 py-2 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 transition"
+                      >
+                        Done
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <button
                 onClick={() => navigate("/delivery-challans/create")}
-                className="w-full sm:w-auto flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg transition-colors hover:bg-blue-700"
+                className="w-full sm:w-auto flex items-center justify-center px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl transition-colors hover:bg-blue-700 shadow-xs"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-4 h-4 mr-1.5" />
                 Create Delivery Challan
               </button>
             </div>
           </div>
 
-          {/* Challans Table matching Invoice Management screenshot */}
+          {/* Challans Table matching reference screenshot */}
           <div className="overflow-x-auto bg-white rounded-xl border border-gray-200 shadow-sm">
             <table className="w-full min-w-[800px]">
               <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
@@ -437,17 +579,23 @@ export default function DeliveryChallanManagement() {
                   <th scope="col" className="px-6 py-3 text-left">ACTIONS</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-200">
                 {loading ? (
-                  <tr>
-                    <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
-                      Loading delivery challans...
-                    </td>
-                  </tr>
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={`skeleton-${i}`} className="animate-pulse">
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-32"></div></td>
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-24"></div></td>
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                      <td className="px-6 py-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                    </tr>
+                  ))
                 ) : paginatedChallans.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="px-6 py-12 text-center">
-                      <div className="mb-2 text-gray-500">No delivery challans found</div>
+                      <div className="mb-2 text-gray-500 font-medium">No delivery challans found</div>
                       <p className="text-sm text-gray-400">
                         {searchTerm ? "Try adjusting your search terms" : "Create your first delivery challan to get started"}
                       </p>
@@ -458,21 +606,25 @@ export default function DeliveryChallanManagement() {
                     const dcNum = c.challanNumber || c.dcNumber || c.id;
                     const clientName = c.client?.name || c.customerName || "Unknown";
                     const dateStr = c.challanDate || "-";
-                    const total = (c.amount || c.total || 0).toFixed(2);
+                    const total = Number(c.amount ?? c.total ?? 0);
                     const status = c.status || "Sent";
 
                     return (
-                      <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-semibold text-gray-900">{dcNum}</td>
+                      <tr key={c.id} className="text-sm transition-colors hover:bg-gray-50">
+                        <td className="px-6 py-4 font-medium text-gray-900">{dcNum}</td>
                         <td className="px-6 py-4 text-gray-700">{dateStr}</td>
                         <td className="px-6 py-4 text-gray-700">{clientName}</td>
-                        <td className="px-6 py-4 font-medium text-gray-900">₹{Number(total).toLocaleString()}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900">
+                          ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
                         <td className="px-6 py-4 text-gray-700">{c.referenceNumber || c.poNumber || "-"}</td>
                         <td className="px-6 py-4">
                           <span
                             className={`inline-block px-3 py-1 rounded-full text-white text-xs font-medium ${
                               status === "Draft"
                                 ? "bg-gray-500"
+                                : status === "Delivered"
+                                ? "bg-green-500"
                                 : "bg-blue-600"
                             }`}
                           >
@@ -504,6 +656,13 @@ export default function DeliveryChallanManagement() {
                               title="Download"
                             >
                               <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(c.id, dcNum)}
+                              className="p-1 text-gray-600 transition-colors hover:text-red-600"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           </div>
                         </td>

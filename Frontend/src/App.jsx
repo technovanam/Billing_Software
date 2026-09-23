@@ -24,9 +24,62 @@ import InactivityDetector from "./components/InactivityDetector";
 import DataSeeder from "./pages/admin/DataSeeder";
 import ClearAndReseed from "./pages/admin/ClearAndReseed";
 import FYArchives from "./pages/admin/FYArchives";
+import CashierManagement from "./pages/cashiers/CashierManagement";
 import AIAssistant from "./pages/ai/AIAssistant";
 import LandingPage from "./pages/landing/LandingPage";
+import POSPage from "./pages/pos/POSPage";
+import POSLogin from "./pages/pos/POSLogin";
+import POSPortalLayout from "./pages/pos/POSPortalLayout";
+import POSCustomers from "./pages/pos/POSCustomers";
+import POSDashboard from "./pages/pos/POSDashboard";
+import POSProductsCatalog from "./pages/pos/POSProductsCatalog";
 import ScrollToTop from "./components/ScrollToTop";
+import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
+
+import PublicInvoicePayPage from "./pages/pay/PublicInvoicePayPage";
+import TokenPublicPayPage from "./pages/pay/TokenPublicPayPage";
+import PaymentSuccessPage from "./pages/pay/PaymentSuccessPage";
+
+// Super Admin Imports
+import { SuperAdminAuthProvider } from "./context/SuperAdminAuthContext";
+import SuperAdminRoute from "./components/super-admin/SuperAdminRoute";
+import ImpersonationBanner from "./components/super-admin/ImpersonationBanner";
+import SuperAdminLayout from "./pages/super-admin/layout/SuperAdminLayout";
+
+import SuperAdminLogin from "./pages/super-admin/auth/SuperAdminLogin";
+import SuperAdminForgotPassword from "./pages/super-admin/auth/SuperAdminForgotPassword";
+import SuperAdminResetPassword from "./pages/super-admin/auth/SuperAdminResetPassword";
+import SuperAdmin2FA from "./pages/super-admin/auth/SuperAdmin2FA";
+
+import SuperAdminDashboard from "./pages/super-admin/dashboard/SuperAdminDashboard";
+import BusinessesList from "./pages/super-admin/businesses/BusinessesList";
+import BusinessDetail from "./pages/super-admin/businesses/BusinessDetail";
+
+import BusinessUsersList from "./pages/super-admin/platform/BusinessUsersList";
+import BranchesList from "./pages/super-admin/platform/BranchesList";
+import GodownsList from "./pages/super-admin/platform/GodownsList";
+import POSTerminalsList from "./pages/super-admin/platform/POSTerminalsList";
+
+import SubscriptionPlans from "./pages/super-admin/subscriptions/SubscriptionPlans";
+import SubscriptionsList from "./pages/super-admin/subscriptions/SubscriptionsList";
+import PlatformPayments from "./pages/super-admin/subscriptions/PlatformPayments";
+import RevenueAnalytics from "./pages/super-admin/subscriptions/RevenueAnalytics";
+import CouponsManagement from "./pages/super-admin/subscriptions/CouponsManagement";
+
+import PlatformAnalytics from "./pages/super-admin/analytics/PlatformAnalytics";
+import SupportTickets from "./pages/super-admin/support/SupportTickets";
+import Announcements from "./pages/super-admin/support/Announcements";
+
+import AdminUsers from "./pages/super-admin/security/AdminUsers";
+import RolesAndPermissions from "./pages/super-admin/security/RolesAndPermissions";
+import AuditLogs from "./pages/super-admin/security/AuditLogs";
+import LoginActivity from "./pages/super-admin/security/LoginActivity";
+import ActiveSessions from "./pages/super-admin/security/ActiveSessions";
+
+import SystemHealth from "./pages/super-admin/system/SystemHealth";
+import SystemSettings from "./pages/super-admin/system/SystemSettings";
+import BackupsManagement from "./pages/super-admin/system/BackupsManagement";
+import MaintenanceMode from "./pages/super-admin/system/MaintenanceMode";
 
 // ── Warehouse / Godown module ────────────────────────────────────────────────
 import WarehouseLayout from "./layouts/WarehouseLayout";
@@ -44,19 +97,48 @@ import WarehouseSetup from "./pages/warehouse/WarehouseSetup";
 
 import PropTypes from 'prop-types';
 
+function POSProtectedRoute({ children }) {
+  const { user, authInitialized } = useContext(AuthContext);
+  const cashierSession = localStorage.getItem("pos_cashier_session");
+
+  if (cashierSession) {
+    return <>{children}</>;
+  }
+
+  if (!authInitialized) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return <>{children}</>;
+  }
+
+  return <Navigate to="/signin?role=cashier" replace />;
+}
+
+POSProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
 function ProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
 
-  // Wait for Firebase to initialize authentication before making decisions
   if (!authInitialized) {
-    return null; // Don't show anything while Firebase initializes
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+      </div>
+    );
   }
 
   if (!user) {
     return <Navigate to="/signin" replace />;
   }
 
-  // ✅ 2. RENDER THE DETECTOR ALONGSIDE YOUR PROTECTED CONTENT
   return (
     <>
       <InactivityDetector />
@@ -83,8 +165,10 @@ export default function App() {
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/signin" element={<AuthTransition key="signin" />} />
                   <Route path="/signup" element={<AuthTransition key="signup" />} />
+                  <Route path="/pay/:userId/*" element={<PublicInvoicePayPage />} />
+                  <Route path="/pay/invoice/*" element={<PublicInvoicePayPage />} />
 
-                  {/* Dedicated Warehouse Portal Routes (Completely separate from Admin) */}
+                  {/* Dedicated Warehouse Portal Routes */}
                   <Route
                     path="/warehouse/*"
                     element={
@@ -120,6 +204,8 @@ export default function App() {
                               <Route path="/dashboard" element={<Dashboard />} />
                               <Route path="/invoices" element={<Invoices />} />
                               <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                              <Route path="/challans" element={<DeliveryChallans />} />
+                              <Route path="/challans/create" element={<CreateDeliveryChallanPage />} />
                               <Route path="/delivery-challans" element={<DeliveryChallans />} />
                               <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
                               <Route path="/recurring-invoices" element={<RecurringInvoices />} />

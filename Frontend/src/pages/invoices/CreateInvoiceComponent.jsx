@@ -95,28 +95,6 @@ export default function CreateInvoiceComponent({
                     <label className="block text-sm text-gray-700">
                       Invoice Number <span className="text-red-500">*</span>
                     </label>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-gray-500 font-medium select-none">Auto Numbering</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleToggleAutoInvoice
-                            ? handleToggleAutoInvoice(!invoiceData.isAutoInvoice)
-                            : setInvoiceData((prev) => ({ ...prev, isAutoInvoice: !prev.isAutoInvoice }))
-                        }
-                        className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                          invoiceData.isAutoInvoice !== false ? "bg-blue-600" : "bg-gray-300"
-                        }`}
-                        title="Toggle Auto Invoice Numbering (Synced with System Settings)"
-                      >
-                        <span
-                          aria-hidden="true"
-                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                            invoiceData.isAutoInvoice !== false ? "translate-x-4" : "translate-x-0"
-                          }`}
-                        />
-                      </button>
-                    </div>
                   </div>
                   <input
                     type="text"
@@ -129,11 +107,6 @@ export default function CreateInvoiceComponent({
                     }
                     className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
                   />
-                  {invoiceData.isAutoInvoice !== false && (
-                    <p className="text-[11px] text-blue-600 mt-1 flex items-center gap-1 font-medium">
-                      ✓ Auto-numbered (Synced with System Settings)
-                    </p>
-                  )}
                 </div>
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
@@ -141,6 +114,7 @@ export default function CreateInvoiceComponent({
                   </label>
                   <input
                     type="date"
+                    max="9999-12-31"
                     value={invoiceData.invoiceDate}
                     onChange={(e) =>
                       setInvoiceData((prev) => ({
@@ -173,6 +147,7 @@ export default function CreateInvoiceComponent({
                   </label>
                   <input
                     type="date"
+                    max="9999-12-31"
                     value={invoiceData.poDate}
                     onChange={(e) =>
                       setInvoiceData((prev) => ({
@@ -205,6 +180,7 @@ export default function CreateInvoiceComponent({
                   </label>
                   <input
                     type="date"
+                    max="9999-12-31"
                     value={invoiceData.dcDate}
                     onChange={(e) =>
                       setInvoiceData((prev) => ({
@@ -221,6 +197,7 @@ export default function CreateInvoiceComponent({
                   </label>
                   <input
                     type="date"
+                    max="9999-12-31"
                     value={invoiceData.dueDate}
                     onChange={(e) =>
                       setInvoiceData((prev) => ({

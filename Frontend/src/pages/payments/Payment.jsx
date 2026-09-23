@@ -401,6 +401,7 @@ const PaymentRow = memo(({
   client,
   amount,
   received,
+  pending,
   dueDate,
   status,
   overdueDays,
@@ -416,9 +417,12 @@ const PaymentRow = memo(({
       </td>
       <td className="py-3 px-4 text-sm text-gray-800">{client}</td>
       <td className="py-3 px-4 text-sm">
-        <p className="font-medium text-gray-900">{amount}</p>
+        <p className="font-semibold text-gray-900">{amount}</p>
         {received && (
-          <p className="text-xs text-gray-500">Received: {received}</p>
+          <p className="text-xs text-emerald-600 font-medium mt-0.5">Received: {received}</p>
+        )}
+        {pending && (
+          <p className="text-xs text-red-600 font-bold mt-0.5">Balance Due: {pending}</p>
         )}
       </td>
       <td
@@ -611,34 +615,68 @@ PendingPaymentCard.displayName = 'PendingPaymentCard';
 
 // PERFORMANCE: Memoized PaidPaymentRow to prevent unnecessary re-renders
 const PaidPaymentRow = memo(({
+  id,
   invoiceNo,
   client,
   amount,
+  received,
   paymentDate,
   method,
   transactionId,
+  status,
   onEdit,
-}) => (
-  <tr className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
-    <td className="py-3 px-4 text-sm font-medium text-gray-900">{invoiceNo}</td>
-    <td className="py-3 px-4 text-sm text-gray-800">{client}</td>
-    <td className="py-3 px-4 text-sm font-medium text-green-600">{amount}</td>
-    <td className="py-3 px-4 text-sm text-gray-600">{paymentDate}</td>
-    <td className="py-3 px-4 text-sm text-gray-800">{method}</td>
-    <td className="py-3 px-4 text-sm text-gray-800 font-mono">
-      {transactionId || "-"}
-    </td>
-    <td className="py-3 px-4">
-      <button
-        onClick={() => onEdit({ invoiceNo, client, amount, paymentDate, method, transactionId, status: "Paid" })}
-        className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
-        title="Edit Payment"
-      >
-        <Edit size={16} />
-      </button>
-    </td>
-  </tr>
-));
+  onViewHistory,
+}) => {
+  const numAmount = Number(amount) || 0;
+  const numReceived = Number(received) || 0;
+  const isPartial = status === "Partial" || (numReceived > 0 && numReceived < numAmount);
+
+  return (
+    <tr className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50">
+      <td className="py-3 px-4 text-sm font-medium text-gray-900">{invoiceNo}</td>
+      <td className="py-3 px-4 text-sm text-gray-800">{client}</td>
+      <td className="py-3 px-4 text-sm font-medium">
+        {isPartial ? (
+          <div>
+            <p className="font-semibold text-gray-900">₹{numAmount.toLocaleString('en-IN')}</p>
+            <p className="text-xs text-emerald-600 font-medium mt-0.5">Received: ₹{numReceived.toLocaleString('en-IN')}</p>
+            <p className="text-xs text-red-600 font-bold mt-0.5">Balance Due: ₹{Math.max(0, numAmount - numReceived).toLocaleString('en-IN')}</p>
+            <span className="inline-block mt-1 text-[10px] font-semibold bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">
+              Partial Payment
+            </span>
+          </div>
+        ) : (
+          <p className="font-bold text-emerald-600">₹{numAmount.toLocaleString('en-IN')}</p>
+        )}
+      </td>
+      <td className="py-3 px-4 text-sm text-gray-600">{paymentDate || "-"}</td>
+      <td className="py-3 px-4 text-sm text-gray-800">{method || "Cash"}</td>
+      <td className="py-3 px-4 text-sm text-gray-800 font-mono">
+        {transactionId || "-"}
+      </td>
+      <td className="py-3 px-4 flex items-center gap-2">
+        {onViewHistory && (
+          <button
+            onClick={() => onViewHistory({ id, invoiceNo, amount: numAmount })}
+            className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
+            title="View History"
+          >
+            <Clock size={16} />
+          </button>
+        )}
+        {onEdit && (
+          <button
+            onClick={() => onEdit({ id, invoiceNo, client, amount: numAmount, received: numReceived, paymentDate, method, transactionId, status })}
+            className="p-1 text-gray-600 hover:text-blue-600 transition-colors"
+            title="Edit Payment"
+          >
+            <Edit size={16} />
+          </button>
+        )}
+      </td>
+    </tr>
+  );
+});
 
 PaidPaymentRow.displayName = 'PaidPaymentRow';
 
@@ -724,27 +762,33 @@ const PaymentsPage = () => {
     (filterReportType !== "All Time") ||
     filterClientId;
 
-  // Memoized status calculation function matching InvoiceManagement.jsx
   const getDynamicInvoiceStatus = useCallback((invoice) => {
-    if (invoice.status === "Paid" || invoice.status === "paid") return "Paid";
     if (invoice.status === "Draft" || invoice.status === "draft") return "Draft";
 
-    // Check for partial payment - if some amount is received but not fully paid
-    const received = invoice.paidAmount || invoice.received || 0;
-    const total = invoice.total || invoice.amount || 0;
-    const tds = invoice.tdsAmount || 0;
-    
+    const received = Number(invoice.paidAmount || invoice.received || 0);
+    const total = Number(invoice.total || invoice.amount || 0);
+    const tds = Number(invoice.tdsAmount || 0);
+
+    if (total > 0 && (received + tds >= total || Math.abs(total - (received + tds)) < 1)) {
+      return "Paid";
+    }
+
+    if (invoice.status === "Paid" || invoice.status === "paid") return "Paid";
+
     if (received > 0 && received + tds < total) {
       return "Partial";
     }
 
     const today = new Date();
-    const dueDate = new Date(invoice.dueDate);
-    today.setHours(0, 0, 0, 0);
-    dueDate.setHours(0, 0, 0, 0);
+    const dueDate = invoice.dueDate ? new Date(invoice.dueDate) : null;
+    if (dueDate && !isNaN(dueDate.getTime())) {
+      today.setHours(0, 0, 0, 0);
+      dueDate.setHours(0, 0, 0, 0);
 
-    if (invoice.dueDate && today > dueDate) return "Overdue";
-    return "Unpaid"; // This handles "sent", "unpaid", and any other status as "Unpaid"
+      if (today > dueDate) return "Overdue";
+    }
+
+    return "Unpaid";
   }, []);
 
   // Memoized calculation of paymentsState from invoices and payments
@@ -757,11 +801,9 @@ const PaymentsPage = () => {
         inv.customerName ||
         inv.customer ||
         "Unknown Client";
-      const amount = inv.total || inv.amount || 0;
+      const amount = Number.parseFloat(inv.total || inv.amount || 0) || 0;
 
       // Calculate received amount - use paidAmount from invoice as primary source
-      // This is the source of truth updated by confirmMarkAsPaid and handleSavePayment
-      // Fallback to calculating from payments subcollection if paidAmount is not set
       let received = 0;
       if (inv.paidAmount !== undefined && inv.paidAmount !== null) {
         received = Number.parseFloat(inv.paidAmount) || 0;
@@ -769,7 +811,7 @@ const PaymentsPage = () => {
         // Fallback: Calculate from payments subcollection
         const safePayments = Array.isArray(allPayments) ? allPayments : [];
         const invoicePayments = safePayments.filter(
-          (payment) => payment.invoiceId === inv.id
+          (payment) => payment.invoiceId === inv.id || payment.invoiceNo === invoiceNo
         );
         received = invoicePayments.reduce(
           (sum, payment) => sum + (payment.amount || 0),
@@ -777,9 +819,24 @@ const PaymentsPage = () => {
         );
       }
 
-      const paymentDate = inv.paymentDate || null;
-      const method = inv.paymentMethod || null;
-      const transactionId = inv.transactionId || null;
+      const safePayments = Array.isArray(allPayments) ? allPayments : [];
+      const invoicePayments = safePayments.filter(
+        (p) => p.invoiceId === inv.id || p.invoiceNo === invoiceNo
+      );
+      const latestPayment = invoicePayments.length > 0 ? invoicePayments[invoicePayments.length - 1] : null;
+
+      let pDate = inv.paymentDate || latestPayment?.paymentDate || null;
+      if (!pDate && received > 0 && inv.updatedAt) {
+        if (typeof inv.updatedAt === 'string') {
+          pDate = inv.updatedAt;
+        } else if (inv.updatedAt?.toDate) {
+          pDate = inv.updatedAt.toDate().toLocaleDateString('en-GB');
+        }
+      }
+
+      const paymentDate = pDate || "-";
+      const method = inv.paymentMethod || latestPayment?.method || (received > 0 ? "Cash" : "-");
+      const transactionId = inv.transactionId || latestPayment?.transactionId || "-";
       const tdsAmount = inv.tdsAmount || 0;
       const dueDate = inv.dueDate || "-";
       const status = getDynamicInvoiceStatus(inv);
@@ -795,7 +852,6 @@ const PaymentsPage = () => {
         paymentDate,
         method,
         transactionId,
-
         id: inv.id,
         clientId: inv.clientId || inv.client?.id,
         invoiceDate: inv.invoiceDate || inv.createdAt,
@@ -981,6 +1037,7 @@ const PaymentsPage = () => {
           paidAmount: newPaidAmount,
           tdsAmount: newTdsAmount,
           paymentMethod: method,
+          paymentDate: today,
         };
 
         if (transactionId) updateData.transactionId = transactionId;
@@ -1082,6 +1139,7 @@ const PaymentsPage = () => {
         paidAmount: newTotalPaidAmount,
         tdsAmount: newTotalTdsAmount,
         status: newStatus,
+        paymentDate: today,
       };
 
       // Only set paymentDate if invoice is fully paid
@@ -1131,7 +1189,7 @@ const PaymentsPage = () => {
       }
 
       // Check tab-specific status requirements
-      if (activeTab === "Paid" && payment.status !== "Paid") return false;
+      if (activeTab === "Paid" && payment.status !== "Paid" && (payment.received || 0) <= 0) return false;
       if (activeTab === "Overdue" && payment.status !== "Overdue") return false;
       if (activeTab === "Pending" && payment.status !== "Unpaid" && payment.status !== "Partial") return false;
       // "All Payments" tab doesn't filter by status
@@ -1345,8 +1403,8 @@ const PaymentsPage = () => {
                 <PaidPaymentRow
                   key={payment.invoiceNo}
                   {...payment}
-                  amount={`₹${payment.amount.toLocaleString()}`}
                   onEdit={handleEditPayment}
+                  onViewHistory={handleViewHistory}
                 />
               ))}
             </tbody>
@@ -1399,21 +1457,29 @@ const PaymentsPage = () => {
             </tr>
           </thead>
           <tbody>
-            {paginatedPayments.map((payment) => (
-              <PaymentRow
-                key={payment.invoiceNo}
-                {...payment}
-                amount={`₹${payment.amount.toLocaleString()}`}
-                received={
-                  payment.received
-                    ? `₹${payment.received.toLocaleString()}`
-                    : null
-                }
-                onEdit={null} // No edit action in All Payments view
-                onViewHistory={handleViewHistory}
-                id={payment.id} // Pass ID for history query
-              />
-            ))}
+            {paginatedPayments.map((payment) => {
+              const pendingBal = Math.max(0, (payment.amount || 0) - (payment.received || 0) - (payment.tdsAmount || 0));
+              return (
+                <PaymentRow
+                  key={payment.invoiceNo}
+                  {...payment}
+                  amount={`₹${payment.amount.toLocaleString()}`}
+                  received={
+                    payment.received
+                      ? `₹${payment.received.toLocaleString()}`
+                      : null
+                  }
+                  pending={
+                    payment.received && pendingBal > 0
+                      ? `₹${pendingBal.toLocaleString()}`
+                      : null
+                  }
+                  onEdit={null} // No edit action in All Payments view
+                  onViewHistory={handleViewHistory}
+                  id={payment.id} // Pass ID for history query
+                />
+              );
+            })}
           </tbody>
         </table>
         {filteredPayments.length === 0 && (
@@ -1627,6 +1693,7 @@ const PaymentsPage = () => {
                         <div className="relative">
                           <input
                             type="date"
+                            max="9999-12-31"
                             value={filterFromDate}
                             onChange={(e) => setFilterFromDate(e.target.value)}
                             className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1638,6 +1705,7 @@ const PaymentsPage = () => {
                         <div className="relative">
                           <input
                             type="date"
+                            max="9999-12-31"
                             value={filterToDate}
                             onChange={(e) => setFilterToDate(e.target.value)}
                             className="w-full bg-gray-50 border border-gray-200 text-gray-700 py-2 px-3 rounded-lg leading-tight focus:outline-none focus:bg-white focus:border-blue-500 text-sm"
@@ -1891,13 +1959,17 @@ PendingPaymentCard.propTypes = {
 };
 
 PaidPaymentRow.propTypes = {
+  id: PropTypes.string,
   invoiceNo: PropTypes.string.isRequired,
   client: PropTypes.string.isRequired,
   amount: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  received: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   paymentDate: PropTypes.string,
   method: PropTypes.string,
   transactionId: PropTypes.string,
+  status: PropTypes.string,
   onEdit: PropTypes.func.isRequired,
+  onViewHistory: PropTypes.func,
 };
 
 export default PaymentsPage;

@@ -193,6 +193,433 @@ app.post('/recurring-invoices/test-email', authenticateRequest, async (req, res)
     }
 });
 
+// Simple Memory Rate Limiter for Public Endpoints
+const rateLimitMap = new Map();
+function rateLimiter(req, res, next) {
+    const ip = req.ip || req.headers['x-forwarded-for'] || 'global';
+    const now = Date.now();
+    const windowMs = 15 * 60 * 1000; // 15 min
+    const maxHits = 60;
+
+    const hitData = rateLimitMap.get(ip) || { count: 0, resetTime: now + windowMs };
+    if (now > hitData.resetTime) {
+        hitData.count = 1;
+        hitData.resetTime = now + windowMs;
+    } else {
+        hitData.count += 1;
+    }
+    rateLimitMap.set(ip, hitData);
+
+    if (hitData.count > maxHits) {
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+    next();
+}
+
+// Helper: Find invoice by token or identifier across user subcollections
+async function findInvoiceByToken(token) {
+    requireAdmin();
+    const db = firestore();
+    if (!token) return null;
+
+    const rawToken = String(token).trim();
+    const decoded = decodeURIComponent(rawToken);
+    const normalizedSlash = decoded.replace(/_/g, '/');
+    const normalizedUnderscore = decoded.replace(/\//g, '_');
+
+    // 1. Try collectionGroup query
+    try {
+        let snapshot = await db.collectionGroup('invoices').where('paymentToken', '==', rawToken).get();
+        if (snapshot.empty && decoded !== rawToken) {
+            snapshot = await db.collectionGroup('invoices').where('paymentToken', '==', decoded).get();
+        }
+        if (snapshot.empty) {
+            snapshot = await db.collectionGroup('invoices').where('invoiceNumber', '==', decoded).get();
+        }
+        if (snapshot.empty) {
+            snapshot = await db.collectionGroup('invoices').where('invoiceNumber', '==', normalizedSlash).get();
+        }
+        if (snapshot.empty) {
+            snapshot = await db.collectionGroup('invoices').where('invoiceNumber', '==', normalizedUnderscore).get();
+        }
+        if (!snapshot.empty) {
+            const doc = snapshot.docs[0];
+            const data = doc.data();
+            const userId = doc.ref.parent.parent ? doc.ref.parent.parent.id : null;
+            return { docRef: doc.ref, docId: doc.id, userId, data };
+        }
+    } catch (e) {
+        console.warn('CollectionGroup index notice, using subcollection scan:', e.message);
+    }
+
+    // 2. Robust Fallback: Scan user invoice subcollections directly (no index required!)
+    try {
+        const usersSnap = await db.collection('users').get();
+        for (const userDoc of usersSnap.docs) {
+            const userId = userDoc.id;
+            const invSnap = await db.collection('users').doc(userId).collection('invoices').get();
+            for (const doc of invSnap.docs) {
+                const data = doc.data();
+                const invNum = data.invoiceNumber || '';
+                const invNumUnderscore = invNum.replace(/\//g, '_');
+                const pToken = data.paymentToken || '';
+                if (
+                    doc.id === rawToken ||
+                    doc.id === decoded ||
+                    pToken === rawToken ||
+                    pToken === decoded ||
+                    invNum === decoded ||
+                    invNum === normalizedSlash ||
+                    invNumUnderscore === decoded ||
+                    invNumUnderscore === normalizedUnderscore ||
+                    (decoded && decoded.includes(invNumUnderscore))
+                ) {
+                    return { docRef: doc.ref, docId: doc.id, userId, data };
+                }
+            }
+        }
+    } catch (err) {
+        console.error('User subcollection scan error:', err);
+    }
+
+    return null;
+}
+
+// -----------------------------------------------------------------------------
+// PUBLIC PAYMENT LINK ENDPOINTS
+// -----------------------------------------------------------------------------
+
+// 1. Fetch public invoice by token
+app.get('/api/public/payment/invoice/:token', rateLimiter, async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!token) return res.status(400).json({ error: 'Token is required' });
+
+        const inv = await findInvoiceByToken(token);
+        if (!inv) {
+            return res.status(404).json({ success: false, status: 'INVALID', error: 'INVALID_OR_DISABLED_TOKEN' });
+        }
+
+        const data = inv.data;
+
+        // Check if token disabled explicitly
+        if (data.paymentTokenStatus === 'DISABLED' || data.paymentLinkDisabled === true) {
+            return res.status(403).json({ success: false, status: 'DISABLED', invoiceNumber: data.invoiceNumber, message: 'This payment link has been disabled by the administrator.' });
+        }
+
+        // Check if cancelled
+        if ((data.status || '').toLowerCase() === 'cancelled') {
+            return res.status(400).json({ success: false, status: 'CANCELLED', invoiceNumber: data.invoiceNumber, message: 'This invoice is no longer payable. Please contact company.' });
+        }
+
+        // Check if already paid
+        const total = Number(data.amount || data.total || 0);
+        const paid = Number(data.paidAmount || 0);
+        const isPaidStatus = (data.status || '').toLowerCase() === 'paid' || (data.paymentStatus || '').toUpperCase() === 'PAID';
+
+        if (isPaidStatus || paid >= total) {
+            return res.json({
+                success: false,
+                status: 'PAID',
+                invoiceNumber: data.invoiceNumber,
+                amountPaid: paid || total,
+                gatewayPaymentId: data.gatewayPaymentId || data.transactionId || 'pay_completed',
+                paidAt: data.paidAt || data.updatedAt || new Date().toISOString(),
+            });
+        }
+
+        // Check if token / invoice due date expired
+        if (data.paymentTokenExpiresAt) {
+            const expDate = new Date(data.paymentTokenExpiresAt);
+            if (!isNaN(expDate.getTime()) && new Date() > expDate) {
+                return res.json({ success: false, status: 'EXPIRED', invoiceNumber: data.invoiceNumber, message: 'This payment link has expired. Please contact the company for a new payment link.' });
+            }
+        }
+
+        // Fetch company profile for branding
+        let companyName = 'ESA ENGINEERING WORKS';
+        let logoURL = '';
+        let address = '';
+        let phone = '';
+        let gstin = '';
+        if (inv.userId) {
+            const userDoc = await firestore().collection('users').doc(inv.userId).get();
+            if (userDoc.exists) {
+                const uData = userDoc.data();
+                companyName = uData.companyName || companyName;
+                logoURL = uData.logoURL || logoURL;
+                address = uData.address || address;
+                phone = uData.phone || phone;
+                gstin = uData.gstin || gstin;
+            }
+        }
+
+        const formatDate = (val) => {
+            if (!val) return 'N/A';
+            if (typeof val === 'string') return val;
+            if (val._seconds) return new Date(val._seconds * 1000).toISOString().slice(0, 10);
+            if (typeof val.toDate === 'function') return val.toDate().toISOString().slice(0, 10);
+            if (val instanceof Date) return val.toISOString().slice(0, 10);
+            return String(val);
+        };
+
+        const balanceDue = Math.max(0, total - paid);
+
+        res.json({
+            success: true,
+            status: 'UNPAID',
+            token: data.paymentToken || token,
+            invoiceId: inv.docId,
+            userId: inv.userId,
+            invoiceNumber: data.invoiceNumber,
+            invoiceDate: formatDate(data.invoiceDate),
+            customerName: data.client?.name || data.clientName || data.customerName || 'Customer',
+            client: data.client || { name: data.clientName || data.customerName || 'Customer' },
+            items: data.items || data.products || [],
+            poNumber: data.poNumber || '',
+            dcNumber: data.dcNumber || '',
+            cgst: data.cgst || 0,
+            sgst: data.sgst || 0,
+            igst: data.igst || 0,
+            isRoundOff: data.isRoundOff || false,
+            amount: total,
+            balanceDue,
+            dueDate: formatDate(data.dueDate),
+            companyName,
+            logoURL,
+            companyAddress: address,
+            companyPhone: phone,
+            companyGstin: gstin,
+        });
+    } catch (error) {
+        console.error('Public fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch payment details' });
+    }
+});
+
+// 2. Create Razorpay order from Token (Server-calculated amount)
+app.post('/api/public/payment/create-order', rateLimiter, async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token) return res.status(400).json({ error: 'Payment token is required' });
+
+        const inv = await findInvoiceByToken(token);
+        if (!inv) return res.status(404).json({ error: 'Invalid or expired payment link' });
+
+        const data = inv.data;
+
+        if (data.paymentTokenStatus === 'DISABLED' || data.paymentLinkDisabled === true) {
+            return res.status(403).json({ error: 'Payment link is disabled' });
+        }
+        if ((data.status || '').toLowerCase() === 'cancelled') {
+            return res.status(400).json({ error: 'Invoice is cancelled and cannot be paid' });
+        }
+
+        const total = Number(data.amount || data.total || 0);
+        const paid = Number(data.paidAmount || 0);
+        const serverBalanceDue = Math.max(0, total - paid);
+
+        if ((data.status || '').toLowerCase() === 'paid' || serverBalanceDue <= 0) {
+            return res.status(400).json({ error: 'Invoice is already paid in full' });
+        }
+
+        // Create Gateway Order with server-side amount
+        const orderOptions = {
+            amount: Math.round(serverBalanceDue * 100), // amount in paise
+            currency: 'INR',
+            receipt: `inv_${inv.docId.slice(0, 10)}`,
+            notes: {
+                token: token,
+                invoiceId: inv.docId,
+                userId: inv.userId || '',
+                invoiceNumber: data.invoiceNumber || '',
+            },
+        };
+
+        const order = await razorpay.orders.create(orderOptions);
+
+        // Store gatewayOrderId on the invoice
+        await inv.docRef.update({
+            gatewayOrderId: order.id,
+            paymentStatus: 'PROCESSING',
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        res.json({
+            success: true,
+            orderId: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            keyId: RAZORPAY_KEY_ID,
+        });
+    } catch (error) {
+        console.error('Create Payment Order Error:', error);
+        res.status(500).json({ error: error.message || 'Failed to create payment order' });
+    }
+});
+
+// Record public payment (Razorpay online or Manual UTR submission)
+app.post('/api/public/payment/record', rateLimiter, async (req, res) => {
+    try {
+        const { token, invoiceId, userId, amount, paymentMethod, transactionId } = req.body;
+        const targetIdentifier = token || invoiceId;
+        if (!targetIdentifier) return res.status(400).json({ error: 'Token or invoice ID is required' });
+
+        const inv = await findInvoiceByToken(targetIdentifier);
+        if (!inv) return res.status(404).json({ error: 'Invoice not found' });
+
+        const db = firestore();
+        const data = inv.data;
+        const targetUserId = inv.userId || userId;
+        const invoiceTotal = Number(data.amount || data.total || 0);
+        const currentPaid = Number(data.paidAmount || 0);
+        const amountReceived = Number(amount) || (invoiceTotal - currentPaid);
+        const newPaidAmount = currentPaid + amountReceived;
+
+        const isFullyPaid = Math.abs(invoiceTotal - newPaidAmount) < 1 || newPaidAmount >= invoiceTotal;
+        const newStatus = isFullyPaid ? 'Paid' : (newPaidAmount > 0 ? 'Partial' : 'Unpaid');
+
+        const todayFormatted = new Date().toLocaleDateString('en-GB');
+
+        // 1. Add payment record to users/{targetUserId}/payments
+        if (targetUserId) {
+            await db.collection('users').doc(targetUserId).collection('payments').add({
+                invoiceId: inv.docId,
+                invoiceNumber: data.invoiceNumber || '',
+                customerName: data.client?.name || data.clientName || data.customerName || 'Customer',
+                clientId: data.clientId || data.client?.id || '',
+                amount: amountReceived,
+                paymentMethod: paymentMethod || 'Online Payment',
+                transactionId: transactionId || `TXN-${Date.now()}`,
+                paymentDate: todayFormatted,
+                status: 'Completed',
+                notes: `Paid via Public Payment Portal (${paymentMethod || 'Online'})`,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
+
+        // 2. Update invoice document
+        const updatePayload = {
+            status: newStatus,
+            paidAmount: newPaidAmount,
+            paymentMethod: paymentMethod || 'Online Payment',
+            transactionId: transactionId || `TXN-${Date.now()}`,
+            paymentDate: todayFormatted,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        };
+
+        await inv.docRef.update(updatePayload);
+
+        console.log(`Payment recorded for invoice ${data.invoiceNumber}: ${amountReceived} INR. Status: ${newStatus}`);
+        res.json({ success: true, status: newStatus, paidAmount: newPaidAmount });
+    } catch (error) {
+        console.error('Public payment record error:', error);
+        res.status(500).json({ error: error.message || 'Failed to record payment' });
+    }
+});
+
+// 3. Webhook Endpoint with Signature Verification & Idempotency
+const WEBHOOK_SECRET = process.env.PAYMENT_GATEWAY_WEBHOOK_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET || 'whsec_test_secret_key_12345';
+
+app.post('/api/payment/webhook', async (req, res) => {
+    try {
+        const signature = req.headers['x-razorpay-signature'];
+        if (!signature) {
+            return res.status(400).json({ error: 'Missing webhook signature' });
+        }
+
+        const bodyString = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+        const expectedSignature = crypto
+            .createHmac('sha256', WEBHOOK_SECRET)
+            .update(bodyString)
+            .digest('hex');
+
+        if (expectedSignature !== signature) {
+            console.warn('Invalid Webhook Signature Signature Received:', signature);
+            return res.status(400).json({ error: 'Invalid webhook signature' });
+        }
+
+        const event = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+        console.log(`Received Webhook Event: ${event.event}`);
+
+        if (event.event === 'payment.captured' || event.event === 'order.paid') {
+            const payment = event.payload?.payment?.entity || {};
+            const paymentId = payment.id;
+            const orderId = payment.order_id;
+            const amountInRupees = (payment.amount || 0) / 100;
+            const method = payment.method || 'Razorpay';
+            const notes = payment.notes || {};
+            const token = notes.token;
+
+            if (!paymentId) return res.json({ status: 'ok', message: 'No payment id' });
+
+            const db = firestore();
+
+            // IDEMPOTENCY CHECK: Has this payment already been processed?
+            const existingPayments = await db.collectionGroup('payments').where('gatewayPaymentId', '==', paymentId).get();
+            if (!existingPayments.empty) {
+                console.log(`Webhook Idempotency: Payment ${paymentId} already processed. Skipping.`);
+                return res.status(200).json({ status: 'ok', message: 'Already processed' });
+            }
+
+            // Find matching invoice
+            let inv = null;
+            if (token) {
+                inv = await findInvoiceByToken(token);
+            }
+            if (!inv && orderId) {
+                const snapshot = await db.collectionGroup('invoices').where('gatewayOrderId', '==', orderId).get();
+                if (!snapshot.empty) {
+                    const doc = snapshot.docs[0];
+                    const userId = doc.ref.parent.parent ? doc.ref.parent.parent.id : null;
+                    inv = { docRef: doc.ref, docId: doc.id, userId, data: doc.data() };
+                }
+            }
+
+            if (inv) {
+                const invData = inv.data;
+                const userId = inv.userId;
+
+                // Add payment record under users/{userId}/payments
+                if (userId) {
+                    await db.collection('users').doc(userId).collection('payments').add({
+                        invoiceId: inv.docId,
+                        invoiceNumber: invData.invoiceNumber,
+                        customerName: invData.client?.name || invData.customerName || 'Customer',
+                        amount: amountInRupees,
+                        currency: 'INR',
+                        paymentMethod: method,
+                        gatewayPaymentId: paymentId,
+                        gatewayOrderId: orderId || '',
+                        paymentStatus: 'PAID',
+                        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                        notes: `Paid via Gateway Webhook (${event.event})`,
+                    });
+                }
+
+                // Update invoice document status to PAID
+                await inv.docRef.update({
+                    status: 'Paid',
+                    paymentStatus: 'PAID',
+                    paidAmount: amountInRupees,
+                    gatewayPaymentId: paymentId,
+                    gatewayOrderId: orderId || '',
+                    paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                console.log(`Invoice ${invData.invoiceNumber} updated to PAID via webhook.`);
+            }
+        }
+
+        res.status(200).json({ status: 'ok' });
+    } catch (error) {
+        console.error('Webhook Error:', error);
+        res.status(500).json({ error: 'Internal Webhook Error' });
+    }
+});
+
 // Endpoint to create a Razorpay order
 app.post('/create-razorpay-order', async (req, res) => {
   try {
