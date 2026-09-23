@@ -35,6 +35,10 @@ import POSProductsCatalog from "./pages/pos/POSProductsCatalog";
 import ScrollToTop from "./components/ScrollToTop";
 import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
 
+import PublicInvoicePayPage from "./pages/pay/PublicInvoicePayPage";
+import TokenPublicPayPage from "./pages/pay/TokenPublicPayPage";
+import PaymentSuccessPage from "./pages/pay/PaymentSuccessPage";
+
 // Super Admin Imports
 import { SuperAdminAuthProvider } from "./context/SuperAdminAuthContext";
 import SuperAdminRoute from "./components/super-admin/SuperAdminRoute";
@@ -82,12 +86,10 @@ function POSProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
   const cashierSession = localStorage.getItem("pos_cashier_session");
 
-  // If cashier already has active shift session in localStorage, immediately grant access
   if (cashierSession) {
     return <>{children}</>;
   }
 
-  // If auth is still initializing, show a friendly spinner instead of empty blank screen
   if (!authInitialized) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
@@ -96,12 +98,10 @@ function POSProtectedRoute({ children }) {
     );
   }
 
-  // If user is signed in with Firebase (e.g. admin or counter staff), grant access
   if (user) {
     return <>{children}</>;
   }
 
-  // Otherwise redirect to single login in Cashier mode
   return <Navigate to="/signin?role=cashier" replace />;
 }
 
@@ -112,7 +112,6 @@ POSProtectedRoute.propTypes = {
 function ProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
 
-  // Wait for Firebase to initialize authentication before making decisions
   if (!authInitialized) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
@@ -125,7 +124,6 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/signin" replace />;
   }
 
-  // ✅ 2. RENDER THE DETECTOR ALONGSIDE YOUR PROTECTED CONTENT
   return (
     <>
       <InactivityDetector />
@@ -139,7 +137,6 @@ ProtectedRoute.propTypes = {
 };
 
 export default function App() {
-  // Global Enter key navigation across all forms in the application
   useFormKeyboardNavigation();
 
   return (
@@ -200,6 +197,12 @@ export default function App() {
                   <Route path="/login" element={<Navigate to="/signin" replace />} />
                   <Route path="/signup" element={<AuthTransition key="signup" />} />
 
+                  {/* Public Invoice Payment Routes */}
+                  <Route path="/pay/:token" element={<TokenPublicPayPage />} />
+                  <Route path="/payment/success" element={<PaymentSuccessPage />} />
+                  <Route path="/pay/:userId/*" element={<PublicInvoicePayPage />} />
+                  <Route path="/pay/invoice/*" element={<PublicInvoicePayPage />} />
+
                   {/* Single Login Redirect for POS */}
                   <Route path="/pos/login" element={<Navigate to="/signin?role=cashier" replace />} />
 
@@ -231,6 +234,8 @@ export default function App() {
                               <Route path="/dashboard" element={<Dashboard />} />
                               <Route path="/invoices" element={<Invoices />} />
                               <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                              <Route path="/challans" element={<DeliveryChallans />} />
+                              <Route path="/challans/create" element={<CreateDeliveryChallanPage />} />
                               <Route path="/delivery-challans" element={<DeliveryChallans />} />
                               <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
                               <Route path="/recurring-invoices" element={<RecurringInvoices />} />

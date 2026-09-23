@@ -19,7 +19,7 @@ service cloud.firestore {
     // User document: company profile (signup). Only owner; validate shape/size.
     // -------------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if true;
       // Profile write only with validated fields (no arbitrary client data)
       allow create, update: if isOwner(userId)
         && request.resource.data.keys().hasOnly([
@@ -45,10 +45,12 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       match /invoices/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if true;
+        allow write: if true;
       }
       match /payments/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if true;
+        allow write: if true;
       }
       match /expenses/{docId} {
         allow read, write: if isOwner(userId);
@@ -57,7 +59,8 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       match /settings/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if true;
+        allow write: if isOwner(userId);
       }
       match /cashiers/{docId} {
         allow read, write: if isOwner(userId);

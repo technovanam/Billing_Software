@@ -176,7 +176,7 @@ export default function SuperAdminLayout() {
 
       {/* Sidebar - Pure White Light Theme Matching Billing Portal */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 bg-white border-r border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 flex flex-col ${
+        className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 flex flex-col overflow-hidden ${
           collapsed ? "w-20" : "w-64"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
@@ -217,7 +217,7 @@ export default function SuperAdminLayout() {
         </div>
 
         {/* Navigation items list */}
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin">
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-4 space-y-6 scrollbar-thin">
           {navGroups.map((group, gIdx) => (
             <div key={gIdx}>
               {!collapsed && (
@@ -284,162 +284,7 @@ export default function SuperAdminLayout() {
 
       {/* Main Content Area */}
       <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${collapsed ? "lg:ml-20" : "lg:ml-64"}`}>
-        {/* Top Header - Pure White Light Theme */}
-        <header className="sticky top-0 z-30 h-16 bg-white/90 backdrop-blur-md border-b border-slate-200/80 px-4 sm:px-6 flex items-center justify-between gap-4 shadow-sm">
-          {/* Left: Mobile menu toggle + Breadcrumbs */}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setMobileOpen(true)}
-              className="lg:hidden p-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-600 hover:text-gray-900"
-            >
-              <Menu className="w-5 h-5" />
-            </button>
 
-            <div>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
-                <Link to="/super-admin/dashboard" className="hover:text-blue-600 transition">
-                  Super Admin
-                </Link>
-                <span>/</span>
-                <span className="text-gray-700 font-medium">{currentTitle}</span>
-              </div>
-              <h1 className="text-base sm:text-lg font-bold text-gray-900 leading-none mt-0.5">{currentTitle}</h1>
-            </div>
-          </div>
-
-          {/* Right: Actions */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Global Search Button */}
-            <button
-              type="button"
-              onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-gray-500 hover:text-gray-800 hover:border-slate-300 text-xs transition shadow-sm"
-            >
-              <Search className="w-3.5 h-3.5 text-gray-400" />
-              <span className="hidden sm:inline">Search platform…</span>
-              <kbd className="hidden md:inline px-1.5 py-0.5 rounded bg-white border border-gray-200 text-[10px] text-gray-400 font-mono">
-                ⌘K
-              </kbd>
-            </button>
-
-            {/* System Health Status Indicator */}
-            <Link
-              to="/super-admin/system-health"
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition"
-              title="Click to view live System Health telemetry"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>All Systems Operational</span>
-            </Link>
-
-            {/* Notifications Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setNotificationsOpen(!notificationsOpen)}
-                className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-gray-500 hover:text-gray-800 relative transition"
-                aria-label="Platform Notifications"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600 animate-ping" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600" />
-              </button>
-
-              {notificationsOpen && (
-                <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 shadow-xl p-4 z-50 animate-fadeIn">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                    <span className="text-xs font-bold text-gray-900 uppercase tracking-wider">Platform Alerts</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-semibold border border-blue-100">
-                      3 Unread
-                    </span>
-                  </div>
-                  <div className="space-y-2.5 my-3 text-xs">
-                    <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/60">
-                      <div className="text-amber-800 font-semibold mb-0.5">Expiring Subscriptions</div>
-                      <div className="text-amber-700 text-[11px]">32 businesses expire within the next 7 days.</div>
-                    </div>
-                    <div className="p-2.5 rounded-xl bg-rose-50/70 border border-rose-200/60">
-                      <div className="text-rose-800 font-semibold mb-0.5">Failed Payment Alert</div>
-                      <div className="text-rose-700 text-[11px]">Prime Hardware subscription payment failed.</div>
-                    </div>
-                  </div>
-                  <Link
-                    to="/super-admin/dashboard"
-                    onClick={() => setNotificationsOpen(false)}
-                    className="block text-center text-xs font-semibold text-blue-600 hover:text-blue-700 pt-2 border-t border-slate-100"
-                  >
-                    View All in Dashboard
-                  </Link>
-                </div>
-              )}
-            </div>
-
-            {/* Admin Profile Dropdown */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-                className="flex items-center gap-2 p-1.5 rounded-xl bg-slate-50 border border-slate-200 hover:border-slate-300 transition"
-              >
-                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-sm">
-                  SA
-                </div>
-              </button>
-
-              {profileMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-50 animate-fadeIn text-xs">
-                  <div className="p-3 border-b border-slate-100">
-                    <div className="font-bold text-gray-900">{adminUser?.name || "Chief Admin"}</div>
-                    <div className="text-gray-500 truncate text-[11px]">{adminUser?.email}</div>
-                  </div>
-
-                  <div className="py-1 space-y-0.5">
-                    <Link
-                      to="/super-admin/admin-users"
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-gray-700 hover:bg-slate-50 transition font-medium"
-                    >
-                      <User className="w-3.5 h-3.5 text-gray-400" />
-                      <span>My Profile</span>
-                    </Link>
-                    <Link
-                      to="/super-admin/roles"
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-gray-700 hover:bg-slate-50 transition font-medium"
-                    >
-                      <Shield className="w-3.5 h-3.5 text-gray-400" />
-                      <span>Security & Permissions</span>
-                    </Link>
-                    <Link
-                      to="/super-admin/sessions"
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-gray-700 hover:bg-slate-50 transition font-medium"
-                    >
-                      <Laptop className="w-3.5 h-3.5 text-gray-400" />
-                      <span>Active Sessions</span>
-                    </Link>
-                    <Link
-                      to="/super-admin/settings"
-                      className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-gray-700 hover:bg-slate-50 transition font-medium"
-                    >
-                      <Settings className="w-3.5 h-3.5 text-gray-400" />
-                      <span>Platform Settings</span>
-                    </Link>
-                  </div>
-
-                  <div className="pt-1 mt-1 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={logout}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-rose-600 hover:bg-rose-50 transition font-semibold"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      <span>Sign Out</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
 
         {/* Page Body */}
         <main className="flex-1 w-full max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6 overflow-y-auto">
