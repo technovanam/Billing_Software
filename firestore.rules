@@ -59,6 +59,9 @@ service cloud.firestore {
       match /settings/{docId} {
         allow read, write: if isOwner(userId);
       }
+      match /cashiers/{docId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
     // -------------------------------------------------------------------------

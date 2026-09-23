@@ -23,8 +23,15 @@ import InactivityDetector from "./components/InactivityDetector";
 import DataSeeder from "./pages/admin/DataSeeder";
 import ClearAndReseed from "./pages/admin/ClearAndReseed";
 import FYArchives from "./pages/admin/FYArchives";
+import CashierManagement from "./pages/cashiers/CashierManagement";
 import AIAssistant from "./pages/ai/AIAssistant";
 import LandingPage from "./pages/landing/LandingPage";
+import POSPage from "./pages/pos/POSPage";
+import POSLogin from "./pages/pos/POSLogin";
+import POSPortalLayout from "./pages/pos/POSPortalLayout";
+import POSCustomers from "./pages/pos/POSCustomers";
+import POSDashboard from "./pages/pos/POSDashboard";
+import POSProductsCatalog from "./pages/pos/POSProductsCatalog";
 import ScrollToTop from "./components/ScrollToTop";
 import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
 
@@ -71,12 +78,47 @@ import MaintenanceMode from "./pages/super-admin/system/MaintenanceMode";
 
 import PropTypes from 'prop-types';
 
+function POSProtectedRoute({ children }) {
+  const { user, authInitialized } = useContext(AuthContext);
+  const cashierSession = localStorage.getItem("pos_cashier_session");
+
+  // If cashier already has active shift session in localStorage, immediately grant access
+  if (cashierSession) {
+    return <>{children}</>;
+  }
+
+  // If auth is still initializing, show a friendly spinner instead of empty blank screen
+  if (!authInitialized) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+      </div>
+    );
+  }
+
+  // If user is signed in with Firebase (e.g. admin or counter staff), grant access
+  if (user) {
+    return <>{children}</>;
+  }
+
+  // Otherwise redirect to single login in Cashier mode
+  return <Navigate to="/signin?role=cashier" replace />;
+}
+
+POSProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
+};
+
 function ProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
 
   // Wait for Firebase to initialize authentication before making decisions
   if (!authInitialized) {
-    return null; // Don't show anything while Firebase initializes
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
+        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent"></div>
+      </div>
+    );
   }
 
   if (!user) {
@@ -155,7 +197,26 @@ export default function App() {
                   {/* Normal Business Public Routes */}
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/signin" element={<AuthTransition key="signin" />} />
+                  <Route path="/login" element={<Navigate to="/signin" replace />} />
                   <Route path="/signup" element={<AuthTransition key="signup" />} />
+
+                  {/* Single Login Redirect for POS */}
+                  <Route path="/pos/login" element={<Navigate to="/signin?role=cashier" replace />} />
+
+                  {/* Cashier Workstation with Sidebar: 1. Customers, 2. POS Billing */}
+                  <Route
+                    path="/pos"
+                    element={
+                      <POSProtectedRoute>
+                        <POSPortalLayout />
+                      </POSProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Navigate to="/pos/customers" replace />} />
+                    <Route path="customers" element={<POSCustomers />} />
+                    <Route path="billing" element={<POSPage />} />
+                    <Route path="*" element={<Navigate to="/pos/customers" replace />} />
+                  </Route>
 
                   {/* Normal Business Protected Routes */}
                   <Route
@@ -177,6 +238,7 @@ export default function App() {
                               <Route path="/clients" element={<Clients />} />
                               <Route path="/customers/new" element={<Clients />} />
                               <Route path="/products" element={<Products />} />
+                              <Route path="/cashiers" element={<CashierManagement />} />
                               <Route path="/reports" element={<Report />} />
                               <Route path="/payments" element={<Payments />} />
                               <Route path="/expenses" element={<Expenses />} />
