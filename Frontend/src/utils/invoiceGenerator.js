@@ -99,9 +99,7 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
   const invoiceId = invoice.id ? invoice.id : String(rawId).replace(/\//g, "_");
 
   let razorpayUrl = "";
-  if (invoice.paymentToken) {
-    razorpayUrl = `${origin}/pay/${invoice.paymentToken}`;
-  } else if (userId && invoiceId) {
+  if (userId && invoiceId) {
     razorpayUrl = `${origin}/pay/${userId}/${encodeURIComponent(invoiceId)}`;
   } else if (invoice.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink) {
     const baseLink = invoice.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink;
@@ -109,7 +107,7 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
       ? `${baseLink}&amount=${finalTotal.toFixed(2)}`
       : `${baseLink}?amount=${finalTotal.toFixed(2)}`;
   } else {
-    razorpayUrl = `${origin}/pay/${encodeURIComponent(invoiceId || 'latest')}`;
+    razorpayUrl = `${origin}/pay/invoice/${encodeURIComponent(invoiceId || 'latest')}`;
   }
 
   const formatDate = (dateVal) => {

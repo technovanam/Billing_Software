@@ -558,10 +558,6 @@ const InvoicePreview = ({
   const validTotal = Number(previewCalcs?.total || 0);
   const amountInWords = convertToWords(Math.floor(validTotal));
 
-  const paidAmount = Number(previewData?.paidAmount || previewData?.received || 0);
-  const isPaid = (previewData?.status || "").toLowerCase() === "paid" || (paidAmount >= validTotal && validTotal > 0);
-  const balanceDue = isPaid ? 0 : Math.max(0, validTotal - paidAmount);
-
   const origin = (typeof window !== "undefined" && window.location && window.location.origin)
     ? window.location.origin
     : "http://localhost:5173";
@@ -571,9 +567,7 @@ const InvoicePreview = ({
   const currentInvoiceId = previewData?.id ? previewData.id : String(rawId).replace(/\//g, "_");
 
   let razorpayUrl = "";
-  if (previewData?.paymentToken) {
-    razorpayUrl = `${origin}/pay/${previewData.paymentToken}`;
-  } else if (currentUserId && currentInvoiceId) {
+  if (currentUserId && currentInvoiceId) {
     razorpayUrl = `${origin}/pay/${currentUserId}/${encodeURIComponent(currentInvoiceId)}`;
   } else if (previewData?.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink) {
     const baseLink = previewData?.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink;
@@ -581,7 +575,7 @@ const InvoicePreview = ({
       ? `${baseLink}&amount=${previewCalcs.total.toFixed(2)}`
       : `${baseLink}?amount=${previewCalcs.total.toFixed(2)}`;
   } else {
-    razorpayUrl = `${origin}/pay/${encodeURIComponent(currentInvoiceId || 'latest')}`;
+    razorpayUrl = `${origin}/pay/invoice/${encodeURIComponent(currentInvoiceId || 'latest')}`;
   }
 
   const handleOpenRazorpayCheckout = async (e) => {
