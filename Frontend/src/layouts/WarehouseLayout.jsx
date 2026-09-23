@@ -1,0 +1,181 @@
+import React, { useState, useContext, useEffect, useRef } from "react";
+import { useNavigate, NavLink, Outlet } from "react-router-dom";
+import PropTypes from "prop-types";
+import { AuthContext } from "../context/AuthContext";
+import { useCompanyProfile } from "../context/CompanyProfileContext";
+import { useOperator } from "../context/OperatorContext";
+import {
+  Warehouse,
+  Package,
+  ScanBarcode,
+  FileBarChart2,
+  UserCheck,
+  LogOut,
+} from "lucide-react";
+
+const warehouseNavItems = [
+  { name: "Warehouse Dashboard", path: "/warehouse", icon: Warehouse, end: true, badge: "Live" },
+  { name: "Products", path: "/warehouse/products", icon: Package },
+  { name: "Scan Barcode", path: "/warehouse/scan", icon: ScanBarcode },
+  { name: "Stock Report", path: "/warehouse/reports", icon: FileBarChart2 },
+];
+
+export default function WarehouseLayout({ children }) {
+  const { user, signOut } = useContext(AuthContext);
+  const { companyProfile } = useCompanyProfile();
+  const { operatorName, role, openPicker, openRoleModal } = useOperator();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const navigate = useNavigate();
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setIsProfileOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      navigate("/signin");
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
+  };
+
+  const displayName = companyProfile?.ownerName || user?.displayName || user?.email?.split("@")[0] || "Warehouse User";
+  const initials = displayName
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .substring(0, 2);
+
+  const headerLogo = companyProfile?.logoURL || "/Icon@4x-8.png";
+  const headerCompanyName = companyProfile?.companyName || "Techno Vanam";
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* ── Admin-Portal-Style White Sidebar ── */}
+      <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col">
+        {/* Brand Header */}
+        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
+          <img
+            src={headerLogo}
+            alt={`${headerCompanyName} Logo`}
+            className="h-10 w-10 object-contain rounded-lg"
+          />
+          <div className="min-w-0">
+            <p className="text-lg font-bold text-slate-900 truncate">{headerCompanyName}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600">Warehouse Portal</p>
+          </div>
+        </div>
+
+        {/* Operator Switcher Card */}
+        <div className="px-3 pt-3 pb-1">
+          <div className="rounded-xl bg-slate-50 border border-slate-200 p-2.5">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Active Operator</span>
+              <button
+                type="button"
+                onClick={openRoleModal}
+                className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded transition-colors"
+                title="Change role"
+              >
+                {role}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={openPicker}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 transition-all group"
+              title="Click to assign operator"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <UserCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                <span className="text-xs font-semibold text-slate-700 truncate group-hover:text-blue-600">
+                  {operatorName || "Assign Operator"}
+                </span>
+              </div>
+              <span className="text-[10px] font-medium text-slate-400 group-hover:text-blue-600">Switch</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Navigation List */}
+        <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
+          {warehouseNavItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                className={({ isActive }) =>
+                  `flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
+                    isActive
+                      ? "bg-blue-600 text-white shadow-sm font-semibold"
+                      : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                  }`
+                }
+              >
+                <div className="flex items-center gap-3 truncate">
+                  {Icon && <Icon className="h-4 w-4 shrink-0" />}
+                  <span className="truncate">{item.name}</span>
+                </div>
+                {item.badge && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+                    {item.badge}
+                  </span>
+                )}
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        {/* Bottom Section: FY and Profile */}
+        <div className="px-3 pb-4">
+          <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
+            2026-2027 FY
+          </div>
+
+          {user && (
+            <div className="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left" ref={profileRef}>
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-800">{displayName}</p>
+                <p className="truncate text-[11px] text-slate-500">{user.email}</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                title="Sign out"
+                aria-label="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      </aside>
+
+      {/* ── Main Content Area ── */}
+      <div className="ml-64 flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen">
+        {/* Page Content */}
+        <main className="flex-1 p-6">
+          {children || <Outlet />}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+WarehouseLayout.propTypes = {
+  children: PropTypes.node,
+};

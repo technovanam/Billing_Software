@@ -14,6 +14,14 @@ service cloud.firestore {
     function isValidString(s, maxLen) {
       return s is string && s.size() <= maxLen;
     }
+    // Allow a warehouse user to READ the admin's product catalog if they have a
+    // settings/profile doc with linkedAdminUid == userId.
+    function isLinkedWarehouseReader(userId) {
+      return isAuthenticated()
+        && request.auth.uid != userId
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/settings/profile)
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)/settings/profile).data.linkedAdminUid == userId;
+    }
 
     // -------------------------------------------------------------------------
     // User document: company profile (signup). Only owner; validate shape/size.
@@ -42,7 +50,8 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       match /products/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isLinkedWarehouseReader(userId);
+        allow write: if isOwner(userId);
       }
       match /invoices/{docId} {
         allow read, write: if isOwner(userId);
@@ -57,6 +66,49 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       match /settings/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /deliveryChallans/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // ── Warehouse / Godown collections ────────────────────────────────────
+
+      // Godown definitions — owner can read/write freely
+      match /godowns/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Current stock per product+godown — owner can read/write
+      // Mutation operations (IN/OUT/transfer) use atomic Firestore client transactions.
+      // Backend mutations go through Firebase Admin SDK which bypasses rules — this
+      // rule covers direct client-side writes used in this implementation.
+      match /stock/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Stock movements — append-only ledger.
+      // Reads allowed, creates allowed, update & delete explicitly denied to protect
+      // audit integrity. (Admin SDK on backend can still correct if needed.)
+      match /stockMovements/{docId} {
+        allow read:   if isOwner(userId);
+        allow create: if isOwner(userId);
+        allow update, delete: if false;   // movements are immutable
+      }
+
+      // Barcode index — barcode IS the doc ID; uniqueness enforced via transaction.
+      match /barcodeIndex/{barcode} {
+        allow read: if isOwner(userId) || isLinkedWarehouseReader(userId);
+        allow write: if isOwner(userId);
+      }
+
+      // Staff definitions — for operator picker
+      match /staff/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Barcode cache — short-lived external API result cache (30-day TTL enforced in app).
+      match /barcodeCache/{barcode} {
         allow read, write: if isOwner(userId);
       }
     }

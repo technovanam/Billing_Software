@@ -15,6 +15,7 @@ import { AuthContext, AuthProvider } from "./context/AuthContext";
 import { CompanyProfileProvider } from "./context/CompanyProfileContext";
 import { ToastProvider } from "./context/ToastContext";
 import { AIAssistantProvider } from "./context/AIAssistantContext";
+import { OperatorProvider } from "./context/OperatorContext";
 import ToastContainer from "./components/Toast";
 import Clients from "./pages/clients/ClientManagement";
 import Report from "./pages/reports/RevenueLineChart";
@@ -26,6 +27,20 @@ import FYArchives from "./pages/admin/FYArchives";
 import AIAssistant from "./pages/ai/AIAssistant";
 import LandingPage from "./pages/landing/LandingPage";
 import ScrollToTop from "./components/ScrollToTop";
+
+// ── Warehouse / Godown module ────────────────────────────────────────────────
+import WarehouseLayout from "./layouts/WarehouseLayout";
+import WarehouseDashboard from "./pages/warehouse/WarehouseDashboard";
+import WarehouseProducts from "./pages/warehouse/WarehouseProducts";
+import BarcodeScanner from "./pages/warehouse/BarcodeScanner";
+import StockIn from "./pages/warehouse/StockIn";
+import StockOut from "./pages/warehouse/StockOut";
+import StockTransfer from "./pages/warehouse/StockTransfer";
+import GodownManagement from "./pages/warehouse/GodownManagement";
+import StockMovements from "./pages/warehouse/StockMovements";
+import StockReport from "./pages/warehouse/StockReport";
+import WarehouseSetup from "./pages/warehouse/WarehouseSetup";
+// ────────────────────────────────────────────────────────────────────────────
 
 import PropTypes from 'prop-types';
 
@@ -60,51 +75,76 @@ export default function App() {
       <CompanyProfileProvider>
         <ToastProvider>
           <AIAssistantProvider>
-            <Router>
-              <ScrollToTop />
-              <Routes>
-                {/* Public */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/signin" element={<AuthTransition key="signin" />} />
-                <Route path="/signup" element={<AuthTransition key="signup" />} />
+            <OperatorProvider>
+              <Router>
+                <ScrollToTop />
+                <Routes>
+                  {/* Public */}
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/signin" element={<AuthTransition key="signin" />} />
+                  <Route path="/signup" element={<AuthTransition key="signup" />} />
 
-                {/* Protected with header */}
-                <Route
-                  path="/*"
-                  element={
-                    <ProtectedRoute>
-                      <div className="min-h-screen bg-slate-100">
-                        <Header />
-                        <main className="ml-64 flex-1 p-6">
+                  {/* Dedicated Warehouse Portal Routes (Completely separate from Admin) */}
+                  <Route
+                    path="/warehouse/*"
+                    element={
+                      <ProtectedRoute>
+                        <WarehouseLayout>
                           <Routes>
-                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                            <Route path="/dashboard" element={<Dashboard />} />
-                            <Route path="/invoices" element={<Invoices />} />
-                            <Route path="/invoices/create" element={<CreateInvoicePage />} />
-                            <Route path="/delivery-challans" element={<DeliveryChallans />} />
-                            <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
-                            <Route path="/recurring-invoices" element={<RecurringInvoices />} />
-                            <Route path="/recurring-invoices/new" element={<RecurringInvoices />} />
-                            <Route path="/clients" element={<Clients />} />
-                            <Route path="/customers/new" element={<Clients />} />
-                            <Route path="/products" element={<Products />} />
-                            <Route path="/reports" element={<Report />} />
-                            <Route path="/payments" element={<Payments />} />
-                            <Route path="/expenses" element={<Expenses />} />
-                            <Route path="/ai-assistant" element={<AIAssistant />} />
-                            <Route path="/settings" element={<Settings />} />
-                            <Route path="/seed-data" element={<DataSeeder />} />
-                            <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
-                            <Route path="/fy-archives" element={<FYArchives />} />
+                            <Route path="/" element={<WarehouseDashboard />} />
+                            <Route path="/products" element={<WarehouseProducts />} />
+                            <Route path="/scan" element={<BarcodeScanner />} />
+                            <Route path="/stock-in" element={<StockIn />} />
+                            <Route path="/stock-out" element={<StockOut />} />
+                            <Route path="/transfer" element={<StockTransfer />} />
+                            <Route path="/godowns" element={<GodownManagement />} />
+                            <Route path="/movements" element={<StockMovements />} />
+                            <Route path="/reports" element={<StockReport />} />
+                            <Route path="/setup" element={<WarehouseSetup />} />
                           </Routes>
-                        </main>
-                      </div>
-                    </ProtectedRoute>
-                  }
-                />
-              </Routes>
-              <ToastContainer />
-            </Router>
+                        </WarehouseLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+
+                  {/* Admin / Billing Portal Routes */}
+                  <Route
+                    path="/*"
+                    element={
+                      <ProtectedRoute>
+                        <div className="min-h-screen bg-slate-100">
+                          <Header />
+                          <main className="ml-64 flex-1 p-6">
+                            <Routes>
+                              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                              <Route path="/dashboard" element={<Dashboard />} />
+                              <Route path="/invoices" element={<Invoices />} />
+                              <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                              <Route path="/delivery-challans" element={<DeliveryChallans />} />
+                              <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
+                              <Route path="/recurring-invoices" element={<RecurringInvoices />} />
+                              <Route path="/recurring-invoices/new" element={<RecurringInvoices />} />
+                              <Route path="/clients" element={<Clients />} />
+                              <Route path="/customers/new" element={<Clients />} />
+                              <Route path="/products" element={<Products />} />
+                              <Route path="/reports" element={<Report />} />
+                              <Route path="/payments" element={<Payments />} />
+                              <Route path="/expenses" element={<Expenses />} />
+                              <Route path="/ai-assistant" element={<AIAssistant />} />
+                              <Route path="/settings" element={<Settings />} />
+                              <Route path="/seed-data" element={<DataSeeder />} />
+                              <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
+                              <Route path="/fy-archives" element={<FYArchives />} />
+                            </Routes>
+                          </main>
+                        </div>
+                      </ProtectedRoute>
+                    }
+                  />
+                </Routes>
+                <ToastContainer />
+              </Router>
+            </OperatorProvider>
           </AIAssistantProvider>
         </ToastProvider>
       </CompanyProfileProvider>
