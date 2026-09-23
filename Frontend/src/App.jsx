@@ -80,7 +80,6 @@ import SystemSettings from "./pages/super-admin/system/SystemSettings";
 import BackupsManagement from "./pages/super-admin/system/BackupsManagement";
 import MaintenanceMode from "./pages/super-admin/system/MaintenanceMode";
 
-import PublicInvoicePayPage from "./pages/pay/PublicInvoicePayPage";
 
 import PropTypes from 'prop-types';
 
