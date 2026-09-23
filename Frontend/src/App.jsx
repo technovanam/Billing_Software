@@ -28,6 +28,10 @@ import LandingPage from "./pages/landing/LandingPage";
 import ScrollToTop from "./components/ScrollToTop";
 import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
 
+import PublicInvoicePayPage from "./pages/pay/PublicInvoicePayPage";
+import TokenPublicPayPage from "./pages/pay/TokenPublicPayPage";
+import PaymentSuccessPage from "./pages/pay/PaymentSuccessPage";
+
 import PropTypes from 'prop-types';
 
 function ProtectedRoute({ children }) {
@@ -67,49 +71,51 @@ export default function App() {
             <Router>
               <ScrollToTop />
               <Routes>
-                {/* Public */}
-                <Route path="/" element={<LandingPage />} />
-                <Route path="/signin" element={<AuthTransition key="signin" />} />
-                <Route path="/signup" element={<AuthTransition key="signup" />} />
+            {/* Public */}
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/signin" element={<AuthTransition key="signin" />} />
+            <Route path="/signup" element={<AuthTransition key="signup" />} />
+            <Route path="/pay/:token" element={<TokenPublicPayPage />} />
+            <Route path="/payment/success" element={<PaymentSuccessPage />} />
+            <Route path="/pay/:userId/*" element={<PublicInvoicePayPage />} />
+            <Route path="/pay/invoice/*" element={<PublicInvoicePayPage />} />
 
-                {/* Protected with header */}
-                <Route
-                  path="/*"
-                  element={
-                    <ProtectedRoute>
-                      <div className="min-h-screen bg-slate-100">
-                        <Header />
-                        <main className="ml-64 flex-1 p-6">
-                          <Routes>
-                            <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                            <Route path="/dashboard" element={<Dashboard />} />
-                            <Route path="/invoices" element={<Invoices />} />
-                            <Route path="/invoices/create" element={<CreateInvoicePage />} />
-                            <Route path="/delivery-challans" element={<DeliveryChallans />} />
-                            <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
-                            <Route path="/recurring-invoices" element={<RecurringInvoices />} />
-                            <Route path="/recurring-invoices/new" element={<RecurringInvoices />} />
-                            <Route path="/clients" element={<Clients />} />
-                            <Route path="/customers/new" element={<Clients />} />
-                            <Route path="/products" element={<Products />} />
-                            <Route path="/reports" element={<Report />} />
-                            <Route path="/payments" element={<Payments />} />
-                            <Route path="/expenses" element={<Expenses />} />
-                            <Route path="/ai-assistant" element={<AIAssistant />} />
-                            <Route path="/settings" element={<Settings />} />
-                            <Route path="/seed-data" element={<DataSeeder />} />
-                            <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
-                            <Route path="/fy-archives" element={<FYArchives />} />
-                          </Routes>
-                        </main>
-                      </div>
-                    </ProtectedRoute>
-                  }
-                />
-              </Routes>
-              <ToastContainer />
-            </Router>
-          </AIAssistantProvider>
+            {/* Protected with header */}
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-slate-100">
+                    <Header />
+                    <main className="ml-64 flex-1 p-6">
+                      <Routes>
+                        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/invoices" element={<Invoices />} />
+                        <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                        <Route path="/challans" element={<DeliveryChallans />} />
+                        <Route path="/challans/create" element={<CreateDeliveryChallanPage />} />
+                        <Route path="/clients" element={<Clients />} />
+                        <Route path="/customers/new" element={<Clients />} />
+                        <Route path="/products" element={<Products />} />
+                        <Route path="/reports" element={<Report />} />
+                        <Route path="/payments" element={<Payments />} />
+                        <Route path="/expenses" element={<Expenses />} />
+                        <Route path="/ai-assistant" element={<AIAssistant />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/seed-data" element={<DataSeeder />} />
+                        <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
+                        <Route path="/fy-archives" element={<FYArchives />} />
+                      </Routes>
+                    </main>
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            </Routes>
+            <ToastContainer />
+          </Router>
+        </AIAssistantProvider>
         </ToastProvider>
       </CompanyProfileProvider>
     </AuthProvider>

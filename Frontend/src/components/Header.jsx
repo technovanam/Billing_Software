@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   FileText,
   Truck,
-  Repeat,
   Users,
   Package,
   BarChart3,
@@ -27,8 +26,7 @@ import {
 const navItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Invoices", path: "/invoices", icon: FileText },
-  { name: "Delivery Challans", path: "/delivery-challans", icon: Truck },
-  { name: "Recurring Invoices", path: "/recurring-invoices", icon: Repeat },
+  { name: "Delivery Challans", path: "/challans", icon: Truck },
   { name: "Customers", path: "/clients", icon: Users },
   { name: "Products", path: "/products", icon: Package },
   { name: "Reports", path: "/reports", icon: BarChart3 },

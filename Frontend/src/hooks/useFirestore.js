@@ -281,19 +281,24 @@ export const useInvoices = (options = {}) => {
       today.setHours(0, 0, 0, 0);
       res = res.filter((inv) => {
         const s = (inv.status || "").toLowerCase();
-        if (status === "Paid") return s === "paid";
+        const received = Number(inv.paidAmount || inv.received || 0);
+        const total = Number(inv.total || inv.amount || 0);
+        const tds = Number(inv.tdsAmount || 0);
+        const isPartial = s === "partial" || (received > 0 && received + tds < total);
+
+        if (status === "Paid") return s === "paid" || (received + tds >= total && total > 0);
         if (status === "Draft") return s === "draft";
-        if (status === "Partial") return s === "partial";
+        if (status === "Partial") return isPartial;
         if (status === "Overdue") {
           const dueDate = inv.dueDate ? (inv.dueDate?.toDate ? inv.dueDate.toDate() : new Date(inv.dueDate)) : null;
           if (dueDate) dueDate.setHours(0, 0, 0, 0);
-          return s !== "paid" && s !== "partial" && s !== "draft" && dueDate && today > dueDate;
+          return s !== "paid" && !isPartial && s !== "draft" && dueDate && today > dueDate;
         }
         if (status === "Unpaid") {
           const dueDate = inv.dueDate ? (inv.dueDate?.toDate ? inv.dueDate.toDate() : new Date(inv.dueDate)) : null;
           if (dueDate) dueDate.setHours(0, 0, 0, 0);
           const isOverdue = dueDate && today > dueDate;
-          return s !== "paid" && s !== "partial" && s !== "draft" && !isOverdue;
+          return s !== "paid" && !isPartial && s !== "draft" && !isOverdue;
         }
         return s === status.toLowerCase();
       });
@@ -314,12 +319,23 @@ export const useInvoices = (options = {}) => {
     setPageInfo(res.pagination);
   }, [filtered, options.search, options.page, options.limit, options.sortBy, options.sortDirection]);
 
+  const generateToken = () => {
+    if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  };
+
   const addInvoice = useCallback(
     async (payload) => {
       if (!uid) return { success: false };
-      const data = sanitizeForFirestore(payload);
+      const token = payload.paymentToken || generateToken();
+      const payloadWithMeta = { ...payload, userId: uid, paymentToken: token };
+      const data = sanitizeForFirestore(payloadWithMeta);
       const ref = await addDoc(collection(db, "users", uid, "invoices"), { ...data, createdAt: serverTimestamp() });
-      setAll((prev) => [{ id: ref.id, ...payload }, ...prev]);
+      setAll((prev) => [{ id: ref.id, ...payloadWithMeta }, ...prev]);
       return { success: true, id: ref.id };
     },
     [uid]
@@ -328,12 +344,15 @@ export const useInvoices = (options = {}) => {
   const editInvoice = useCallback(
     async (id, patch) => {
       if (!uid) return { success: false };
-      const data = sanitizeForFirestore(patch);
+      const existing = all.find((i) => i.id === id);
+      const token = patch.paymentToken || existing?.paymentToken || generateToken();
+      const patchWithMeta = { ...patch, userId: uid, paymentToken: token };
+      const data = sanitizeForFirestore(patchWithMeta);
       await updateDoc(doc(db, "users", uid, "invoices", id), data);
-      setAll((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+      setAll((prev) => prev.map((i) => (i.id === id ? { ...i, ...patchWithMeta } : i)));
       return { success: true };
     },
-    [uid]
+    [uid, all]
   );
 
   const removeInvoice = useCallback(
