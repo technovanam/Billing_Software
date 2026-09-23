@@ -47,10 +47,24 @@ export const AuthProvider = ({ children }) => {
             return config;
         }, (err) => Promise.reject(err));
 
+        const savedAdmin = localStorage.getItem("admin_auth_user");
+        const defaultUser = savedAdmin ? JSON.parse(savedAdmin) : null;
+
         const unsubscribe = onAuthStateChanged(auth, (u) => {
-            setUser(u ? { ...u } : null);
+            if (u) {
+                setUser({ ...u });
+            } else {
+                const storedAdmin = localStorage.getItem("admin_auth_user");
+                setUser(storedAdmin ? JSON.parse(storedAdmin) : null);
+            }
             setAuthInitialized(true);
         });
+
+        // If local admin session exists, initialize immediately
+        if (defaultUser) {
+            setUser(defaultUser);
+            setAuthInitialized(true);
+        }
 
         return () => {
             unsubscribe();
@@ -59,7 +73,11 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     const signOut = async () => {
-        await firebaseSignOut(auth);
+        try {
+            await firebaseSignOut(auth);
+        } catch (_) {}
+        localStorage.removeItem("admin_auth_user");
+        localStorage.removeItem("pos_cashier_session");
         setUser(null);
     };
 
@@ -112,6 +130,7 @@ export const AuthProvider = ({ children }) => {
 
     const value = React.useMemo(() => ({
         user,
+        setUser,
         authInitialized,
         signOut,
         updateUserEmail,
