@@ -46,7 +46,7 @@ const Barcode1D = ({ value = "4150090110002" }) => {
       >
         {elements}
       </svg>
-      <span className="font-mono text-[9.5px] tracking-widest text-black mt-1 font-bold">
+      <span className="tabular-nums text-[9.5px] tracking-widest text-black mt-1 font-bold">
         *{value}*
       </span>
     </div>
@@ -131,10 +131,10 @@ export default function ThermalReceipt({
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-start overflow-y-auto bg-slate-950/85 backdrop-blur-xs p-4 sm:p-6 animate-fade-in-up">
       {/* 1. Prominent Top Sticky Toolbar (ALWAYS visible, never hidden) */}
-      <div className="print:hidden sticky top-2 z-30 w-full max-w-[420px] mb-4 flex items-center justify-between rounded-2xl bg-white p-3 shadow-2xl border border-slate-200">
+      <div className="print:hidden sticky top-2 z-30 w-full max-w-[420px] mb-4 flex items-center justify-between rounded-lg bg-white p-3 shadow-2xl border border-slate-200">
         <button
           onClick={onResetForNextCustomer ? handleNewCustomerAndClose : onClose}
-          className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 transition cursor-pointer"
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-100 hover:bg-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 transition cursor-pointer"
           title="Back to POS billing"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -146,12 +146,12 @@ export default function ThermalReceipt({
             <button
               onClick={!isSaved && !saving ? onSaveInvoice : undefined}
               disabled={isSaved || saving}
-              className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-bold transition ${
+              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition ${
                 isSaved
-                  ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/20 cursor-default"
+                  ? "bg-emerald-600 text-white shadow-sm cursor-default"
                   : saving
                   ? "bg-slate-100 text-slate-400 cursor-not-allowed"
-                  : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-500/20 cursor-pointer"
+                  : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm cursor-pointer"
               }`}
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
@@ -161,7 +161,7 @@ export default function ThermalReceipt({
 
           <button
             onClick={handlePrint}
-            className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-extrabold shadow-md shadow-blue-500/25 transition cursor-pointer"
+            className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-bold shadow-sm transition cursor-pointer"
           >
             <Printer className="h-4 w-4" />
             <span>Print</span>
@@ -173,10 +173,7 @@ export default function ThermalReceipt({
       <div
         id="thermal-receipt-printable"
         ref={receiptRef}
-        className="receipt-paper w-full max-w-[370px] bg-white text-black p-5 shadow-2xl rounded-sm border border-slate-300 font-mono text-[11px] leading-tight select-text mb-8"
-        style={{
-          fontFamily: "'Courier New', Courier, 'Lucida Console', Monaco, monospace",
-        }}
+        className="receipt-paper w-full max-w-[370px] bg-white text-black p-5 shadow-2xl rounded-sm border border-slate-300 tabular-nums text-[11px] leading-tight select-text mb-8"
       >
         {/* Company Header: Logo & Company Name only (no personal owner name) */}
         <div className="text-center space-y-1 mb-2">
@@ -189,7 +186,7 @@ export default function ThermalReceipt({
               />
             </div>
           )}
-          <h1 className="text-lg font-black tracking-wider uppercase leading-tight">
+          <h1 className="text-lg font-bold tracking-wider uppercase leading-tight">
             {compName}
           </h1>
           <p className="text-[9px]">CIN No : L51900MH2000PLC126473</p>
@@ -204,7 +201,7 @@ export default function ThermalReceipt({
 
         {/* TAX INVOICE Header */}
         <div className="border-t border-b border-black py-0.5 text-center my-1.5">
-          <span className="font-black text-xs tracking-widest uppercase">TAX INVOICE</span>
+          <span className="font-bold text-xs tracking-widest uppercase">TAX INVOICE</span>
         </div>
 
         {/* Metadata: Bill No, Bill Dt, Time, Cashier ID, and Customer Info */}
@@ -238,7 +235,7 @@ export default function ThermalReceipt({
 
         {/* Items Table */}
         <div className="border-t border-b border-black my-1 py-1">
-          <div className="grid grid-cols-12 text-[9px] font-black pb-0.5 border-b border-dashed border-black">
+          <div className="grid grid-cols-12 text-[9px] font-bold pb-0.5 border-b border-dashed border-black">
             <span className="col-span-3 text-left">HSN</span>
             <span className="col-span-4 text-left">Particulars</span>
             <span className="col-span-1 text-center">Qty/Kg</span>
@@ -275,7 +272,7 @@ export default function ThermalReceipt({
         </div>
 
         {/* Items Count, Total Qty & Amount Summary */}
-        <div className="flex justify-between items-center text-xs font-black border-b border-black pb-1 my-1">
+        <div className="flex justify-between items-center text-xs font-bold border-b border-black pb-1 my-1">
           <span>
             Items: <span className="font-bold">{totalItems}</span>
           </span>
@@ -333,7 +330,7 @@ export default function ThermalReceipt({
                 <span>₹ {Number(totalAmount).toFixed(2)} /-</span>
               </div>
               {onlinePaymentDetails?.paymentId && (
-                <div className="flex justify-between px-2 text-[8.5px] font-mono">
+                <div className="flex justify-between px-2 text-[8.5px] tabular-nums">
                   <span>Txn ID :</span>
                   <span>{onlinePaymentDetails.paymentId}</span>
                 </div>

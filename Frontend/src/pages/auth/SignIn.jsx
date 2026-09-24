@@ -12,6 +12,7 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
 import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
+import { enterPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -24,9 +25,33 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const fillDemo = () => {
+    setEmail("wh.demo@technovanam.in");
+    setPassword("Warehouse@123");
+  };
+
+  const handlePasswordKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleLogin(e);
+    }
+  };
+
+  const handleEmailKeyDown = (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (!password) {
+        document.getElementById("password")?.focus();
+      } else {
+        handleLogin(e);
+      }
+    }
+  };
+
   const handleLogin = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (loading) return;
+
     const trimmedEmail = email.trim();
 
     if (!trimmedEmail) {
@@ -134,6 +159,8 @@ export default function SignIn() {
           ownerUid: matchedOwnerUid || matchedCashier.ownerUid || "",
         };
         localStorage.setItem("pos_cashier_session", JSON.stringify(cashierSession));
+        sessionStorage.removeItem("pos_fullscreen_opt_out");
+        enterPOSFullscreen();
 
         toastSuccess(`Welcome ${cashierSession.cashierName} (${cashierSession.cashierId})! Opening POS terminal...`);
         navigate("/pos", { replace: true });
@@ -188,11 +215,13 @@ export default function SignIn() {
         return;
       }
 
-      // 4. Authenticate with Firebase for other custom admin accounts
+      // 4. Authenticate with Firebase for other custom admin / warehouse accounts
       try {
         await setPersistence(auth, browserSessionPersistence);
         const userCred = await signInWithEmailAndPassword(auth, trimmedEmail, password);
         const loggedUser = userCred.user;
+        const userEmail = (loggedUser?.email || trimmedEmail).toLowerCase();
+        const isWarehouseUser = userEmail === "wh.demo@technovanam.in" || userEmail.startsWith("wh.");
 
         // Sync registered cashiers into cache for subsequent cashier logins
         if (loggedUser?.uid) {
@@ -213,15 +242,21 @@ export default function SignIn() {
         const adminObj = {
           uid: loggedUser.uid,
           email: loggedUser.email,
-          displayName: loggedUser.displayName || "Admin",
+          displayName: loggedUser.displayName || (isWarehouseUser ? "Warehouse User" : "Admin"),
         };
         localStorage.setItem("admin_auth_user", JSON.stringify(adminObj));
         localStorage.removeItem("pos_cashier_session");
         if (typeof setUser === "function") {
           setUser(loggedUser);
         }
-        toastSuccess("Admin signed in successfully!");
-        navigate("/dashboard", { replace: true });
+
+        if (isWarehouseUser) {
+          toastSuccess("Warehouse operator signed in successfully!");
+          navigate("/warehouse", { replace: true });
+        } else {
+          toastSuccess("Admin signed in successfully!");
+          navigate("/dashboard", { replace: true });
+        }
       } catch (fbErr) {
         console.error("Firebase sign in error:", fbErr);
         toastError(
@@ -235,24 +270,6 @@ export default function SignIn() {
       toastError(err.message || "Sign in failed. Please check your credentials.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handlePasswordKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleLogin(e);
-    }
-  };
-
-  const handleEmailKeyDown = (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      if (!password) {
-        document.getElementById("password")?.focus();
-      } else {
-        handleLogin(e);
-      }
     }
   };
 
@@ -285,14 +302,41 @@ export default function SignIn() {
         {/* Form */}
         <div className="w-full max-w-sm mx-auto my-auto py-4">
           {/* Logo + heading */}
-          <div className="mb-8">
+          <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-1">
               Sign in to{" "}
               <span className="text-blue-600">Techno Vanam</span>
             </h1>
             <p className="text-sm text-gray-500">
-              Welcome back, please enter your login details below to access the app.
+              Welcome back, please enter your details below to sign in.
             </p>
+          </div>
+
+          {/* Quick Demo Access Box */}
+          <div className="mb-5 p-3.5 rounded-xl bg-blue-50/80 border border-blue-100 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
+                Warehouse Demo Login
+              </span>
+              <button
+                type="button"
+                onClick={fillDemo}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+              >
+                Reset Demo
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs font-mono text-slate-600 bg-white/70 p-2 rounded-lg border border-blue-50">
+              <div>
+                <span className="text-[10px] uppercase font-sans text-slate-400 block font-semibold">Email</span>
+                <span className="truncate block">wh.demo@technovanam.in</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-sans text-slate-400 block font-semibold">Password</span>
+                <span>Warehouse@123</span>
+              </div>
+            </div>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4" noValidate>
@@ -366,7 +410,19 @@ export default function SignIn() {
               disabled={loading}
               className="w-full rounded-xl bg-blue-600 py-3 text-white font-semibold hover:bg-blue-700 transition-colors text-sm disabled:opacity-60 disabled:cursor-not-allowed shadow-sm active:scale-[0.99]"
             >
-              {loading ? "Signing in…" : "Login"}
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4 text-white inline-block mr-2" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <span>Signing in…</span>
+                </>
+              ) : email.trim().toLowerCase().startsWith("wh.") ? (
+                "Sign In to Warehouse Portal →"
+              ) : (
+                "Sign In to Admin Dashboard →"
+              )}
             </button>
           </form>
         </div>

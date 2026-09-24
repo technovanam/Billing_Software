@@ -90,14 +90,25 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
 
   const amountInWords = convertToWords(Math.floor(finalTotal));
 
-  const baseRazorpayLink =
-    invoice.razorpayLink ||
-    settings?.systemSettings?.value?.systemConfig?.razorpayLink ||
-    "https://razorpay.me/@esaengineeringworks";
+  const origin = (typeof window !== "undefined" && window.location && window.location.origin)
+    ? window.location.origin
+    : "http://localhost:5173";
 
-  const razorpayUrl = baseRazorpayLink.includes("?")
-    ? `${baseRazorpayLink}&amount=${finalTotal.toFixed(2)}`
-    : `${baseRazorpayLink}?amount=${finalTotal.toFixed(2)}`;
+  const userId = invoice.userId || invoice.uid || settings?.userId || "";
+  const rawId = invoice.id || invoice.docId || invoice.invoiceNumber || "";
+  const invoiceId = invoice.id ? invoice.id : String(rawId).replace(/\//g, "_");
+
+  let razorpayUrl = "";
+  if (userId && invoiceId) {
+    razorpayUrl = `${origin}/pay/${userId}/${encodeURIComponent(invoiceId)}`;
+  } else if (invoice.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink) {
+    const baseLink = invoice.razorpayLink || settings?.systemSettings?.value?.systemConfig?.razorpayLink;
+    razorpayUrl = baseLink.includes("?")
+      ? `${baseLink}&amount=${finalTotal.toFixed(2)}`
+      : `${baseLink}?amount=${finalTotal.toFixed(2)}`;
+  } else {
+    razorpayUrl = `${origin}/pay/invoice/${encodeURIComponent(invoiceId || 'latest')}`;
+  }
 
   const formatDate = (dateVal) => {
     if (!dateVal) return "";
@@ -110,6 +121,10 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
   // Determine filler rows to ensure A4 coverage (approx 25 rows fit nicely on A4 with this font size)
   const MIN_ROWS = 25;
   const fillerRowCount = Math.max(0, MIN_ROWS - itemsArray.length);
+
+  const paidAmount = Number(invoice.paidAmount || invoice.received || 0);
+  const isPaid = (invoice.status || "").toLowerCase() === "paid" || (paidAmount >= finalTotal && finalTotal > 0);
+  const balanceDue = isPaid ? 0 : Math.max(0, finalTotal - paidAmount);
 
   return `
     <!DOCTYPE html>
@@ -277,9 +292,15 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
                      <strong>Rupees :</strong> <span style="font-weight: normal;">${amountInWords}</span>
                   </div>
                    <div>
-                      <a href="${razorpayUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb !important; color: #ffffff !important; padding: 6px 16px; border-radius: 4px; text-decoration: none !important; font-weight: bold; font-size: 12px; border: 1px solid #1d4ed8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                         Pay
-                      </a>
+                      ${isPaid ? `
+                        <span style="display: inline-block; background-color: #10b981 !important; color: #ffffff !important; padding: 6px 14px; border-radius: 4px; font-weight: bold; font-size: 12px; border: 1px solid #059669; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                          ✓ PAID IN FULL
+                        </span>
+                      ` : `
+                        <a href="${razorpayUrl}" target="_blank" rel="noopener noreferrer" style="display: inline-block; background-color: #2563eb !important; color: #ffffff !important; padding: 6px 16px; border-radius: 4px; text-decoration: none !important; font-weight: bold; font-size: 12px; border: 1px solid #1d4ed8; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                           ${paidAmount > 0 ? `Pay Balance (₹${balanceDue.toFixed(2)})` : 'Pay'}
+                        </a>
+                      `}
                    </div>
                </div>
             </td>
@@ -306,9 +327,19 @@ export const generateInvoiceHTML = (invoice, settings = null) => {
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${roundOffAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="padding: 4px; font-weight: bold;">NET TOTAL</td>
-                       <td style="padding: 4px; text-align: right; font-weight: bold;">${finalTotal.toFixed(2)}</td>
+                       <td style="border-bottom: 1px solid black; padding: 4px; font-weight: bold;">NET TOTAL</td>
+                       <td style="border-bottom: 1px solid black; padding: 4px; text-align: right; font-weight: bold;">${finalTotal.toFixed(2)}</td>
                    </tr>
+                   ${paidAmount > 0 ? `
+                   <tr>
+                       <td style="border-bottom: 1px solid black; padding: 4px; font-size: 13px; color: #047857; font-weight: bold;">PAID / RECEIVED</td>
+                       <td style="border-bottom: 1px solid black; padding: 4px; text-align: right; font-size: 13px; color: #047857; font-weight: bold;">-${paidAmount.toFixed(2)}</td>
+                   </tr>
+                   <tr>
+                       <td style="padding: 4px; font-weight: bold; font-size: 13px; color: #b91c1c;">BALANCE DUE</td>
+                       <td style="padding: 4px; text-align: right; font-weight: bold; font-size: 13px; color: #b91c1c;">${balanceDue.toFixed(2)}</td>
+                   </tr>
+                   ` : ''}
                </table>
             </td>
           </tr>

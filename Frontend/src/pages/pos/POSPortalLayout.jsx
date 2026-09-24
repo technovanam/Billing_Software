@@ -6,8 +6,11 @@ import {
   LogOut,
   Clock,
   Store,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
+import usePOSFullscreen, { exitPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 const posNavItems = [
   { name: "Customers", path: "/pos/customers", icon: Users },
@@ -36,6 +39,7 @@ export default function POSPortalLayout() {
   });
 
   const [currentTime, setCurrentTime] = useState(new Date());
+  const { isFullscreen, toggleFullscreen, canToggle } = usePOSFullscreen();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -44,6 +48,8 @@ export default function POSPortalLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("pos_cashier_session");
+    sessionStorage.removeItem("pos_fullscreen_opt_out");
+    exitPOSFullscreen();
     navigate("/signin", { replace: true });
   };
 
@@ -53,7 +59,7 @@ export default function POSPortalLayout() {
   const cashierName = cashierSession?.cashierName || "Cashier Staff";
 
   return (
-    <div className="h-screen w-screen bg-slate-100 flex overflow-hidden font-sans select-none">
+    <div className="h-screen w-screen bg-slate-100 flex overflow-hidden font-mazzard select-none">
       {/* ================= CASHIER SIDEBAR ================= */}
       <aside
         data-lenis-prevent="true"
@@ -104,6 +110,18 @@ export default function POSPortalLayout() {
 
         {/* Bottom Cashier Session Profile */}
         <div className="px-3 pb-4 shrink-0">
+          {canToggle && (
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
+              title={isFullscreen ? "Exit full screen" : "Enter full screen"}
+            >
+              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              <span>{isFullscreen ? "Exit Full Screen" : "Full Screen Mode"}</span>
+            </button>
+          )}
+
           <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
             <div className="flex items-center justify-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-blue-600" />
@@ -124,7 +142,7 @@ export default function POSPortalLayout() {
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-slate-800">{cashierName}</p>
-              <p className="truncate text-[11px] text-slate-500 font-mono">
+              <p className="truncate text-[11px] text-slate-500 tabular-nums">
                 {cashierId}
               </p>
             </div>
@@ -141,7 +159,7 @@ export default function POSPortalLayout() {
       </aside>
 
       {/* ================= MAIN CASHIER PORTAL OUTLET ================= */}
-      <main className="flex-1 h-full min-h-0 overflow-hidden flex flex-col">
+      <main data-lenis-prevent className="flex-1 h-full min-h-0 overflow-hidden flex flex-col">
         <Outlet context={{ cashierSession, cashierId }} />
       </main>
     </div>

@@ -15,6 +15,7 @@ import { AuthContext, AuthProvider } from "./context/AuthContext";
 import { CompanyProfileProvider } from "./context/CompanyProfileContext";
 import { ToastProvider } from "./context/ToastContext";
 import { AIAssistantProvider } from "./context/AIAssistantContext";
+import { OperatorProvider } from "./context/OperatorContext";
 import ToastContainer from "./components/Toast";
 import Clients from "./pages/clients/ClientManagement";
 import Report from "./pages/reports/RevenueLineChart";
@@ -34,6 +35,10 @@ import POSDashboard from "./pages/pos/POSDashboard";
 import POSProductsCatalog from "./pages/pos/POSProductsCatalog";
 import ScrollToTop from "./components/ScrollToTop";
 import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
+
+import PublicInvoicePayPage from "./pages/pay/PublicInvoicePayPage";
+import TokenPublicPayPage from "./pages/pay/TokenPublicPayPage";
+import PaymentSuccessPage from "./pages/pay/PaymentSuccessPage";
 
 // Super Admin Imports
 import { SuperAdminAuthProvider } from "./context/SuperAdminAuthContext";
@@ -76,18 +81,29 @@ import SystemSettings from "./pages/super-admin/system/SystemSettings";
 import BackupsManagement from "./pages/super-admin/system/BackupsManagement";
 import MaintenanceMode from "./pages/super-admin/system/MaintenanceMode";
 
+// ── Warehouse / Godown module ────────────────────────────────────────────────
+import WarehouseLayout from "./layouts/WarehouseLayout";
+import WarehouseDashboard from "./pages/warehouse/WarehouseDashboard";
+import WarehouseProducts from "./pages/warehouse/WarehouseProducts";
+import BarcodeScanner from "./pages/warehouse/BarcodeScanner";
+import StockIn from "./pages/warehouse/StockIn";
+import StockOut from "./pages/warehouse/StockOut";
+import StockMovements from "./pages/warehouse/StockMovements";
+import StockReport from "./pages/warehouse/StockReport";
+import DamagedStock from "./pages/warehouse/DamagedStock";
+import WarehouseSetup from "./pages/warehouse/WarehouseSetup";
+// ────────────────────────────────────────────────────────────────────────────
+
 import PropTypes from 'prop-types';
 
 function POSProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
   const cashierSession = localStorage.getItem("pos_cashier_session");
 
-  // If cashier already has active shift session in localStorage, immediately grant access
   if (cashierSession) {
     return <>{children}</>;
   }
 
-  // If auth is still initializing, show a friendly spinner instead of empty blank screen
   if (!authInitialized) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
@@ -96,12 +112,10 @@ function POSProtectedRoute({ children }) {
     );
   }
 
-  // If user is signed in with Firebase (e.g. admin or counter staff), grant access
   if (user) {
     return <>{children}</>;
   }
 
-  // Otherwise redirect to single login in Cashier mode
   return <Navigate to="/signin?role=cashier" replace />;
 }
 
@@ -112,7 +126,6 @@ POSProtectedRoute.propTypes = {
 function ProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
 
-  // Wait for Firebase to initialize authentication before making decisions
   if (!authInitialized) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-slate-100">
@@ -125,7 +138,6 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/signin" replace />;
   }
 
-  // ✅ 2. RENDER THE DETECTOR ALONGSIDE YOUR PROTECTED CONTENT
   return (
     <>
       <InactivityDetector />
@@ -139,86 +151,48 @@ ProtectedRoute.propTypes = {
 };
 
 export default function App() {
-  // Global Enter key navigation across all forms in the application
-  useFormKeyboardNavigation();
-
   return (
-    <SuperAdminAuthProvider>
-      <AuthProvider>
-        <CompanyProfileProvider>
-          <ToastProvider>
-            <AIAssistantProvider>
-              <Router>
+    <AuthProvider>
+      <CompanyProfileProvider>
+        <ToastProvider>
+          <AIAssistantProvider>
+            <OperatorProvider>
+              <SuperAdminAuthProvider>
+                <Router>
                 <ScrollToTop />
-                <ImpersonationBanner />
                 <Routes>
-                  {/* Super Admin Public Auth Routes */}
-                  <Route path="/super-admin/login" element={<Navigate to="/signin" replace />} />
-                  <Route path="/super-admin/forgot-password" element={<SuperAdminForgotPassword />} />
-                  <Route path="/super-admin/reset-password" element={<SuperAdminResetPassword />} />
-                  <Route path="/super-admin/2fa" element={<SuperAdmin2FA />} />
-
-                  {/* Super Admin Protected Portal Routes */}
-                  <Route
-                    path="/super-admin/*"
-                    element={
-                      <SuperAdminRoute>
-                        <SuperAdminLayout />
-                      </SuperAdminRoute>
-                    }
-                  >
-                    <Route index element={<Navigate to="dashboard" replace />} />
-                    <Route path="dashboard" element={<SuperAdminDashboard />} />
-                    <Route path="businesses" element={<BusinessesList />} />
-                    <Route path="businesses/:id" element={<BusinessDetail />} />
-                    <Route path="users" element={<BusinessUsersList />} />
-                    <Route path="branches" element={<BranchesList />} />
-                    <Route path="godowns" element={<GodownsList />} />
-                    <Route path="pos-terminals" element={<POSTerminalsList />} />
-                    <Route path="plans" element={<SubscriptionPlans />} />
-                    <Route path="subscriptions" element={<SubscriptionsList />} />
-                    <Route path="payments" element={<PlatformPayments />} />
-                    <Route path="revenue" element={<RevenueAnalytics />} />
-                    <Route path="coupons" element={<CouponsManagement />} />
-                    <Route path="analytics" element={<PlatformAnalytics />} />
-                    <Route path="support" element={<SupportTickets />} />
-                    <Route path="announcements" element={<Announcements />} />
-                    <Route path="admin-users" element={<AdminUsers />} />
-                    <Route path="roles" element={<RolesAndPermissions />} />
-                    <Route path="audit-logs" element={<AuditLogs />} />
-                    <Route path="login-activity" element={<LoginActivity />} />
-                    <Route path="sessions" element={<ActiveSessions />} />
-                    <Route path="system-health" element={<SystemHealth />} />
-                    <Route path="settings" element={<SystemSettings />} />
-                    <Route path="backups" element={<BackupsManagement />} />
-                    <Route path="maintenance" element={<MaintenanceMode />} />
-                  </Route>
-
-                  {/* Normal Business Public Routes */}
+                  {/* Public */}
                   <Route path="/" element={<LandingPage />} />
                   <Route path="/signin" element={<AuthTransition key="signin" />} />
-                  <Route path="/login" element={<Navigate to="/signin" replace />} />
                   <Route path="/signup" element={<AuthTransition key="signup" />} />
+                  <Route path="/pay/:userId/*" element={<PublicInvoicePayPage />} />
+                  <Route path="/pay/invoice/*" element={<PublicInvoicePayPage />} />
 
-                  {/* Single Login Redirect for POS */}
-                  <Route path="/pos/login" element={<Navigate to="/signin?role=cashier" replace />} />
-
-                  {/* Cashier Workstation with Sidebar: 1. Customers, 2. POS Billing */}
+                  {/* Dedicated Warehouse Portal Routes */}
                   <Route
-                    path="/pos"
+                    path="/warehouse/*"
                     element={
-                      <POSProtectedRoute>
-                        <POSPortalLayout />
-                      </POSProtectedRoute>
+                      <ProtectedRoute>
+                        <WarehouseLayout>
+                          <Routes>
+                            <Route path="/" element={<WarehouseDashboard />} />
+                            <Route path="/products" element={<WarehouseProducts />} />
+                            <Route path="/scan" element={<BarcodeScanner />} />
+                            <Route path="/stock-in" element={<StockIn />} />
+                            <Route path="/stock-out" element={<StockOut />} />
+                            <Route path="/transfer" element={<Navigate to="/warehouse" replace />} />
+                            <Route path="/godowns" element={<Navigate to="/warehouse" replace />} />
+                            <Route path="/movements" element={<StockMovements />} />
+                            <Route path="/damaged" element={<DamagedStock />} />
+                            <Route path="/reports" element={<StockReport />} />
+                            <Route path="/setup" element={<WarehouseSetup />} />
+                          </Routes>
+                        </WarehouseLayout>
+                      </ProtectedRoute>
                     }
-                  >
-                    <Route index element={<Navigate to="/pos/customers" replace />} />
-                    <Route path="customers" element={<POSCustomers />} />
-                    <Route path="billing" element={<POSPage />} />
-                    <Route path="*" element={<Navigate to="/pos/customers" replace />} />
-                  </Route>
+                  />
 
-                  {/* Normal Business Protected Routes */}
+                  {/* Admin / Billing Portal Routes */}
                   <Route
                     path="/*"
                     element={
@@ -231,6 +205,8 @@ export default function App() {
                               <Route path="/dashboard" element={<Dashboard />} />
                               <Route path="/invoices" element={<Invoices />} />
                               <Route path="/invoices/create" element={<CreateInvoicePage />} />
+                              <Route path="/challans" element={<DeliveryChallans />} />
+                              <Route path="/challans/create" element={<CreateDeliveryChallanPage />} />
                               <Route path="/delivery-challans" element={<DeliveryChallans />} />
                               <Route path="/delivery-challans/create" element={<CreateDeliveryChallanPage />} />
                               <Route path="/recurring-invoices" element={<RecurringInvoices />} />
@@ -238,7 +214,6 @@ export default function App() {
                               <Route path="/clients" element={<Clients />} />
                               <Route path="/customers/new" element={<Clients />} />
                               <Route path="/products" element={<Products />} />
-                              <Route path="/cashiers" element={<CashierManagement />} />
                               <Route path="/reports" element={<Report />} />
                               <Route path="/payments" element={<Payments />} />
                               <Route path="/expenses" element={<Expenses />} />
@@ -256,10 +231,11 @@ export default function App() {
                 </Routes>
                 <ToastContainer />
               </Router>
-            </AIAssistantProvider>
-          </ToastProvider>
-        </CompanyProfileProvider>
-      </AuthProvider>
-    </SuperAdminAuthProvider>
+            </SuperAdminAuthProvider>
+          </OperatorProvider>
+          </AIAssistantProvider>
+        </ToastProvider>
+      </CompanyProfileProvider>
+    </AuthProvider>
   );
 }

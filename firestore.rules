@@ -16,12 +16,39 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
-    // User document: company profile (signup). Only owner; validate shape/size.
+    // Admin Role-Based Access Control (RBAC) Helpers
+    // -------------------------------------------------------------------------
+    function isAdmin() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
+    }
+
+    function getAdminRole() {
+      return get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.role;
+    }
+
+    function isSuperAdmin() {
+      return isAdmin() && getAdminRole() == "Super Admin";
+    }
+
+    function hasPermission(permissionName) {
+      return isAdmin() && (
+        getAdminRole() == "Super Admin" ||
+        get(/databases/$(database)/documents/adminRoles/$(getAdminRole())).data.permissions.get(permissionName, false) == true
+      );
+    }
+
+    // Warehouse: allows a linked reader (e.g., a warehouse operator) read access
+    // Currently mapped to owner only — extend to a dedicated role when required.
+    function isLinkedWarehouseReader(userId) {
+      return isOwner(userId);
+    }
+
+
     // -------------------------------------------------------------------------
     match /users/{userId} {
       allow read: if isOwner(userId);
       // Profile write only with validated fields (no arbitrary client data)
-      allow create, update: if isOwner(userId)
+      allow create: if isOwner(userId)
         && request.resource.data.keys().hasOnly([
           'companyName', 'ownerName', 'phone', 'gstin', 'address',
           'city', 'state', 'pincode', 'logoURL', 'createdAt'
@@ -35,11 +62,19 @@ service cloud.firestore {
         && isValidString(request.resource.data.get('state', ''), 100)
         && isValidString(request.resource.data.get('pincode', ''), 10)
         && isValidString(request.resource.data.get('logoURL', ''), 1000);
-      allow delete: if false;
+      
+      allow update: if 
+        (isOwner(userId) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'planName', 'subscriptionExpiry', 'totalSales', 'usersCount', 'branchesCount'])) 
+        || hasPermission('Edit Business') 
+        || hasPermission('Suspend Business') 
+        || hasPermission('Activate Business') 
+        || hasPermission('Extend Terms');
+      allow delete: if hasPermission('Delete Business');
 
-      // Subcollections: strict path binding — only this user's data
+      // Subcollections: strict path binding — only this user's data or platform admin
       match /customers/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || hasPermission('View Analytics');
+        allow write: if isOwner(userId);
       }
       match /products/{docId} {
         allow read, write: if isOwner(userId);
@@ -51,17 +86,103 @@ service cloud.firestore {
         allow read, write: if isOwner(userId);
       }
       match /expenses/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || hasPermission('View Analytics');
+        allow write: if isOwner(userId);
       }
       match /recurringInvoices/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || hasPermission('View Analytics');
+        allow write: if isOwner(userId);
       }
       match /settings/{docId} {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+      match /deliveryChallans/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // ── Warehouse / Godown collections ────────────────────────────────────
+
+
+      // Current stock per product+godown — owner can read/write
+      // Mutation operations (IN/OUT/transfer) use atomic Firestore client transactions.
+      // Backend mutations go through Firebase Admin SDK which bypasses rules — this
+      // rule covers direct client-side writes used in this implementation.
+      match /stock/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Stock movements — append-only ledger.
+      // Reads allowed, creates allowed, update & delete explicitly denied to protect
+      // audit integrity. (Admin SDK on backend can still correct if needed.)
+      match /stockMovements/{docId} {
+        allow read:   if isOwner(userId);
+        allow create: if isOwner(userId);
+        allow update, delete: if false;   // movements are immutable
+      }
+
+      // Damaged Stock — separated inventory tracking
+      match /damaged_stock/{docId} {
+        allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
+      }
+      match /damagedStock/{docId} {
+        allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
+      }
+
+      // Barcode index — barcode IS the doc ID; uniqueness enforced via transaction.
+      match /barcodeIndex/{barcode} {
+        allow read: if isOwner(userId) || isLinkedWarehouseReader(userId);
+        allow write: if isOwner(userId);
+      }
+
+      // Staff definitions — for operator picker
+      match /staff/{docId} {
         allow read, write: if isOwner(userId);
       }
       match /cashiers/{docId} {
         allow read, write: if isOwner(userId);
       }
+      match /branches/{docId} {
+        allow read: if isOwner(userId) || hasPermission('View Businesses');
+        allow write: if isOwner(userId) || hasPermission('Edit Business');
+      }
+      match /godowns/{docId} {
+        allow read: if isOwner(userId) || hasPermission('View Businesses');
+        allow write: if isOwner(userId) || hasPermission('Edit Business');
+      }
+      match /terminals/{docId} {
+        allow read: if isOwner(userId) || hasPermission('View Businesses');
+        allow write: if isOwner(userId) || hasPermission('Edit Business');
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // Super Admin Collections
+    // -------------------------------------------------------------------------
+    match /adminRoles/{roleId} {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+    
+    match /adminUsers/{adminId} {
+      allow read: if isAdmin();
+      allow write: if isSuperAdmin();
+    }
+    
+    match /auditLogs/{logId} {
+      allow read: if hasPermission('View Analytics') || isSuperAdmin();
+      allow create: if isAdmin(); // Anyone acting as admin can append logs
+      allow update, delete: if false; // Logs are immutable
+    }
+
+    match /subscriptionPlans/{planId} {
+      allow read: if true; // Public or any logged in user can view plans
+      allow write: if hasPermission('Change Plan') || hasPermission('Cancel Plan');
+    }
+
+    match /supportTickets/{ticketId} {
+      allow read: if hasPermission('View Settings') || isSuperAdmin();
+      allow write: if hasPermission('View Settings') || isSuperAdmin();
     }
 
     // -------------------------------------------------------------------------

@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { ShieldCheck, Lock, Check, X, Eye, EyeOff } from "lucide-react";
 import AuthCollage from "../../../components/AuthCollage";
+import { confirmPasswordReset } from "firebase/auth";
+import { auth } from "../../../lib/firebase/config";
 
 export default function SuperAdminResetPassword() {
   const [newPassword, setNewPassword] = useState("");
@@ -11,6 +13,8 @@ export default function SuperAdminResetPassword() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const oobCode = searchParams.get("oobCode");
 
   // Requirements checks
   const rules = useMemo(() => {
@@ -28,8 +32,12 @@ export default function SuperAdminResetPassword() {
   const strengthColor =
     strength === "Weak" ? "bg-rose-500" : strength === "Moderate" ? "bg-amber-500" : "bg-emerald-500";
 
-  const handleReset = (e) => {
+  const handleReset = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+    if (!oobCode) {
+      setError("Invalid or missing password reset code.");
+      return;
+    }
     if (metCount < 5) {
       setError("Please ensure all password complexity requirements are fulfilled.");
       return;
@@ -42,13 +50,18 @@ export default function SuperAdminResetPassword() {
     setError("");
     setLoading(true);
 
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await confirmPasswordReset(auth, oobCode, newPassword);
       setSuccess(true);
       setTimeout(() => {
         navigate("/super-admin/login", { replace: true });
       }, 2000);
-    }, 1000);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Failed to reset password. The link may be expired.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

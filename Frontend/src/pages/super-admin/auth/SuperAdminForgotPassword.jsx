@@ -1,22 +1,31 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { ShieldCheck, Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, Mail, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import AuthCollage from "../../../components/AuthCollage";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../../../lib/firebase/config";
 
 export default function SuperAdminForgotPassword() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!email.trim()) return;
     setLoading(true);
+    setError("");
 
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
       setSubmitted(true);
-    }, 800);
+    } catch (err) {
+      console.error(err);
+      setError(err.message || "Failed to send recovery email. Please check the address and try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -76,6 +85,13 @@ export default function SuperAdminForgotPassword() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+              
               <div>
                 <input
                   id="recovery-email"
