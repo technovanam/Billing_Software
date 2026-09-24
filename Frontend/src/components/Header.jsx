@@ -53,6 +53,13 @@ export default function Header() {
 
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
+  const navRef = useRef(null);
+
+  const handleSidebarWheel = (e) => {
+    if (navRef.current && !navRef.current.contains(e.target)) {
+      navRef.current.scrollTop += e.deltaY;
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -86,7 +93,12 @@ export default function Header() {
 
   return (
     <>
-      <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col">
+      <aside
+        data-lenis-prevent="true"
+        data-lenis-prevent-wheel="true"
+        onWheel={handleSidebarWheel}
+        className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col"
+      >
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
           <img
             src={headerLogo}
@@ -99,7 +111,12 @@ export default function Header() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <nav
+          ref={navRef}
+          data-lenis-prevent="true"
+          data-lenis-prevent-wheel="true"
+          className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto scrollbar-thin"
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
             return (

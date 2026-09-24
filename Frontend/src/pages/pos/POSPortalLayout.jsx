@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
@@ -18,6 +18,13 @@ export default function POSPortalLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { companyProfile } = useCompanyProfile();
+  const navRef = useRef(null);
+
+  const handleSidebarWheel = (e) => {
+    if (navRef.current && !navRef.current.contains(e.target)) {
+      navRef.current.scrollTop += e.deltaY;
+    }
+  };
 
   const [cashierSession, setCashierSession] = useState(() => {
     try {
@@ -48,7 +55,12 @@ export default function POSPortalLayout() {
   return (
     <div className="h-screen w-screen bg-slate-100 flex overflow-hidden font-sans select-none">
       {/* ================= CASHIER SIDEBAR ================= */}
-      <aside className="w-64 h-full border-r border-slate-200 bg-white shadow-xs z-40 flex flex-col shrink-0">
+      <aside
+        data-lenis-prevent="true"
+        data-lenis-prevent-wheel="true"
+        onWheel={handleSidebarWheel}
+        className="w-64 h-full border-r border-slate-200 bg-white shadow-xs z-40 flex flex-col shrink-0"
+      >
         {/* Top Branding */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200 shrink-0">
           <img
@@ -63,7 +75,12 @@ export default function POSPortalLayout() {
         </div>
 
         {/* Navigation items: 1. Customers, 2. POS Billing */}
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <nav
+          ref={navRef}
+          data-lenis-prevent="true"
+          data-lenis-prevent-wheel="true"
+          className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto scrollbar-thin"
+        >
           {posNavItems.map((item) => {
             const Icon = item.icon;
             return (
