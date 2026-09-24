@@ -108,7 +108,6 @@ export function SuperAdminAuthProvider({ children }) {
              if (user.email === "admin@technovanam.com") {
                 setAdminUser({ uid: user.uid, email: user.email, role: "Super Admin", name: "Chief Platform Admin" });
              } else {
-                await firebaseSignOut(auth);
                 setAdminUser(null);
              }
           }
@@ -116,7 +115,6 @@ export function SuperAdminAuthProvider({ children }) {
           if (user.email === "admin@technovanam.com") {
              setAdminUser({ uid: user.uid, email: user.email, role: "Super Admin", name: "Chief Platform Admin" });
           } else {
-             await firebaseSignOut(auth);
              setAdminUser(null);
           }
         }

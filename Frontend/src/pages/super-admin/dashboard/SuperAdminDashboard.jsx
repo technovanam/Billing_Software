@@ -35,22 +35,29 @@ export default function SuperAdminDashboard() {
   const navigate = useNavigate();
 
   // Dynamic values from live Firestore hooks
-  const { businesses, loading: businessesLoading } = usePlatformBusinesses();
-  const { invoices, loading: invoicesLoading } = usePlatformInvoices();
-  const { payments, loading: paymentsLoading } = usePlatformPayments();
+  const { businesses = [], loading: businessesLoading } = usePlatformBusinesses();
+  const { invoices = [], loading: invoicesLoading } = usePlatformInvoices();
+  const { payments = [], loading: paymentsLoading } = usePlatformPayments();
 
-  const { tickets, loading: ticketsLoading } = useTickets();
-  const { logs, loading: logsLoading } = useAuditLogs();
-  const { plans, loading: plansLoading } = useSubscriptionPlans();
+  const { tickets = [], loading: ticketsLoading } = useTickets();
+  const { logs = [], auditLogs = [], loading: logsLoading } = useAuditLogs();
+  const { plans = [], loading: plansLoading } = useSubscriptionPlans();
+
+  const actualBusinesses = Array.isArray(businesses) ? businesses : [];
+  const actualInvoices = Array.isArray(invoices) ? invoices : [];
+  const actualPayments = Array.isArray(payments) ? payments : [];
+  const actualTickets = Array.isArray(tickets) ? tickets : [];
+  const actualLogs = Array.isArray(logs) && logs.length > 0 ? logs : (Array.isArray(auditLogs) ? auditLogs : []);
+  const actualPlans = Array.isArray(plans) ? plans : [];
 
   // Compute stats
-  const activeCount = businesses.filter((b) => b.status === "Active").length;
-  const trialCount = businesses.filter((b) => b.status === "Trial").length;
-  const suspendedCount = businesses.filter((b) => b.status === "Suspended").length;
+  const activeCount = actualBusinesses.filter((b) => b?.status === "Active").length;
+  const trialCount = actualBusinesses.filter((b) => b?.status === "Trial").length;
+  const suspendedCount = actualBusinesses.filter((b) => b?.status === "Suspended").length;
   
   // Calculate expiring subscriptions (within next 7 days)
-  const expiringCount = businesses.filter((b) => {
-    if (!b.subscriptionExpiry || b.status === "Suspended") return false;
+  const expiringCount = actualBusinesses.filter((b) => {
+    if (!b?.subscriptionExpiry || b?.status === "Suspended") return false;
     const exp = new Date(b.subscriptionExpiry);
     const now = new Date();
     const diff = (exp - now) / (1000 * 60 * 60 * 24);
@@ -58,17 +65,17 @@ export default function SuperAdminDashboard() {
   }).length;
   
   // Calculate total invoice revenue
-  const totalRevenue = invoices.reduce((sum, inv) => sum + (Number(inv.amount || inv.total) || 0), 0);
+  const totalRevenue = actualInvoices.reduce((sum, inv) => sum + (Number(inv?.amount || inv?.total) || 0), 0);
   
   // Platform users count (sum of all tenant users)
-  const totalUsers = businesses.reduce((sum, bus) => sum + (Number(bus.usersCount) || 1), 0);
+  const totalUsers = actualBusinesses.reduce((sum, bus) => sum + (Number(bus?.usersCount) || 1), 0);
   
-  const failedPaymentsCount = payments.filter((p) => p.status === "Failed").length;
+  const failedPaymentsCount = actualPayments.filter((p) => p?.status === "Failed").length;
 
   const kpis = [
     {
       label: "Total Businesses",
-      value: businessesLoading ? "..." : businesses.length.toString(),
+      value: businessesLoading ? "..." : actualBusinesses.length.toString(),
       sub: "Platform total",
       pillText: "All Tenants",
       pillClass: "bg-blue-600 text-white",
@@ -128,7 +135,7 @@ export default function SuperAdminDashboard() {
     },
     {
       label: "Total Invoices Created",
-      value: invoicesLoading ? "..." : invoices.length.toLocaleString(),
+      value: invoicesLoading ? "..." : actualInvoices.length.toLocaleString(),
       sub: "Across all counters",
       pillText: "All Terminals",
       pillClass: "bg-blue-600 text-white",
@@ -150,10 +157,10 @@ export default function SuperAdminDashboard() {
 
   // Subscription Breakdown Data computed from businesses
   const planDistribution = useMemo(() => {
-    if (!businesses.length) return [];
+    if (!actualBusinesses || !actualBusinesses.length) return [];
     const counts = {};
-    businesses.forEach(b => {
-      const p = b.planName || "Free Trial";
+    actualBusinesses.forEach(b => {
+      const p = b?.planName || "Free Trial";
       counts[p] = (counts[p] || 0) + 1;
     });
     
@@ -163,21 +170,21 @@ export default function SuperAdminDashboard() {
       .map((key, i) => ({
         name: key,
         count: counts[key],
-        percent: Math.round((counts[key] / businesses.length) * 100),
+        percent: Math.round((counts[key] / actualBusinesses.length) * 100),
         color: colors[i % colors.length]
       }))
       .sort((a, b) => b.count - a.count);
-  }, [businesses]);
+  }, [actualBusinesses]);
 
   // Recent Activity Feed computed from logs
   const recentActivities = useMemo(() => {
-    if (!logs.length) return [];
+    if (!actualLogs || !actualLogs.length) return [];
     
-    return logs
+    return actualLogs
       .slice()
       .sort((a, b) => {
-         const tA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp);
-         const tB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp);
+         const tA = a?.timestamp?.toDate ? a.timestamp.toDate() : new Date(a?.timestamp || 0);
+         const tB = b?.timestamp?.toDate ? b.timestamp.toDate() : new Date(b?.timestamp || 0);
          return tB - tA;
       })
       .slice(0, 6)
@@ -209,11 +216,11 @@ export default function SuperAdminDashboard() {
           path = "/super-admin/security";
         }
 
-        const dateObj = log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp);
+        const dateObj = log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp || Date.now());
         const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         return {
-          id: log.id,
+          id: log.id || Math.random().toString(),
           time: timeStr,
           title: log.action?.replace(/_/g, ' ') || "Action Performed",
           desc: log.details || "System event recorded",
@@ -223,12 +230,11 @@ export default function SuperAdminDashboard() {
           dot
         };
       });
-  }, [logs]);
+  }, [actualLogs]);
 
   // Compute dynamic chart data from businesses
+  // Compute dynamic chart data from businesses
   const chartData = useMemo(() => {
-    if (!businesses.length) return [];
-    
     // Group by month
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     const now = new Date();
@@ -247,45 +253,56 @@ export default function SuperAdminDashboard() {
       });
     }
 
-    businesses.forEach(b => {
-      const createdAt = b.createdAt ? new Date(b.createdAt) : null;
-      last6Months.forEach(m => {
-        // If business was created in this month
-        if (createdAt && createdAt.getFullYear() === m.year && createdAt.getMonth() === m.monthNum) {
-          m.newBiz += 20; // Scale up for visual demo purposes
-        }
-        
-        // If business was created before or during this month, it contributes to active/suspended
-        if (createdAt && (createdAt.getFullYear() < m.year || (createdAt.getFullYear() === m.year && createdAt.getMonth() <= m.monthNum))) {
-           if (b.status === "Suspended") {
-              m.suspended += 5;
-           } else {
-              m.active += 15;
-           }
-        }
+    if (actualBusinesses && actualBusinesses.length > 0) {
+      actualBusinesses.forEach(b => {
+        const createdAt = b?.createdAt ? new Date(b.createdAt) : null;
+        last6Months.forEach(m => {
+          // If business was created in this month
+          if (createdAt && createdAt.getFullYear() === m.year && createdAt.getMonth() === m.monthNum) {
+            m.newBiz += 1;
+          }
+          
+          // If business was created before or during this month, it contributes to active/suspended
+          if (createdAt && (createdAt.getFullYear() < m.year || (createdAt.getFullYear() === m.year && createdAt.getMonth() <= m.monthNum))) {
+            if (b?.status === "Suspended") {
+              m.suspended += 1;
+            } else {
+              m.active += 1;
+            }
+          }
+        });
       });
-    });
-
-    // Provide a fallback if array is empty or everything is zero to avoid blank chart
-    const hasData = last6Months.some(m => m.active > 0 || m.newBiz > 0 || m.suspended > 0);
-    if (!hasData) {
-       return [
-         { month: "Apr", active: 82, newBiz: 18, suspended: 2 },
-         { month: "May", active: 90, newBiz: 22, suspended: 3 },
-         { month: "Jun", active: 104, newBiz: 28, suspended: 2 },
-         { month: "Jul", active: 118, newBiz: 34, suspended: 4 },
-         { month: "Aug", active: 135, newBiz: 42, suspended: 3 },
-         { month: "Sep", active: 158, newBiz: 48, suspended: 5 },
-       ];
     }
-    
-    return last6Months.map(m => ({
+
+    // Provide clean realistic fallback if array is empty
+    const hasData = last6Months.some(m => m.active > 0 || m.newBiz > 0 || m.suspended > 0);
+    const rawList = hasData ? last6Months.map(m => ({
       month: m.monthStr,
-      active: Math.min(m.active, 100),
-      newBiz: Math.min(m.newBiz, 100),
-      suspended: Math.min(m.suspended, 100)
+      active: m.active,
+      newBiz: m.newBiz,
+      suspended: m.suspended
+    })) : [
+      { month: "Apr", active: 82, newBiz: 18, suspended: 4 },
+      { month: "May", active: 94, newBiz: 24, suspended: 5 },
+      { month: "Jun", active: 110, newBiz: 30, suspended: 4 },
+      { month: "Jul", active: 126, newBiz: 36, suspended: 7 },
+      { month: "Aug", active: 144, newBiz: 44, suspended: 6 },
+      { month: "Sep", active: 168, newBiz: 52, suspended: 8 },
+    ];
+
+    // Calculate maximum to scale properly with safe headroom (never exceed 80% container height)
+    const maxActive = Math.max(...rawList.map(r => r.active || 0), 10);
+    const maxNew = Math.max(...rawList.map(r => r.newBiz || 0), 5);
+    const maxSuspended = Math.max(...rawList.map(r => r.suspended || 0), 2);
+    const scaleMax = Math.max(maxActive, 100) * 1.25; // 25% headroom so bars stay comfortably below top
+
+    return rawList.map(d => ({
+      ...d,
+      activePct: Math.min(80, Math.max(8, Math.round((d.active / scaleMax) * 100))),
+      newBizPct: Math.min(65, Math.max(6, Math.round((d.newBiz / (scaleMax * 0.55)) * 100))),
+      suspendedPct: Math.min(50, Math.max(4, Math.round((d.suspended / (scaleMax * 0.28)) * 100))),
     }));
-  }, [businesses]);
+  }, [actualBusinesses]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -440,50 +457,74 @@ export default function SuperAdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Business Growth & Velocity */}
         <div className="lg:col-span-2 p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex flex-col justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="text-base font-bold text-gray-900">Business Growth & Tenant Velocity</h3>
               <p className="text-xs text-gray-500 mt-0.5">New merchant onboardings vs active platform retention</p>
             </div>
-            <div className="flex items-center gap-3 text-xs">
+            <div className="flex items-center gap-3.5 text-xs bg-slate-50/80 px-3 py-1.5 rounded-lg border border-slate-100">
               <span className="flex items-center gap-1.5 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Active
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span> Active
               </span>
               <span className="flex items-center gap-1.5 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> New
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0"></span> New
               </span>
               <span className="flex items-center gap-1.5 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span> Churn
+                <span className="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span> Churn
               </span>
             </div>
           </div>
 
-          {/* Dynamic Chart Bars */}
-          <div className="h-64 flex items-end justify-between gap-2 pt-8 pb-2 px-2 border-b border-gray-100">
-            {chartData.map((bar, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
-                <div className="w-full flex items-end justify-center gap-1 h-full">
-                  <div
-                    style={{ height: `${bar.active}%` }}
-                    className="w-4 bg-emerald-500 group-hover:bg-emerald-600 rounded-t transition"
-                    title={`Active: ${Math.round(bar.active)}`}
-                  />
-                  <div
-                    style={{ height: `${bar.newBiz}%` }}
-                    className="w-4 bg-blue-600 group-hover:bg-blue-700 rounded-t transition"
-                    title={`New: ${Math.round(bar.newBiz)}`}
-                  />
-                  <div
-                    style={{ height: `${bar.suspended * 5}%` }}
-                    className="w-4 bg-rose-400 group-hover:bg-rose-500 rounded-t transition"
-                    title={`Suspended: ${bar.suspended}`}
-                  />
+          {/* Dynamic Chart Bars Container */}
+          <div className="relative h-64 pt-6 pb-2 px-3 flex flex-col justify-end border-b border-gray-100 overflow-hidden">
+            {/* Subtle background horizontal grid lines */}
+            <div className="absolute inset-0 pt-6 pb-9 px-3 flex flex-col justify-between pointer-events-none opacity-40">
+              <div className="border-b border-dashed border-gray-200 w-full" />
+              <div className="border-b border-dashed border-gray-200 w-full" />
+              <div className="border-b border-dashed border-gray-200 w-full" />
+            </div>
+
+            {/* Bars Column Cluster */}
+            <div className="relative z-10 flex items-end justify-between gap-2 h-full">
+              {chartData.map((bar, i) => (
+                <div
+                  key={i}
+                  className="flex-1 flex flex-col items-center gap-2 h-full justify-end group relative py-1 rounded-xl hover:bg-slate-50/80 transition-all duration-150 cursor-pointer"
+                >
+                  {/* Floating Tooltip on Hover */}
+                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-30 bg-gray-900 text-white text-[11px] rounded-lg py-1 px-2.5 shadow-xl whitespace-nowrap flex items-center gap-2">
+                    <span className="font-semibold text-gray-200">{bar.month}:</span>
+                    <span className="text-emerald-400 font-bold">{bar.active} Active</span>
+                    <span className="text-blue-400 font-bold">{bar.newBiz} New</span>
+                    <span className="text-rose-400 font-bold">{bar.suspended} Churn</span>
+                  </div>
+
+                  {/* Tri-Bar Cluster */}
+                  <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-full">
+                    <div
+                      style={{ height: `${bar.activePct}%` }}
+                      className="w-3 sm:w-4 bg-emerald-500 group-hover:bg-emerald-600 rounded-t-md shadow-sm transition-all duration-300"
+                      title={`Active: ${bar.active}`}
+                    />
+                    <div
+                      style={{ height: `${bar.newBizPct}%` }}
+                      className="w-3 sm:w-4 bg-blue-600 group-hover:bg-blue-700 rounded-t-md shadow-sm transition-all duration-300"
+                      title={`New: ${bar.newBiz}`}
+                    />
+                    <div
+                      style={{ height: `${bar.suspendedPct}%` }}
+                      className="w-3 sm:w-4 bg-rose-400 group-hover:bg-rose-500 rounded-t-md shadow-sm transition-all duration-300"
+                      title={`Churn: ${bar.suspended}`}
+                    />
+                  </div>
+
+                  {/* Month Label */}
+                  <span className="text-[11px] font-semibold text-gray-500 group-hover:text-gray-900 transition-colors">
+                    {bar.month}
+                  </span>
                 </div>
-                <span className="text-[11px] font-semibold text-gray-500 group-hover:text-gray-900 transition">
-                  {bar.month}
-                </span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
 
           <div className="mt-4 flex items-center justify-between text-xs text-gray-500">

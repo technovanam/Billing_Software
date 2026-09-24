@@ -88,6 +88,8 @@ import WarehouseProducts from "./pages/warehouse/WarehouseProducts";
 import BarcodeScanner from "./pages/warehouse/BarcodeScanner";
 import StockIn from "./pages/warehouse/StockIn";
 import StockOut from "./pages/warehouse/StockOut";
+import StockTransfer from "./pages/warehouse/StockTransfer";
+import GodownManagement from "./pages/warehouse/GodownManagement";
 import StockMovements from "./pages/warehouse/StockMovements";
 import StockReport from "./pages/warehouse/StockReport";
 import DamagedStock from "./pages/warehouse/DamagedStock";
@@ -160,13 +162,117 @@ export default function App() {
               <SuperAdminAuthProvider>
                 <Router>
                 <ScrollToTop />
+                <ImpersonationBanner />
                 <Routes>
-                  {/* Public */}
-                  <Route path="/" element={<LandingPage />} />
-                  <Route path="/signin" element={<AuthTransition key="signin" />} />
-                  <Route path="/signup" element={<AuthTransition key="signup" />} />
+                  {/* Super Admin Public Auth Routes */}
+                  <Route path="/super-admin/login" element={<Navigate to="/signin" replace />} />
+                  <Route path="/super-admin/forgot-password" element={<SuperAdminForgotPassword />} />
+                  <Route path="/super-admin/reset-password" element={<SuperAdminResetPassword />} />
+                  <Route path="/super-admin/2fa" element={<SuperAdmin2FA />} />
+
+                  {/* Super Admin Protected Portal Routes */}
+                  <Route
+                    path="/super-admin/*"
+                    element={
+                      <SuperAdminRoute>
+                        <SuperAdminLayout />
+                      </SuperAdminRoute>
+                    }
+                  >
+                    <Route index element={<Navigate to="dashboard" replace />} />
+                    <Route path="dashboard" element={<SuperAdminDashboard />} />
+
+                    {/* Businesses */}
+                    <Route path="businesses" element={<BusinessesList />} />
+                    <Route path="businesses/:id" element={<BusinessDetail />} />
+
+                    {/* Platform Data */}
+                    <Route path="users" element={<BusinessUsersList />} />
+                    <Route path="platform/users" element={<BusinessUsersList />} />
+                    <Route path="branches" element={<BranchesList />} />
+                    <Route path="platform/branches" element={<BranchesList />} />
+                    <Route path="godowns" element={<GodownsList />} />
+                    <Route path="platform/godowns" element={<GodownsList />} />
+                    <Route path="pos-terminals" element={<POSTerminalsList />} />
+                    <Route path="platform/terminals" element={<POSTerminalsList />} />
+                    <Route path="platform/pos-terminals" element={<POSTerminalsList />} />
+
+                    {/* Subscriptions & Billing */}
+                    <Route path="plans" element={<SubscriptionPlans />} />
+                    <Route path="subscriptions/plans" element={<SubscriptionPlans />} />
+                    <Route path="subscriptions" element={<SubscriptionsList />} />
+                    <Route path="subscriptions/list" element={<SubscriptionsList />} />
+                    <Route path="payments" element={<PlatformPayments />} />
+                    <Route path="subscriptions/payments" element={<PlatformPayments />} />
+                    <Route path="revenue" element={<RevenueAnalytics />} />
+                    <Route path="subscriptions/revenue" element={<RevenueAnalytics />} />
+                    <Route path="coupons" element={<CouponsManagement />} />
+                    <Route path="subscriptions/coupons" element={<CouponsManagement />} />
+
+                    {/* Analytics */}
+                    <Route path="analytics" element={<PlatformAnalytics />} />
+
+                    {/* Support */}
+                    <Route path="support" element={<SupportTickets />} />
+                    <Route path="support/tickets" element={<SupportTickets />} />
+                    <Route path="announcements" element={<Announcements />} />
+                    <Route path="support/announcements" element={<Announcements />} />
+
+                    {/* Security & Access */}
+                    <Route path="admin-users" element={<AdminUsers />} />
+                    <Route path="security/admin-users" element={<AdminUsers />} />
+                    <Route path="roles" element={<RolesAndPermissions />} />
+                    <Route path="security/roles" element={<RolesAndPermissions />} />
+                    <Route path="audit-logs" element={<AuditLogs />} />
+                    <Route path="security/audit-logs" element={<AuditLogs />} />
+                    <Route path="login-activity" element={<LoginActivity />} />
+                    <Route path="security/login-activity" element={<LoginActivity />} />
+                    <Route path="sessions" element={<ActiveSessions />} />
+                    <Route path="security/sessions" element={<ActiveSessions />} />
+
+                    {/* System & Maintenance */}
+                    <Route path="system-health" element={<SystemHealth />} />
+                    <Route path="system/health" element={<SystemHealth />} />
+                    <Route path="settings" element={<SystemSettings />} />
+                    <Route path="system/settings" element={<SystemSettings />} />
+                    <Route path="backups" element={<BackupsManagement />} />
+                    <Route path="system/backups" element={<BackupsManagement />} />
+                    <Route path="maintenance" element={<MaintenanceMode />} />
+                    <Route path="system/maintenance" element={<MaintenanceMode />} />
+                  </Route>
+
+                  {/* Public Invoice Payment Routes */}
+                  <Route path="/pay/:token" element={<TokenPublicPayPage />} />
+                  <Route path="/payment/success" element={<PaymentSuccessPage />} />
                   <Route path="/pay/:userId/*" element={<PublicInvoicePayPage />} />
                   <Route path="/pay/invoice/*" element={<PublicInvoicePayPage />} />
+
+                  {/* Public Authentication & Marketing */}
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/signin" element={<AuthTransition key="signin" />} />
+                  <Route path="/login" element={<Navigate to="/signin" replace />} />
+                  <Route path="/signup" element={<AuthTransition key="signup" />} />
+
+                  {/* Single Login Redirect for POS */}
+                  <Route path="/pos/login" element={<Navigate to="/signin?role=cashier" replace />} />
+
+                  {/* Cashier / POS Portal Workstation */}
+                  <Route
+                    path="/pos"
+                    element={
+                      <POSProtectedRoute>
+                        <POSPortalLayout />
+                      </POSProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Navigate to="/pos/billing" replace />} />
+                    <Route path="billing" element={<POSPage />} />
+                    <Route path="customers" element={<POSCustomers />} />
+                    <Route path="dashboard" element={<POSDashboard />} />
+                    <Route path="products" element={<POSProductsCatalog />} />
+                    <Route path="catalog" element={<POSProductsCatalog />} />
+                    <Route path="*" element={<Navigate to="/pos/billing" replace />} />
+                  </Route>
 
                   {/* Dedicated Warehouse Portal Routes */}
                   <Route
@@ -180,8 +286,8 @@ export default function App() {
                             <Route path="/scan" element={<BarcodeScanner />} />
                             <Route path="/stock-in" element={<StockIn />} />
                             <Route path="/stock-out" element={<StockOut />} />
-                            <Route path="/transfer" element={<Navigate to="/warehouse" replace />} />
-                            <Route path="/godowns" element={<Navigate to="/warehouse" replace />} />
+                            <Route path="/transfer" element={<StockTransfer />} />
+                            <Route path="/godowns" element={<GodownManagement />} />
                             <Route path="/movements" element={<StockMovements />} />
                             <Route path="/damaged" element={<DamagedStock />} />
                             <Route path="/reports" element={<StockReport />} />
@@ -214,6 +320,7 @@ export default function App() {
                               <Route path="/clients" element={<Clients />} />
                               <Route path="/customers/new" element={<Clients />} />
                               <Route path="/products" element={<Products />} />
+                              <Route path="/cashiers" element={<CashierManagement />} />
                               <Route path="/reports" element={<Report />} />
                               <Route path="/payments" element={<Payments />} />
                               <Route path="/expenses" element={<Expenses />} />

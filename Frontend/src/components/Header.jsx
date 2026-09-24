@@ -22,12 +22,16 @@ import {
   Receipt,
   Bot,
   Settings,
+  Repeat,
+  Store,
+  Warehouse,
 } from "lucide-react";
 
 const billingNavItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Invoices", path: "/invoices", icon: FileText },
   { name: "Delivery Challans", path: "/challans", icon: Truck },
+  { name: "Recurring Invoices", path: "/recurring-invoices", icon: Repeat },
   { name: "Customers", path: "/clients", icon: Users },
   { name: "Products", path: "/products", icon: Package },
   { name: "Cashier Management", path: "/cashiers", icon: UserCheck },
@@ -36,6 +40,11 @@ const billingNavItems = [
   { name: "Expenses", path: "/expenses", icon: Receipt },
   { name: "AI Assistant", path: "/ai-assistant", icon: Bot },
   { name: "Settings", path: "/settings", icon: Settings },
+];
+
+const portalShortcuts = [
+  { name: "POS Counter", path: "/pos/billing", icon: Store, badge: "POS" },
+  { name: "Warehouse Hub", path: "/warehouse", icon: Warehouse, badge: "Stock" },
 ];
 
 function getFYLabel() {
@@ -118,6 +127,29 @@ export default function Header() {
               </NavLink>
             );
           })}
+
+          {/* ── Switch Portals Section ── */}
+          <div className="pt-3 pb-1 border-t border-slate-100">
+            <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Other Portals</p>
+            {portalShortcuts.map((portal) => {
+              const Icon = portal.icon;
+              return (
+                <NavLink
+                  key={portal.path}
+                  to={portal.path}
+                  className="flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-blue-700 transition-all duration-200"
+                >
+                  <div className="flex items-center gap-2.5 truncate">
+                    {Icon && <Icon className="h-3.5 w-3.5 text-slate-500" />}
+                    <span className="truncate">{portal.name}</span>
+                  </div>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                    {portal.badge}
+                  </span>
+                </NavLink>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="px-3 pb-4">

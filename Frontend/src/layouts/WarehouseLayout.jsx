@@ -10,14 +10,26 @@ import {
   FileBarChart2,
   LogOut,
   Trash2,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ArrowLeftRight,
+  Building2,
+  Clock,
+  Settings,
 } from "lucide-react";
 
 const warehouseNavItems = [
   { name: "Warehouse Dashboard", path: "/warehouse", icon: Warehouse, end: true, badge: "Live" },
   { name: "Products", path: "/warehouse/products", icon: Package },
   { name: "Scan Barcode", path: "/warehouse/scan", icon: ScanBarcode },
+  { name: "Stock In", path: "/warehouse/stock-in", icon: ArrowDownToLine },
+  { name: "Stock Out", path: "/warehouse/stock-out", icon: ArrowUpFromLine },
+  { name: "Stock Transfer", path: "/warehouse/transfer", icon: ArrowLeftRight },
+  { name: "Godowns", path: "/warehouse/godowns", icon: Building2 },
   { name: "Damaged Stock", path: "/warehouse/damaged", icon: Trash2 },
+  { name: "Stock Movements", path: "/warehouse/movements", icon: Clock },
   { name: "Stock Report", path: "/warehouse/reports", icon: FileBarChart2 },
+  { name: "Warehouse Setup", path: "/warehouse/setup", icon: Settings },
 ];
 
 export default function WarehouseLayout({ children }) {

@@ -19,11 +19,16 @@ service cloud.firestore {
     // Admin Role-Based Access Control (RBAC) Helpers
     // -------------------------------------------------------------------------
     function isAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
+      return isAuthenticated() && (
+        exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid)) ||
+        request.auth.token.email == "admin@technovanam.com"
+      );
     }
 
     function getAdminRole() {
-      return get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.role;
+      return exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid))
+        ? get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.role
+        : (request.auth.token.email == "admin@technovanam.com" ? "Super Admin" : "None");
     }
 
     function isSuperAdmin() {
@@ -38,15 +43,16 @@ service cloud.firestore {
     }
 
     // Warehouse: allows a linked reader (e.g., a warehouse operator) read access
-    // Currently mapped to owner only — extend to a dedicated role when required.
     function isLinkedWarehouseReader(userId) {
       return isOwner(userId);
     }
 
-
+    // -------------------------------------------------------------------------
+    // Tenant Businesses and Subcollections
     // -------------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
+      
       // Profile write only with validated fields (no arbitrary client data)
       allow create: if isOwner(userId)
         && request.resource.data.keys().hasOnly([
@@ -71,26 +77,29 @@ service cloud.firestore {
         || hasPermission('Extend Terms');
       allow delete: if hasPermission('Delete Business');
 
-      // Subcollections: strict path binding — only this user's data or platform admin
+      // Subcollections: tenant owner or platform admin
       match /customers/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Analytics');
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
       match /products/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
       match /invoices/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
       match /payments/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
       match /expenses/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Analytics');
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
       match /recurringInvoices/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Analytics');
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
       match /settings/{docId} {
@@ -98,60 +107,46 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
       match /deliveryChallans/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
 
-      // ── Warehouse / Godown collections ────────────────────────────────────
-
-
-      // Current stock per product+godown — owner can read/write
-      // Mutation operations (IN/OUT/transfer) use atomic Firestore client transactions.
-      // Backend mutations go through Firebase Admin SDK which bypasses rules — this
-      // rule covers direct client-side writes used in this implementation.
+      // Warehouse / Godown collections
       match /stock/{docId} {
         allow read, write: if isOwner(userId);
       }
-
-      // Stock movements — append-only ledger.
-      // Reads allowed, creates allowed, update & delete explicitly denied to protect
-      // audit integrity. (Admin SDK on backend can still correct if needed.)
       match /stockMovements/{docId} {
         allow read:   if isOwner(userId);
         allow create: if isOwner(userId);
         allow update, delete: if false;   // movements are immutable
       }
-
-      // Damaged Stock — separated inventory tracking
       match /damaged_stock/{docId} {
         allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
       }
       match /damagedStock/{docId} {
         allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
       }
-
-      // Barcode index — barcode IS the doc ID; uniqueness enforced via transaction.
       match /barcodeIndex/{barcode} {
         allow read: if isOwner(userId) || isLinkedWarehouseReader(userId);
         allow write: if isOwner(userId);
       }
-
-      // Staff definitions — for operator picker
       match /staff/{docId} {
         allow read, write: if isOwner(userId);
       }
       match /cashiers/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId);
       }
       match /branches/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Businesses');
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId) || hasPermission('Edit Business');
       }
       match /godowns/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Businesses');
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId) || hasPermission('Edit Business');
       }
       match /terminals/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Businesses');
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId) || hasPermission('Edit Business');
       }
     }
@@ -170,19 +165,74 @@ service cloud.firestore {
     }
     
     match /auditLogs/{logId} {
-      allow read: if hasPermission('View Analytics') || isSuperAdmin();
-      allow create: if isAdmin(); // Anyone acting as admin can append logs
-      allow update, delete: if false; // Logs are immutable
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /loginActivity/{docId} {
+      allow read, create: if isAdmin();
+      allow update, delete: if false;
+    }
+
+    match /activeSessions/{docId} {
+      allow read, write: if isAdmin();
     }
 
     match /subscriptionPlans/{planId} {
-      allow read: if true; // Public or any logged in user can view plans
-      allow write: if hasPermission('Change Plan') || hasPermission('Cancel Plan');
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /supportTickets/{ticketId} {
-      allow read: if hasPermission('View Settings') || isSuperAdmin();
-      allow write: if hasPermission('View Settings') || isSuperAdmin();
+      allow read, write: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /system/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /systemBackups/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /analytics/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /coupons/{couponId} {
+      allow read, write: if isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Group Queries for Super Admin
+    // -------------------------------------------------------------------------
+    match /{path=**}/invoices/{docId} {
+      allow read: if isAdmin();
+    }
+    match /{path=**}/payments/{docId} {
+      allow read: if isAdmin();
+    }
+    match /{path=**}/customers/{docId} {
+      allow read: if isAdmin();
+    }
+    match /{path=**}/branches/{docId} {
+      allow read: if isAdmin();
+    }
+    match /{path=**}/godowns/{docId} {
+      allow read: if isAdmin();
+    }
+    match /{path=**}/terminals/{docId} {
+      allow read: if isAdmin();
+    }
+    match /{path=**}/cashiers/{docId} {
+      allow read: if isAdmin();
     }
 
     // -------------------------------------------------------------------------

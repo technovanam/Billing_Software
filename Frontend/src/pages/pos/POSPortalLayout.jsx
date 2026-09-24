@@ -3,6 +3,8 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
   Zap,
+  Package,
+  LayoutDashboard,
   LogOut,
   Clock,
   Store,
@@ -13,8 +15,10 @@ import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import usePOSFullscreen, { exitPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 const posNavItems = [
-  { name: "Customers", path: "/pos/customers", icon: Users },
   { name: "POS Billing", path: "/pos/billing", icon: Zap },
+  { name: "Products Catalog", path: "/pos/products", icon: Package },
+  { name: "Customers", path: "/pos/customers", icon: Users },
+  { name: "Shift Dashboard", path: "/pos/dashboard", icon: LayoutDashboard },
 ];
 
 export default function POSPortalLayout() {

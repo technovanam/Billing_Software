@@ -38,25 +38,29 @@ export function CompanyProfileProvider({ children }) {
             setProfile({ ...parsed, email: parsed.email || userEmail });
             setLoading(false);
             // Still fetch in background to keep cache fresh
-            const snap = await getDoc(doc(db, "users", uid));
-            if (snap.exists()) {
-              const data = snap.data();
-              const next = {
-                uid,
-                companyName: data.companyName || "",
-                ownerName: data.ownerName || "",
-                email: userEmail,
-                phone: data.phone || "",
-                gstin: data.gstin || "",
-                address: data.address || "",
-                city: data.city || "",
-                state: data.state || "",
-                pincode: data.pincode || "",
-                logoURL: data.logoURL || "",
-                createdAt: data.createdAt?.toMillis?.() ? new Date(data.createdAt.toMillis()).toISOString() : parsed.createdAt,
-              };
-              setProfile(next);
-              localStorage.setItem(COMPANY_PROFILE_KEY, JSON.stringify(next));
+            try {
+              const snap = await getDoc(doc(db, "users", uid));
+              if (snap.exists()) {
+                const data = snap.data();
+                const next = {
+                  uid,
+                  companyName: data.companyName || "",
+                  ownerName: data.ownerName || "",
+                  email: userEmail,
+                  phone: data.phone || "",
+                  gstin: data.gstin || "",
+                  address: data.address || "",
+                  city: data.city || "",
+                  state: data.state || "",
+                  pincode: data.pincode || "",
+                  logoURL: data.logoURL || "",
+                  createdAt: data.createdAt?.toMillis?.() ? new Date(data.createdAt.toMillis()).toISOString() : parsed.createdAt,
+                };
+                setProfile(next);
+                localStorage.setItem(COMPANY_PROFILE_KEY, JSON.stringify(next));
+              }
+            } catch (bgErr) {
+              console.warn("Background company profile refresh skipped (offline/network issue):", bgErr.message || bgErr);
             }
             setLoading(false);
             return;
@@ -90,7 +94,18 @@ export function CompanyProfileProvider({ children }) {
         localStorage.removeItem(COMPANY_PROFILE_KEY);
       }
     } catch (err) {
-      console.error("Company profile load error:", err);
+      console.warn("Company profile load notice (offline or network error):", err.message || err);
+      // Retain cached profile if available during offline or network loss
+      try {
+        const cached = localStorage.getItem(COMPANY_PROFILE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.uid === uid) {
+            setProfile(parsed);
+            return;
+          }
+        }
+      } catch (_) {}
       setProfile(null);
     } finally {
       setLoading(false);

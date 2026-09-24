@@ -25,10 +25,6 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const fillDemo = () => {
-    setEmail("wh.demo@technovanam.in");
-    setPassword("Warehouse@123");
-  };
 
   const handlePasswordKeyDown = (e) => {
     if (e.key === "Enter") {
@@ -66,29 +62,21 @@ export default function SignIn() {
     setLoading(true);
 
     try {
-      // 1. Try Super Admin Auth first
-      let isSuperAdmin = false;
-      try {
-        const res = await superAdminLogin(trimmedEmail, password, true);
-        if (res?.require2FA) {
-          navigate("/super-admin/2fa", { replace: true });
-        } else {
-          navigate("/super-admin/dashboard", { replace: true });
-        }
-        isSuperAdmin = true;
-      } catch (saErr) {
-        // If it's the master admin email but auth failed, don't fall through to Firebase
-        if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
-          toastError("Invalid Super Admin password. Please use 'SuperAdmin@2026!'");
+      // 1. Check if user is logging into Super Admin Portal
+      if (trimmedEmail.toLowerCase() === "admin@technovanam.com" && password === "SuperAdmin@2026!") {
+        try {
+          const res = await superAdminLogin(trimmedEmail, password, true);
+          if (res?.require2FA) {
+            navigate("/super-admin/2fa", { replace: true });
+          } else {
+            navigate("/super-admin/dashboard", { replace: true });
+          }
+          return;
+        } catch (saErr) {
+          toastError(saErr.message || "Failed to sign into Super Admin Portal.");
           setLoading(false);
           return;
         }
-        // Otherwise, fall through to normal auth
-        isSuperAdmin = false;
-      }
-
-      if (isSuperAdmin) {
-        return; // Stop execution as we've already navigated
       }
 
       // 2. Check if the entered identifier matches any registered Cashier
@@ -312,33 +300,6 @@ export default function SignIn() {
             </p>
           </div>
 
-          {/* Quick Demo Access Box */}
-          <div className="mb-5 p-3.5 rounded-xl bg-blue-50/80 border border-blue-100 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-blue-800 uppercase tracking-wider flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block"></span>
-                Warehouse Demo Login
-              </span>
-              <button
-                type="button"
-                onClick={fillDemo}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
-              >
-                Reset Demo
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-xs font-mono text-slate-600 bg-white/70 p-2 rounded-lg border border-blue-50">
-              <div>
-                <span className="text-[10px] uppercase font-sans text-slate-400 block font-semibold">Email</span>
-                <span className="truncate block">wh.demo@technovanam.in</span>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-sans text-slate-400 block font-semibold">Password</span>
-                <span>Warehouse@123</span>
-              </div>
-            </div>
-          </div>
-
           <form onSubmit={handleLogin} className="space-y-4" noValidate>
             {/* Email */}
             <div>
@@ -350,10 +311,12 @@ export default function SignIn() {
               </label>
               <input
                 id="email"
+                name="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={handleEmailKeyDown}
                 type="text"
+                autoComplete="username"
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm placeholder:text-gray-400 focus:border-blue-500 transition-colors"
                 placeholder="name@company.com or CSH-001"
                 required
@@ -371,10 +334,12 @@ export default function SignIn() {
               <div className="relative">
                 <input
                   id="password"
+                  name="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={handlePasswordKeyDown}
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-11 text-sm placeholder:text-gray-400 focus:border-blue-500 transition-colors"
                   placeholder="Password or 4-digit PIN"
                   required

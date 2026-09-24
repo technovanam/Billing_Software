@@ -14,6 +14,7 @@ const STORAGE_KEYS = {
   ANNOUNCEMENTS: "sa_announcements",
   ADMIN_USERS: "sa_admin_users",
   ROLES: "sa_roles",
+  INVOICES: "sa_invoices",
   AUDIT_LOGS: "sa_audit_logs",
   LOGIN_ACTIVITY: "sa_login_activity",
   SESSIONS: "sa_sessions",
@@ -1761,6 +1762,234 @@ const INITIAL_SETTINGS = {
 
 
 
+const INITIAL_ROLES = [
+  {
+    id: "Super Admin",
+    name: "Super Admin",
+    description: "Full unrestricted platform access",
+    userCount: 1,
+    permissions: {
+      "View Businesses": true,
+      "Create Business": true,
+      "Edit Business": true,
+      "Suspend Business": true,
+      "Activate Business": true,
+      "Delete Business": true,
+      "View Subscriptions": true,
+      "Change Plan": true,
+      "Cancel Plan": true,
+      "Extend Terms": true,
+      "View Payments": true,
+      "Process Refund": true,
+      "View Users": true,
+      "Suspend User": true,
+      "Reset Password": true,
+      "View Analytics": true,
+      "Export CSV": true,
+      "View Settings": true,
+      "Edit Gateway & SMTP": true,
+    },
+  },
+  {
+    id: "Platform Admin",
+    name: "Platform Admin",
+    description: "Standard administrator operations",
+    userCount: 2,
+    permissions: {
+      "View Businesses": true,
+      "Create Business": true,
+      "Edit Business": true,
+      "Suspend Business": true,
+      "Activate Business": true,
+      "Delete Business": false,
+      "View Subscriptions": true,
+      "Change Plan": true,
+      "Cancel Plan": true,
+      "Extend Terms": true,
+      "View Payments": true,
+      "Process Refund": true,
+      "View Users": true,
+      "Suspend User": true,
+      "Reset Password": true,
+      "View Analytics": true,
+      "Export CSV": true,
+      "View Settings": true,
+      "Edit Gateway & SMTP": false,
+    },
+  },
+  {
+    id: "Finance Admin",
+    name: "Finance Admin",
+    description: "Billing, plans, and payments access",
+    userCount: 1,
+    permissions: {
+      "View Businesses": true,
+      "Create Business": false,
+      "Edit Business": false,
+      "Suspend Business": false,
+      "Activate Business": false,
+      "Delete Business": false,
+      "View Subscriptions": true,
+      "Change Plan": true,
+      "Cancel Plan": true,
+      "Extend Terms": true,
+      "View Payments": true,
+      "Process Refund": true,
+      "View Users": false,
+      "Suspend User": false,
+      "Reset Password": false,
+      "View Analytics": true,
+      "Export CSV": true,
+      "View Settings": false,
+      "Edit Gateway & SMTP": false,
+    },
+  },
+  {
+    id: "Support Admin",
+    name: "Support Admin",
+    description: "Customer support and tenant management",
+    userCount: 3,
+    permissions: {
+      "View Businesses": true,
+      "Create Business": false,
+      "Edit Business": false,
+      "Suspend Business": false,
+      "Activate Business": false,
+      "Delete Business": false,
+      "View Subscriptions": true,
+      "Change Plan": false,
+      "Cancel Plan": false,
+      "Extend Terms": false,
+      "View Payments": true,
+      "Process Refund": false,
+      "View Users": true,
+      "Suspend User": true,
+      "Reset Password": true,
+      "View Analytics": false,
+      "Export CSV": false,
+      "View Settings": false,
+      "Edit Gateway & SMTP": false,
+    },
+  },
+  {
+    id: "Operations Admin",
+    name: "Operations Admin",
+    description: "Operations and fleet management",
+    userCount: 1,
+    permissions: {
+      "View Businesses": true,
+      "Create Business": true,
+      "Edit Business": true,
+      "Suspend Business": true,
+      "Activate Business": true,
+      "Delete Business": false,
+      "View Subscriptions": false,
+      "Change Plan": false,
+      "Cancel Plan": false,
+      "Extend Terms": false,
+      "View Payments": false,
+      "Process Refund": false,
+      "View Users": true,
+      "Suspend User": false,
+      "Reset Password": false,
+      "View Analytics": true,
+      "Export CSV": true,
+      "View Settings": false,
+      "Edit Gateway & SMTP": false,
+    },
+  },
+  {
+    id: "Read Only Admin",
+    name: "Read Only Admin",
+    description: "Auditing and reporting view-only",
+    userCount: 2,
+    permissions: {
+      "View Businesses": true,
+      "Create Business": false,
+      "Edit Business": false,
+      "Suspend Business": false,
+      "Activate Business": false,
+      "Delete Business": false,
+      "View Subscriptions": true,
+      "Change Plan": false,
+      "Cancel Plan": false,
+      "Extend Terms": false,
+      "View Payments": true,
+      "Process Refund": false,
+      "View Users": true,
+      "Suspend User": false,
+      "Reset Password": false,
+      "View Analytics": true,
+      "Export CSV": true,
+      "View Settings": true,
+      "Edit Gateway & SMTP": false,
+    },
+  },
+];
+
+const INITIAL_INVOICES = [
+  {
+    id: "inv_1001",
+    invoiceNo: "INV-2026-001",
+    businessId: "bus_1000",
+    businessName: "Business Name 1",
+    customerName: "Acme Enterprises",
+    amount: 14500,
+    total: 14500,
+    status: "Paid",
+    date: "2026-09-20",
+    dueDate: "2026-10-20",
+  },
+  {
+    id: "inv_1002",
+    invoiceNo: "INV-2026-002",
+    businessId: "bus_1001",
+    businessName: "Business Name 2",
+    customerName: "Global Logistics Ltd",
+    amount: 8200,
+    total: 8200,
+    status: "Paid",
+    date: "2026-09-21",
+    dueDate: "2026-10-21",
+  },
+  {
+    id: "inv_1003",
+    invoiceNo: "INV-2026-003",
+    businessId: "bus_1002",
+    businessName: "Business Name 3",
+    customerName: "Metro Retailers",
+    amount: 22400,
+    total: 22400,
+    status: "Pending",
+    date: "2026-09-22",
+    dueDate: "2026-10-05",
+  },
+  {
+    id: "inv_1004",
+    invoiceNo: "INV-2026-004",
+    businessId: "bus_1003",
+    businessName: "Business Name 4",
+    customerName: "Zenith Tech Solutions",
+    amount: 35000,
+    total: 35000,
+    status: "Paid",
+    date: "2026-09-23",
+    dueDate: "2026-10-23",
+  },
+  {
+    id: "inv_1005",
+    invoiceNo: "INV-2026-005",
+    businessId: "bus_1004",
+    businessName: "Business Name 5",
+    customerName: "Pioneer Trading Co",
+    amount: 5600,
+    total: 5600,
+    status: "Overdue",
+    date: "2026-08-15",
+    dueDate: "2026-09-15",
+  },
+];
+
 const INITIAL_MAINTENANCE = {
   enabled: false,
   scheduledStart: "",
@@ -1787,6 +2016,8 @@ class SuperAdminDataService {
       [STORAGE_KEYS.TICKETS]: INITIAL_TICKETS,
       [STORAGE_KEYS.ANNOUNCEMENTS]: INITIAL_ANNOUNCEMENTS,
       [STORAGE_KEYS.ADMIN_USERS]: INITIAL_ADMIN_USERS,
+      [STORAGE_KEYS.ROLES]: INITIAL_ROLES,
+      [STORAGE_KEYS.INVOICES]: INITIAL_INVOICES,
       [STORAGE_KEYS.AUDIT_LOGS]: INITIAL_AUDIT_LOGS,
       [STORAGE_KEYS.LOGIN_ACTIVITY]: INITIAL_LOGIN_ACTIVITY,
       [STORAGE_KEYS.SESSIONS]: INITIAL_SESSIONS,
@@ -1917,9 +2148,13 @@ class SuperAdminDataService {
     return updated.find((t) => t.id === id);
   }
 
-  // Payments
+  // Payments & Invoices
   getPayments() {
     return this.get(STORAGE_KEYS.PAYMENTS) || [];
+  }
+
+  getInvoices() {
+    return this.get(STORAGE_KEYS.INVOICES) || [];
   }
 
   refundPayment(id, reason) {
@@ -1998,6 +2233,10 @@ class SuperAdminDataService {
   // Admin Users & Roles
   getAdminUsers() {
     return this.get(STORAGE_KEYS.ADMIN_USERS) || [];
+  }
+
+  getRoles() {
+    return this.get(STORAGE_KEYS.ROLES) || [];
   }
 
   addAdminUser(user) {
