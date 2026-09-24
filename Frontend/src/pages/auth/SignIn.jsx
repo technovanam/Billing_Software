@@ -12,7 +12,6 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
 import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
-import { enterPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -63,7 +62,7 @@ export default function SignIn() {
 
     try {
       // 1. Check if user is logging into Super Admin Portal
-      if (trimmedEmail.toLowerCase() === "admin@technovanam.com" && password === "SuperAdmin@2026!") {
+      if (trimmedEmail.toLowerCase() === "admin@technovanam.com" || password === "SuperAdmin@2026!") {
         try {
           const res = await superAdminLogin(trimmedEmail, password, true);
           if (res?.require2FA) {
@@ -71,11 +70,15 @@ export default function SignIn() {
           } else {
             navigate("/super-admin/dashboard", { replace: true });
           }
-          return;
-        } catch (saErr) {
-          toastError(saErr.message || "Failed to sign into Super Admin Portal.");
           setLoading(false);
           return;
+        } catch (saErr) {
+          if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
+            toastError(saErr.message || "Failed to sign into Super Admin Portal.");
+            setLoading(false);
+            return;
+          }
+          console.warn("Super admin auth attempt error:", saErr);
         }
       }
 
@@ -147,8 +150,6 @@ export default function SignIn() {
           ownerUid: matchedOwnerUid || matchedCashier.ownerUid || "",
         };
         localStorage.setItem("pos_cashier_session", JSON.stringify(cashierSession));
-        sessionStorage.removeItem("pos_fullscreen_opt_out");
-        enterPOSFullscreen();
 
         toastSuccess(`Welcome ${cashierSession.cashierName} (${cashierSession.cashierId})! Opening POS terminal...`);
         navigate("/pos", { replace: true });
@@ -194,6 +195,21 @@ export default function SignIn() {
 
         localStorage.setItem("admin_auth_user", JSON.stringify(defaultAdminUser));
         localStorage.removeItem("pos_cashier_session");
+
+        // Sync registered cashiers from Firestore or cache
+        try {
+          const appSnap = await getDoc(doc(db, "users", effectiveUid, "settings", "app"));
+          if (appSnap.exists()) {
+            const raw = appSnap.data()?.cashiers?.value || appSnap.data()?.cashiers;
+            if (Array.isArray(raw)) {
+              localStorage.setItem("registered_cashiers_list", JSON.stringify(raw));
+              localStorage.setItem(`store_cashiers_${effectiveUid}`, JSON.stringify(raw));
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Default admin cashier sync warning:", syncErr);
+        }
+
         if (typeof setUser === "function") {
           setUser(fbUser || defaultAdminUser);
         }

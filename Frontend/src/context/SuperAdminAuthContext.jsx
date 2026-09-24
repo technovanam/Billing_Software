@@ -14,7 +14,6 @@ export const SuperAdminAuthContext = createContext(null);
 export function useSuperAdminAuth() {
   const context = useContext(SuperAdminAuthContext);
   if (!context) {
-    console.warn("useSuperAdminAuth called outside SuperAdminAuthProvider. Returning safe fallback.");
     return {
       adminUser: null,
       isAuthenticated: false,

@@ -1,23 +1,22 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
-  Zap,
   Package,
   LayoutDashboard,
-  LogOut,
+  RotateCcw,
   Clock,
+  LogOut,
   Store,
-  Maximize2,
-  Minimize2,
 } from "lucide-react";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
-import usePOSFullscreen, { exitPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 const posNavItems = [
   { name: "POS Billing", path: "/pos/billing", icon: Zap },
   { name: "Products Catalog", path: "/pos/products", icon: Package },
   { name: "Customers", path: "/pos/customers", icon: Users },
+  { name: "Sales Return", path: "/pos/returns", icon: RotateCcw },
+  { name: "Shift Management", path: "/pos/shifts", icon: Clock },
   { name: "Shift Dashboard", path: "/pos/dashboard", icon: LayoutDashboard },
 ];
 
@@ -25,6 +24,13 @@ export default function POSPortalLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { companyProfile } = useCompanyProfile();
+  const navRef = useRef(null);
+
+  const handleSidebarWheel = (e) => {
+    if (navRef.current && !navRef.current.contains(e.target)) {
+      navRef.current.scrollTop += e.deltaY;
+    }
+  };
 
   const [cashierSession, setCashierSession] = useState(() => {
     try {
@@ -36,7 +42,6 @@ export default function POSPortalLayout() {
   });
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const { isFullscreen, toggleFullscreen, canToggle } = usePOSFullscreen();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -45,8 +50,6 @@ export default function POSPortalLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("pos_cashier_session");
-    sessionStorage.removeItem("pos_fullscreen_opt_out");
-    exitPOSFullscreen();
     navigate("/signin", { replace: true });
   };
 
@@ -58,7 +61,12 @@ export default function POSPortalLayout() {
   return (
     <div className="h-screen w-screen bg-slate-100 flex overflow-hidden font-mazzard select-none">
       {/* ================= CASHIER SIDEBAR ================= */}
-      <aside className="w-64 h-full border-r border-slate-200 bg-white shadow-xs z-40 flex flex-col shrink-0">
+      <aside
+        data-lenis-prevent="true"
+        data-lenis-prevent-wheel="true"
+        onWheel={handleSidebarWheel}
+        className="w-64 h-full border-r border-slate-200 bg-white shadow-xs z-40 flex flex-col shrink-0"
+      >
         {/* Top Branding */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200 shrink-0">
           <img
@@ -73,7 +81,12 @@ export default function POSPortalLayout() {
         </div>
 
         {/* Navigation items: 1. Customers, 2. POS Billing */}
-        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
+        <nav
+          ref={navRef}
+          data-lenis-prevent="true"
+          data-lenis-prevent-wheel="true"
+          className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto scrollbar-thin"
+        >
           {posNavItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -97,18 +110,6 @@ export default function POSPortalLayout() {
 
         {/* Bottom Cashier Session Profile */}
         <div className="px-3 pb-4 shrink-0">
-          {canToggle && (
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
-              title={isFullscreen ? "Exit full screen" : "Enter full screen"}
-            >
-              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              <span>{isFullscreen ? "Exit Full Screen" : "Full Screen Mode"}</span>
-            </button>
-          )}
-
           <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
             <div className="flex items-center justify-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-blue-600" />

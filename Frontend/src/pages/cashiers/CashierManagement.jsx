@@ -57,17 +57,17 @@ const CashierFormModal = ({
   existingCounters = [],
 }) => {
   const [cashierId, setCashierId] = useState(
-    cashierToEdit?.cashierId || nextSuggestedId || "CSH-001"
+    cashierToEdit?.cashierId || ""
   );
   const [name, setName] = useState(cashierToEdit?.name || "");
   const [phone, setPhone] = useState(
     (cashierToEdit?.phone || "").replace(/^\+91\s*/, "").replace(/\D/g, "").slice(0, 10)
   );
   const [email, setEmail] = useState(cashierToEdit?.email || "");
-  const [counter, setCounter] = useState(cashierToEdit?.counter || existingCounters[0] || "Counter 01");
+  const [counter, setCounter] = useState(cashierToEdit?.counter || "");
   const [isCustomCounter, setIsCustomCounter] = useState(false);
   const [customCounterName, setCustomCounterName] = useState("");
-  const [pin, setPin] = useState(cashierToEdit?.pin || "1234");
+  const [pin, setPin] = useState(cashierToEdit?.pin || "");
   const [status, setStatus] = useState(cashierToEdit?.status || "Active");
   const [showPin, setShowPin] = useState(false);
   const [formError, setFormError] = useState("");
@@ -132,7 +132,7 @@ const CashierFormModal = ({
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4" autoComplete="off">
         {formError && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-xs font-semibold text-red-700 flex items-center gap-2">
             <AlertCircle className="h-4 w-4 shrink-0 text-red-600" />
@@ -148,10 +148,12 @@ const CashierFormModal = ({
             </label>
             <input
               type="text"
+              name="cashier_id_field"
+              autoComplete="off"
               required
               value={cashierId}
               onChange={(e) => setCashierId(e.target.value)}
-              placeholder="e.g. CSH-001"
+              placeholder="Enter Cashier ID"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase"
             />
           </div>
@@ -163,17 +165,19 @@ const CashierFormModal = ({
             </label>
             <input
               type="text"
+              name="staff_name_field"
+              autoComplete="off"
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Sahanaa K"
+              placeholder="Enter staff full name"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Phone Number with fixed +91 prefix and 10-digit validation */}
+          {/* Phone Number */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
               Phone Number (+91)
@@ -184,13 +188,15 @@ const CashierFormModal = ({
               </span>
               <input
                 type="tel"
+                name="phone_field"
+                autoComplete="off"
                 maxLength={10}
                 value={phone}
                 onChange={(e) => {
                   const digits = e.target.value.replace(/\D/g, "").slice(0, 10);
                   setPhone(digits);
                 }}
-                placeholder="9876543210"
+                placeholder="Enter mobile number"
                 className="w-full px-3.5 py-2.5 bg-slate-50 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none"
               />
             </div>
@@ -204,9 +210,11 @@ const CashierFormModal = ({
             </label>
             <input
               type="email"
+              name="cashier_email_field"
+              autoComplete="new-password"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="cashier@store.com"
+              placeholder="Enter email address"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -248,6 +256,7 @@ const CashierFormModal = ({
             ) : (
               <select
                 value={counter}
+                required
                 onChange={(e) => {
                   if (e.target.value === "__NEW_COUNTER__") {
                     setIsCustomCounter(true);
@@ -257,6 +266,7 @@ const CashierFormModal = ({
                 }}
                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
+                <option value="" disabled>Select Counter</option>
                 {existingCounters.map((cnt) => (
                   <option key={cnt} value={cnt}>
                     {cnt}
@@ -275,6 +285,8 @@ const CashierFormModal = ({
             <div className="relative">
               <input
                 type={showPin ? "text" : "password"}
+                name="cashier_pin_field"
+                autoComplete="new-password"
                 required
                 inputMode="numeric"
                 pattern="[0-9]{4}"
@@ -284,7 +296,7 @@ const CashierFormModal = ({
                   const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
                   setPin(digits);
                 }}
-                placeholder="1234"
+                placeholder="e.g. 1234"
                 className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest tabular-nums"
               />
               <button

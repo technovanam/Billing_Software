@@ -965,7 +965,17 @@ export const useCashiers = (options = {}) => {
   const [all, setAll] = useState(() => {
     try {
       const local = uid ? localStorage.getItem(`store_cashiers_${uid}`) : null;
-      return local ? JSON.parse(local) : [];
+      if (local) return JSON.parse(local);
+      const global = localStorage.getItem("registered_cashiers_list");
+      if (global) return JSON.parse(global);
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("store_cashiers_")) {
+          const list = JSON.parse(localStorage.getItem(k) || "[]");
+          if (Array.isArray(list) && list.length > 0) return list;
+        }
+      }
+      return [];
     } catch {
       return [];
     }
@@ -975,29 +985,44 @@ export const useCashiers = (options = {}) => {
 
   const refetch = useCallback(async () => {
     const currentUid = uid || auth.currentUser?.uid;
-    if (!currentUid) {
-      setAll([]);
-      setLoading(false);
-      return;
-    }
     setLoading(true);
     setCashierError(null);
     try {
-      const snap = await getDoc(doc(db, "users", currentUid, "settings", "app"));
-      if (snap.exists()) {
-        const appData = snap.data() || {};
-        const raw = appData.cashiers?.value || appData.cashiers;
-        const list = Array.isArray(raw) ? raw : [];
-        setAll(list);
-        localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(list));
-        localStorage.setItem("registered_cashiers_list", JSON.stringify(list));
+      if (currentUid) {
+        const snap = await getDoc(doc(db, "users", currentUid, "settings", "app"));
+        if (snap.exists()) {
+          const appData = snap.data() || {};
+          const raw = appData.cashiers?.value || appData.cashiers;
+          const list = Array.isArray(raw) ? raw : [];
+          setAll(list);
+          localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(list));
+          localStorage.setItem("registered_cashiers_list", JSON.stringify(list));
+          setLoading(false);
+          return;
+        }
+      }
+      const local =
+        (currentUid ? localStorage.getItem(`store_cashiers_${currentUid}`) : null) ||
+        localStorage.getItem("registered_cashiers_list");
+      if (local) {
+        setAll(JSON.parse(local));
       } else {
-        const local = localStorage.getItem(`store_cashiers_${currentUid}`) || localStorage.getItem("registered_cashiers_list");
-        if (local) setAll(JSON.parse(local));
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("store_cashiers_")) {
+            const list = JSON.parse(localStorage.getItem(k) || "[]");
+            if (Array.isArray(list) && list.length > 0) {
+              setAll(list);
+              break;
+            }
+          }
+        }
       }
     } catch (err) {
       console.warn("useCashiers load warning:", err);
-      const local = localStorage.getItem(`store_cashiers_${currentUid}`) || localStorage.getItem("registered_cashiers_list");
+      const local =
+        (currentUid ? localStorage.getItem(`store_cashiers_${currentUid}`) : null) ||
+        localStorage.getItem("registered_cashiers_list");
       if (local) setAll(JSON.parse(local));
     } finally {
       setLoading(false);

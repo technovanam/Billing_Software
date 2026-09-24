@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Outlet, NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
 import {
@@ -44,6 +44,14 @@ export default function SuperAdminLayout() {
   const [searchQuery, setSearchQuery] = useState("");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+
+  const navRef = useRef(null);
+
+  const handleSidebarWheel = (e) => {
+    if (navRef.current && !navRef.current.contains(e.target)) {
+      navRef.current.scrollTop += e.deltaY;
+    }
+  };
 
   const { adminUser, logout } = useSuperAdminAuth();
   const location = useLocation();
@@ -176,6 +184,9 @@ export default function SuperAdminLayout() {
 
       {/* Sidebar - Pure White Light Theme Matching Billing Portal */}
       <aside
+        data-lenis-prevent="true"
+        data-lenis-prevent-wheel="true"
+        onWheel={handleSidebarWheel}
         className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 flex flex-col overflow-hidden ${
           collapsed ? "w-20" : "w-64"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
@@ -217,7 +228,12 @@ export default function SuperAdminLayout() {
         </div>
 
         {/* Navigation items list */}
-        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain px-3 py-4 space-y-6 scrollbar-thin">
+        <nav
+          ref={navRef}
+          data-lenis-prevent="true"
+          data-lenis-prevent-wheel="true"
+          className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin"
+        >
           {navGroups.map((group, gIdx) => (
             <div key={gIdx}>
               {!collapsed && (
