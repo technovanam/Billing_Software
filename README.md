@@ -1,936 +1,896 @@
-# Techno Vanam Billing Software
+# TechnoVanam Billing Software
 
-A web-based billing and business operations application for managing customers, products, invoices, payments, expenses, reports, company settings, and invoice PDF generation.
+A full-stack, multi-tenant SaaS billing and inventory platform for Indian retail businesses, featuring three independent portals, real-time Firebase data, a PDF-generation backend, and a complete Super Admin Command Center.
 
-The project is organized as a React/Vite frontend backed by Firebase Authentication, Cloud Firestore, and Firebase Storage. A small Express service is included for server-side invoice PDF generation with Puppeteer.
+---
 
-## Contents
+## Table of Contents
 
-- [Project Overview](#project-overview)
-- [Main Features](#main-features)
-- [Technology Stack](#technology-stack)
-- [Repository Structure](#repository-structure)
-- [Application Architecture](#application-architecture)
-- [Prerequisites](#prerequisites)
-- [Environment Configuration](#environment-configuration)
-- [Installation](#installation)
-- [Running the Application](#running-the-application)
-- [Frontend Routes](#frontend-routes)
-- [Backend API](#backend-api)
-- [Firebase Data Model](#firebase-data-model)
-- [Authentication and Security](#authentication-and-security)
-- [Core Workflows](#core-workflows)
-- [Testing](#testing)
-- [Database Seeding](#database-seeding)
-- [Production Build and Preview](#production-build-and-preview)
-- [Troubleshooting](#troubleshooting)
-- [Deployment](#deployment)
-- [Development Guidelines](#development-guidelines)
-- [Known Considerations](#known-considerations)
+1. Project Overview
+2. Architecture
+3. Repository Structure
+4. Technology Stack
+5. The Three Portals
+6. Warehouse Module
+7. All Application Routes
+8. Backend API Endpoints
+9. Firebase Collections Schema
+10. Firestore Security Rules
+11. Context Providers
+12. Custom Hooks
+13. Environment Variables
+14. Getting Started
+15. Seeding Data
+16. Deployment
+
+---
 
 ## Project Overview
 
-Techno Vanam Billing Software helps a business maintain its billing lifecycle in one application:
+TechnoVanam Billing Software is a multi-tenant SaaS platform built for Indian retail businesses. It provides:
 
-1. A user signs up or signs in with Firebase Authentication.
-2. The authenticated user accesses a protected business workspace.
-3. Customers, products, invoices, payments, and expenses are stored in Firestore under the authenticated user's UID.
-4. Dashboard cards and reports calculate totals from the current user's data.
-5. Invoices can be previewed, printed, or sent to the backend PDF service for PDF generation.
-6. Company profile information and a company logo can be managed from Settings.
+- GST-compliant invoice generation with PDF export and Razorpay online payment links
+- Full inventory management with godown/warehouse tracking, barcode scanning, and stock movements
+- A touch-optimized POS terminal for cashiers with offline-ready local caching
+- A Super Admin Command Center to manage all tenants, subscriptions, billing, support tickets, and platform-wide configurations
+- AI-powered business assistant for instant financial insights and automated analytics
 
-The application uses per-user Firestore paths such as:
+The platform is designed as a multi-tenant architecture where each business (userId) owns its own Firestore subcollection tree, isolated from other tenants at the security rules level.
 
-```text
-users/{firebaseUid}/customers/{documentId}
-users/{firebaseUid}/products/{documentId}
-users/{firebaseUid}/invoices/{documentId}
-users/{firebaseUid}/payments/{documentId}
-users/{firebaseUid}/expenses/{documentId}
-users/{firebaseUid}/settings/{documentId}
+---
+
+## Architecture
+
+```
++---------------------------------------------------------------------+
+|                        CLIENT (React + Vite)                        |
+|  +-------------+  +------------------+  +------------------------+ |
+|  |  Business   |  |   POS Terminal   |  |  Super Admin Portal    | |
+|  |  Portal     |  |   Portal         |  |  Command Center        | |
+|  |  /dashboard |  |   /pos/*         |  |  /super-admin/*        | |
+|  +------+------+  +--------+---------+  +----------+-------------+ |
+|         |                  |                        |               |
+|         +------------------+------------------------+               |
+|                      Real-time onSnapshot                           |
++----------------------------+----------------------------------------+
+                             |
+              +--------------v--------------+
+              |     Firebase (Google Cloud)  |
+              |   Firestore + Auth + Storage |
+              +--------------+--------------+
+                             |
+              +--------------v--------------+
+              |  Node.js Backend (Express)   |
+              |  Port 5000                   |
+              |  - PDF Generation (Puppeteer)|
+              |  - Razorpay Payments         |
+              |  - CRON: Subscriptions       |
+              |  - CRON: Analytics Agg.      |
+              |  - CRON: Recurring Invoices  |
+              +------------------------------+
 ```
 
-## Main Features
+---
 
-### Authentication
+## Repository Structure
 
-- Email/password sign-up and sign-in through Firebase Authentication.
-- Browser session persistence.
-- Protected application routes.
-- Inactivity detection and sign-out handling.
-- Company profile setup during onboarding.
+```
+Billing_Software/
++-- firestore.rules
++-- firestore.indexes.json
++-- storage.rules
++-- firebase.json
++-- cors.json
++-- .firebaserc
+|
++-- Backend/
+|   +-- server.js                (PDF, payments, CRON jobs)
+|   +-- package.json
+|   +-- seedSuperAdmin.js
+|   +-- seedData.js
+|   +-- seedDemoUser.js
+|   +-- seedFirestore.js
+|   +-- seedCoupons.js
+|   +-- seedWarehouseUser.js
+|   +-- linkWarehouseToAdmin.js
+|   +-- .env
+|
++-- Frontend/
+    +-- vite.config.js
+    +-- index.html
+    +-- src/
+        +-- App.jsx              (all routes defined here)
+        +-- main.jsx
+        +-- index.css
+        |
+        +-- components/
+        |   +-- AIAssistantWidget.jsx
+        |   +-- AuthCollage.jsx
+        |   +-- AuthTransition.jsx
+        |   +-- Header.jsx
+        |   +-- InactivityDetector.jsx
+        |   +-- InvoiceAutocomplete.jsx
+        |   +-- Pagination.jsx
+        |   +-- ScrollToTop.jsx
+        |   +-- Toast.jsx
+        |   +-- super-admin/
+        |   |   +-- ImpersonationBanner.jsx
+        |   |   +-- SuperAdminRoute.jsx
+        |   +-- warehouse/
+        |
+        +-- context/
+        |   +-- AuthContext.jsx
+        |   +-- SuperAdminAuthContext.jsx
+        |   +-- CompanyProfileContext.jsx
+        |   +-- OperatorContext.jsx
+        |   +-- AIAssistantContext.jsx
+        |   +-- ToastContext.jsx
+        |
+        +-- hooks/
+        |   +-- useFirestore.js
+        |   +-- useSuperAdminFirestore.js
+        |   +-- useWarehouse.js
+        |   +-- usePOSFullscreen.js
+        |   +-- useFormKeyboardNavigation.js
+        |
+        +-- lib/firebase/config.js
+        +-- layouts/WarehouseLayout.jsx
+        +-- services/
+        +-- types/
+        +-- utils/
+        |
+        +-- pages/
+            +-- landing/
+            +-- auth/
+            +-- dashboard/
+            +-- invoices/
+            +-- challans/
+            +-- recurring-invoices/
+            +-- clients/
+            +-- products/
+            +-- payments/
+            +-- expenses/
+            +-- reports/
+            +-- cashiers/
+            +-- settings/
+            +-- ai/
+            +-- pay/
+            +-- pos/
+            +-- warehouse/
+            +-- admin/
+            +-- super-admin/
+                +-- auth/
+                +-- dashboard/
+                +-- businesses/
+                +-- platform/
+                +-- subscriptions/
+                +-- analytics/
+                +-- support/
+                +-- security/
+                +-- system/
+                +-- layout/
+```
 
-### Dashboard
-
-The dashboard summarizes business activity, including:
-
-- Total bill amount.
-- Amount to receive.
-- Received revenue.
-- Total expenses.
-- GST collected.
-- Payment status.
-- Invoice count.
-- Customer count.
-- Product count.
-- Recent activity and invoice status views.
-
-### Customer Management
-
-- Customer list with search and pagination.
-- Add customer page at `/customers/new`.
-- Customer type selection: Business or Individual.
-- Salutation, first name, last name, company name, and display name.
-- Email address, phone, mobile, language, GSTIN, address, and remarks.
-- View, edit, and delete customer records.
-- Customer statistics derived from related invoices.
-
-The Customers item in the left sidebar opens the customer list at `/clients`. The Add Customer button navigates to the dedicated customer creation page instead of opening a popup.
-
-### Product Management
-
-- Product creation and editing.
-- Product name and HSN code.
-- Price and price history.
-- Unit selection, including Piece, Box, Kilogram, Gram, Meter, Mile, Litre, and Hour.
-- Product description.
-- Product search and pagination.
-- Product detail and price history view.
-- Delete confirmation.
-
-### Invoice Management
-
-- Invoice list with search, filters, pagination, and status handling.
-- Invoice creation and editing.
-- Invoice number and invoice date.
-- Due date.
-- P.O. Number and P.O. Date.
-- D.O. Number and D.O. Date.
-- Customer selection and autocomplete.
-- Product line items, quantities, rates, HSN codes, and amounts.
-- CGST, SGST, and IGST calculations.
-- Optional round-off handling.
-- Invoice notes and declaration text.
-- Invoice preview with independent scrolling.
-- Save as PDF through the backend service.
-- Browser print workflow.
-
-### Recurring Invoices
-
-- Recurring invoice profile list and search.
-- Full-page recurring invoice creation and editing.
-- Customer and product selection from existing Firestore data.
-- Weekly, biweekly, monthly, multi-month, and yearly schedules.
-- Automatic item, discount, TDS, adjustment, round-off, and total calculations.
-- Pause, resume, edit, and delete actions.
-- Backend processing with duplicate-prevention run locks.
-- Email notification to the configured recurring invoice recipient.
-
-### Payments
-
-- Record payments against invoices.
-- Track payment methods and transaction details.
-- View payment history.
-- Support for paid, partial, unpaid, and outstanding invoice states.
-
-### Expenses
-
-- Expense page with KPI cards for total expenses, expense records, and average expense.
-- Inline Record Expense form rather than a popup.
-- Date and category selection.
-- Itemize option.
-- Currency and amount fields.
-- Notes.
-- Customer selection.
-- Receipt upload field.
-- Expense create, edit, delete, and list workflows.
-- Expense totals used by the dashboard.
-
-### Reports
-
-- Revenue visualization and business reporting views.
-- Charts powered by the chart libraries included in the frontend dependencies.
-
-### Settings
-
-- Company name and owner information.
-- Phone, GSTIN, address, city, state, and pincode.
-- Company logo upload through Firebase Storage.
-- Profile and application settings.
-
-### Administration Utilities
-
-The frontend includes protected utility pages for:
-
-- Seed data.
-- Clear and reseed data.
-- Financial year archives.
-
-Use these tools carefully, especially against a production Firebase project.
+---
 
 ## Technology Stack
 
 ### Frontend
 
-- React 19.
-- Vite 7.
-- React Router.
-- Tailwind CSS with the Vite integration.
-- Firebase Web SDK.
-- Firebase Authentication.
-- Cloud Firestore.
-- Firebase Storage.
-- Lucide React and Heroicons.
-- Recharts/Nivo/ApexCharts/Syncfusion chart dependencies already present in the project.
-- jsPDF and jsPDF AutoTable for client-side PDF-related functionality.
-- Playwright for browser tests.
+| Technology | Version | Purpose |
+|---|---|---|
+| React | 18 | UI framework |
+| Vite | 7 | Build tool with code-splitting |
+| TailwindCSS | 4 (Vite plugin) | Utility-first styling |
+| React Router DOM | v6 | Client-side routing |
+| Firebase SDK | v10 | Firestore, Auth, Storage |
+| Lucide React | Latest | Icon system |
+| @nivo/line, bar | Latest | Analytics charts |
+| jsPDF + html2canvas | Latest | Client-side PDF generation |
+| XLSX | Latest | Excel export |
+| date-fns | Latest | Date formatting |
+| Lodash | Latest | Utility functions |
+| Gemini AI API | Latest | AI assistant integration |
 
 ### Backend
 
-- Node.js.
-- Express 4.
-- CORS.
-- Body Parser.
-- Puppeteer for PDF rendering.
-- Firebase Admin SDK for the seeding utility.
-
-### Firebase
-
-- Firebase Authentication for users.
-- Cloud Firestore for application data.
-- Firebase Storage for company logos.
-- Firestore rules in `firestore.rules`.
-- Storage rules in `storage.rules`.
-- Firebase deployment configuration in `firebase.json`.
-
-## Repository Structure
-
-```text
-Billing_Software/
-|-- Backend/
-|   |-- package.json
-|   |-- server.js                  # Express PDF generation service
-|   |-- seedData.js                # Firebase Admin data seeder
-|   |-- SEEDING_INSTRUCTIONS.md
-|   `-- serviceAccountKey.json     # Local secret; do not commit
-|-- Frontend/
-|   |-- package.json
-|   |-- vite.config.js
-|   |-- tailwind.config.js
-|   |-- playwright.config.js
-|   |-- .env                       # Local Firebase client configuration
-|   |-- index.html
-|   |-- public/
-|   |-- src/
-|   |   |-- App.jsx                # Application routes and providers
-|   |   |-- main.jsx               # React entry point
-|   |   |-- index.css              # Global styles
-|   |   |-- components/            # Shared UI components
-|   |   |-- context/               # Auth, company, and toast contexts
-|   |   |-- hooks/                 # Firestore and application hooks
-|   |   |-- lib/                   # Firebase and service helpers
-|   |   |-- pages/                 # Feature pages
-|   |   |-- types/                 # Shared type definitions
-|   |   `-- utils/                 # Financial and invoice utilities
-|   |-- tests/                     # Playwright browser tests
-|   `-- dist/                      # Generated production output
-|-- firestore.rules
-|-- storage.rules
-|-- firebase.json
-|-- cors.json
-|-- SECURITY.md
-|-- .gitignore
-`-- README.md
-```
-
-## Application Architecture
-
-### Providers and routing
-
-`Frontend/src/App.jsx` creates the application provider hierarchy:
-
-```text
-AuthProvider
-  CompanyProfileProvider
-    ToastProvider
-      BrowserRouter
-        ProtectedRoute
-          Header + page content
-```
-
-Unauthenticated users can access the landing page, sign-in page, and sign-up page. All business pages are rendered inside `ProtectedRoute`.
-
-### Shared navigation
-
-`Frontend/src/components/Header.jsx` implements the fixed left sidebar. It contains links to:
-
-- Dashboard
-- Invoices
-- Customers
-- Products
-- Reports
-- Payments
-- Expenses
-- Settings
-
-The profile card at the bottom displays the current user and has a dedicated sign-out icon.
-
-### Data access
-
-`Frontend/src/hooks/useFirestore.js` centralizes Firestore access. The user ID is read from `AuthContext`; it is not taken from a URL, local storage, or user-controlled input.
-
-The main hooks include:
-
-- `useCustomers`
-- `useProducts`
-- `useInvoices`
-- `usePayments`
-- `useAllPayments`
-- `useExpenses`
-- `useSettings`
-
-These hooks expose loading state, error state, list data, pagination where applicable, and CRUD functions.
-
-### Invoice PDF flow
-
-1. The user opens Invoice Preview.
-2. The preview content is placed in `#invoice-print-root`.
-3. Save as PDF sends the rendered HTML and styles to `POST http://localhost:5000/generate-pdf`.
-4. Express launches Puppeteer.
-5. Puppeteer renders the HTML and generates an A4 PDF.
-6. The backend returns `application/pdf` to the browser.
-
-## Prerequisites
-
-Install the following before running the project:
-
-- Node.js 18 or newer recommended.
-- npm.
-- A Firebase project.
-- Firebase Authentication enabled with Email/Password provider.
-- Cloud Firestore enabled.
-- Firebase Storage enabled if company logo uploads are required.
-- A Firebase service-account key for database seeding only.
-- Google Chrome or Chromium-compatible browser for Playwright tests.
-- Puppeteer-compatible system dependencies for the backend PDF service.
-
-On Windows, verify Node and npm:
-
-```powershell
-node --version
-npm --version
-```
-
-## Environment Configuration
-
-Create `Frontend/.env` with the Firebase Web SDK values for your Firebase project:
-
-```env
-VITE_FIREBASE_API_KEY=your_firebase_web_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
-VITE_FIREBASE_APP_ID=your_web_app_id
-```
-
-Only variables prefixed with `VITE_` are exposed to frontend code by Vite.
-
-Important:
-
-- Do not place a Firebase Admin service-account JSON in `Frontend`.
-- Do not commit `Backend/serviceAccountKey.json`.
-- Do not commit private keys, refresh tokens, passwords, or deployment credentials.
-- Firebase web configuration values are not treated as secrets; Firestore and Storage rules provide authorization.
-- In production builds, the Firebase client module throws if required variables are missing.
-
-For the backend seeder, place the downloaded Firebase Admin service-account file at:
-
-```text
-Backend/serviceAccountKey.json
-```
-
-That file must remain local and ignored by Git.
-
-For recurring invoice email delivery, configure these variables in the backend environment before starting the server:
-
-```env
-EMAIL_HOST=smtp.example.com
-EMAIL_PORT=587
-EMAIL_USER=your-smtp-user
-EMAIL_PASSWORD=your-smtp-password
-EMAIL_FROM=billing@example.com
-RECURRING_INVOICE_EMAIL=mohammedsuhail100506@gmail.com
-```
-
-`EMAIL_PASSWORD` is server-only and must never be placed in the React frontend or committed to source control. If SMTP variables are missing, invoice processing still creates invoices but logs that email delivery was skipped.
-
-## Installation
-
-Install frontend dependencies:
-
-```powershell
-Set-Location Frontend
-npm install
-```
-
-Install backend dependencies:
-
-```powershell
-Set-Location Backend
-npm install
-```
-
-If the seed utility has not yet installed Firebase Admin in the backend package, install it with:
-
-```powershell
-npm install firebase-admin
-```
-
-## Running the Application
-
-The application has two local processes: the Vite frontend and the Express PDF service.
-
-### Start the backend PDF service
-
-From the repository root:
-
-```powershell
-Set-Location Backend
-npm start
-```
-
-The service listens on:
-
-```text
-http://localhost:5000
-```
-
-### Start the frontend development server
-
-In a second terminal:
-
-```powershell
-Set-Location Frontend
-npm run dev
-```
-
-The Vite server is configured for:
-
-```text
-http://localhost:5175
-```
-
-Open the displayed Vite URL in a browser. The Playwright configuration also expects `http://localhost:5175`.
-
-### Run both processes in VS Code
-
-Use two integrated terminals:
-
-```powershell
-# Terminal 1
-Set-Location C:\Users\moham\Billing_Software\Backend
-npm start
-```
-
-```powershell
-# Terminal 2
-Set-Location C:\Users\moham\Billing_Software\Frontend
-npm run dev
-```
-
-## Frontend Routes
-
-Public routes:
-
-| Route | Purpose |
+| Technology | Version | Purpose |
+|---|---|---|
+| Node.js + Express | Latest | REST API server |
+| Firebase Admin SDK | 13.6 | Server-side Firestore |
+| Puppeteer | 21 | Headless Chrome PDF rendering |
+| Razorpay | 2.9 | Payment gateway |
+| node-cron | 4.2 | CRON job scheduler |
+| Nodemailer | 7 | Email delivery |
+| dotenv | 17 | Environment configuration |
+
+### Firebase Platform
+
+| Service | Usage |
 |---|---|
-| `/` | Landing page |
-| `/signin` | Sign-in page |
-| `/signup` | Sign-up page |
+| Firestore | Real-time multi-tenant database |
+| Authentication | Firebase Auth email/password |
+| Storage | Logo and document uploads |
+| Security Rules | RBAC with tenant isolation |
 
-Protected routes:
+---
 
-| Route | Purpose |
+## The Three Portals
+
+### Portal 1 - Business / Billing Portal
+
+**URL Base:** /dashboard, /invoices, /products, etc.
+
+**Who uses it:** Business owners and managers of registered tenants.
+
+**Authentication:** Firebase Auth (AuthContext) with automatic 15-minute inactivity timeout (InactivityDetector).
+
+#### Features
+
+| Module | Description |
 |---|---|
-| `/dashboard` | Business dashboard |
-| `/invoices` | Invoice management |
-| `/invoices/create` | Create invoice page |
-| `/recurring-invoices` | Recurring invoice profiles |
-| `/recurring-invoices/new` | Create or edit a recurring invoice profile |
-| `/clients` | Customer list and management |
-| `/customers/new` | Dedicated inline Add Customer page |
-| `/products` | Product management |
-| `/reports` | Revenue and reporting views |
-| `/payments` | Payment management |
-| `/expenses` | Expense management and inline Record Expense form |
-| `/settings` | Company and application settings |
-| `/seed-data` | Data seeding utility |
-| `/clear-and-reseed` | Data cleanup and reseeding utility |
-| `/fy-archives` | Financial year archives |
+| Dashboard | Real-time KPI cards: revenue, invoice count, payment status, top products |
+| Invoice Management | Create, view, edit, delete GST-compliant invoices. Bulk export to PDF/Excel |
+| Create Invoice | Full invoice builder with product autocomplete, GST, discount, freight, round-off |
+| Delivery Challans | Create and track delivery challans linked to invoices |
+| Recurring Invoices | Automated monthly/quarterly billing with template-based generation |
+| Clients / CRM | Customer and vendor directory with transaction history and ledger |
+| Products | Product catalogue with price, tax rate, HSN code, barcode, and stock tracking |
+| Payments | Record payment receipts with multiple modes Cash, UPI, Bank Transfer |
+| Expenses | Log and categorize business expenses with vendor tagging |
+| Reports | Revenue line charts, GST summary, expense breakdown, profit/loss |
+| Cashier Management | Create and manage cashier PIN-based accounts for POS login |
+| AI Assistant | Gemini-powered chatbot for instant financial queries |
+| Settings | Company profile, logo, GST details, branding, payment configuration |
+| FY Archives | Financial year data archiving and rollover |
 
-## Backend API
+#### Page Files
 
-### `POST /generate-pdf`
+```
+src/pages/dashboard/          -> Dashboard.jsx
+src/pages/invoices/           -> InvoiceManagement.jsx, CreateInvoicePage.jsx
+src/pages/challans/           -> DeliveryChallanManagement.jsx, CreateDeliveryChallanPage.jsx
+src/pages/recurring-invoices/ -> RecurringInvoices.jsx
+src/pages/clients/            -> ClientManagement.jsx
+src/pages/products/           -> ProductsList.jsx
+src/pages/payments/           -> Payment.jsx
+src/pages/expenses/           -> Expenses.jsx
+src/pages/reports/            -> RevenueLineChart.jsx
+src/pages/cashiers/           -> CashierManagement.jsx
+src/pages/settings/           -> SettingsPage.jsx
+src/pages/ai/                 -> AIAssistant.jsx
+src/pages/admin/              -> DataSeeder.jsx, ClearAndReseed.jsx, FYArchives.jsx
+```
 
-Generates an invoice PDF from supplied HTML and CSS.
+---
 
-Request body:
+### Portal 2 - POS (Point of Sale) Portal
 
-```json
+**URL Base:** /pos/*
+
+**Who uses it:** Cashiers and billing operators at retail counters.
+
+**Authentication:** Dual-mode. Cashiers log in using a business UID + 4-digit PIN stored in the Firestore cashiers subcollection. Business owners can also access the POS via regular Firebase auth.
+
+**Design:** Touch-optimized, fullscreen-capable. Supports barcode scanning, customer lookup, multi-item cart, thermal receipt printing, QR payments, and real-time stock deduction.
+
+#### Features
+
+| Page | Description |
+|---|---|
+| POS Login | Cashier selects business UID and enters PIN to open a shift |
+| POS Dashboard | Shift summary, quick stats, shortcuts to POS functions |
+| POS Billing | Full billing terminal: product search, cart, discount, payment, receipt printing |
+| POS Customers | Customer search, registration, ledger view, balance payments |
+| POS Products Catalog | Browse product catalog with stock levels and pricing |
+
+#### Page Files
+
+```
+src/pages/pos/POSLogin.jsx           -> Cashier PIN login screen
+src/pages/pos/POSPortalLayout.jsx    -> POS shell layout with nav
+src/pages/pos/POSDashboard.jsx       -> Shift overview dashboard
+src/pages/pos/POSPage.jsx            -> Main billing terminal (77KB largest component)
+src/pages/pos/POSCustomers.jsx       -> Customer lookup and registration
+src/pages/pos/POSProductsCatalog.jsx -> Product browsing
+src/pages/pos/QRScannerModal.jsx     -> Camera-based QR/barcode scanner
+src/pages/pos/ThermalReceipt.jsx     -> 80mm thermal receipt layout
+```
+
+#### POS Session Management (OperatorContext)
+
+- Stores cashier name, PIN, shift start time in localStorage under pos_cashier_session
+- Route guard POSProtectedRoute checks for active session or owner Firebase auth
+- Session persists across page refreshes until explicitly ended via shift close
+
+---
+
+### Portal 3 - Super Admin Command Center
+
+**URL Base:** /super-admin/*
+
+**Who uses it:** Platform administrators (TechnoVanam staff) to manage all tenant businesses.
+
+**Authentication:** Separate Firebase Auth scope (SuperAdminAuthContext). Only users in the adminUsers Firestore collection with role Super Admin can access. Supports 2FA/MFA via TOTP. Separate 15-minute idle timeout.
+
+**Master Credentials:** admin@technovanam.com / SuperAdmin@2026!
+
+**Ghost Mode (Impersonation):** Super Admins can impersonate any business to view their data as if they were the owner. An always-visible ImpersonationBanner warns when a ghost session is active.
+
+#### Authentication Pages
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/login | SuperAdminLogin.jsx | Email/password login with 2FA check |
+| /super-admin/forgot-password | SuperAdminForgotPassword.jsx | Firebase password reset email |
+| /super-admin/reset-password | SuperAdminResetPassword.jsx | Password reset confirmation |
+| /super-admin/2fa | SuperAdmin2FA.jsx | TOTP 2FA verification screen |
+
+#### Dashboard
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/dashboard | SuperAdminDashboard.jsx | Platform-wide KPIs: businesses, revenue, subscriptions, payments, sessions |
+
+#### Business Management
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/businesses | BusinessesList.jsx | Searchable list of all tenant businesses with status badges |
+| /super-admin/businesses/:id | BusinessDetail.jsx | Subscription, usage, feature overrides, impersonation, plan management |
+
+#### Platform Data
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/platform/users | BusinessUsersList.jsx | All cashiers and staff across all tenants |
+| /super-admin/platform/branches | BranchesList.jsx | All branches registered by all tenants |
+| /super-admin/platform/godowns | GodownsList.jsx | All warehouses/godowns across tenants |
+| /super-admin/platform/terminals | POSTerminalsList.jsx | All POS terminals with block/unblock/remote reset |
+
+#### Subscriptions and Billing
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/subscriptions/plans | SubscriptionPlans.jsx | Plan Builder: create/edit tiers with pricing, quotas, feature toggles |
+| /super-admin/subscriptions/list | SubscriptionsList.jsx | All tenant subscriptions Trial / Active / Expired / Suspended |
+| /super-admin/subscriptions/payments | PlatformPayments.jsx | Platform-wide payment records and refund management |
+| /super-admin/subscriptions/revenue | RevenueAnalytics.jsx | MRR, ARR, ARPU revenue analytics |
+| /super-admin/subscriptions/coupons | CouponsManagement.jsx | Discount coupon creation and management |
+
+#### Analytics
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/analytics | PlatformAnalytics.jsx | Business count, user count, transaction volume, revenue aggregated every 5 min |
+
+#### Support
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/support/tickets | SupportTickets.jsx | Tenant support tickets with inline reply, status, assignment |
+| /super-admin/support/announcements | Announcements.jsx | Broadcast system for maintenance alerts and feature updates |
+
+#### Security and Audit
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/security/admin-users | AdminUsers.jsx | Super Admin and staff account management |
+| /super-admin/security/roles | RolesAndPermissions.jsx | RBAC role builder with granular permissions |
+| /super-admin/security/audit-logs | AuditLogs.jsx | Immutable audit trail for all sensitive admin actions |
+| /super-admin/security/login-activity | LoginActivity.jsx | Admin login history with IP, device, browser |
+| /super-admin/security/sessions | ActiveSessions.jsx | Live admin sessions with remote termination capability |
+
+#### System Management
+
+| Route | Page | Description |
+|---|---|---|
+| /super-admin/system/health | SystemHealth.jsx | Platform service health indicators |
+| /super-admin/system/settings | SystemSettings.jsx | Global settings: SMTP, Razorpay, SMS, WhatsApp, timezone |
+| /super-admin/system/backups | BackupsManagement.jsx | Database snapshot metadata and on-demand backup requests |
+| /super-admin/system/maintenance | MaintenanceMode.jsx | Toggle maintenance mode and configure tenant banner message |
+
+#### Super Admin Layout
+
+File: src/pages/super-admin/layout/SuperAdminLayout.jsx
+
+- Independently scrolling sidebar with collapsible section groups
+- Impersonation banner at top when ghost mode is active
+- 15-minute idle session timeout with automatic logout
+
+---
+
+## Warehouse Module
+
+**URL Base:** /warehouse/*
+
+**Who uses it:** Warehouse operators and inventory managers linked to a business tenant.
+
+**Authentication:** Same business Firebase Auth (AuthContext). A dedicated seedWarehouseUser.js script creates a warehouse operator account linked to a tenant userId.
+
+**Architecture:** All warehouse data stored under users/{userId}/ subcollections: godowns, stock, stockMovements, barcodeIndex, damaged_stock, and staff.
+
+### Pages and Routes
+
+| Route | Page | Description |
+|---|---|---|
+| /warehouse/ | WarehouseDashboard.jsx | Stock summary, low-stock alerts, recent movements, godown breakdown |
+| /warehouse/products | WarehouseProducts.jsx | Product registry with stock levels per godown, pricing, barcode |
+| /warehouse/scan | BarcodeScanner.jsx | Camera and manual barcode scanning with product lookup |
+| /warehouse/stock-in | StockIn.jsx | Receive goods: select godown, product, quantity, lot, expiry |
+| /warehouse/stock-out | StockOut.jsx | Issue goods: dispatch recording with reason codes |
+| /warehouse/movements | StockMovements.jsx | Immutable ledger of all stock IN/OUT/TRANSFER events |
+| /warehouse/damaged | DamagedStock.jsx | Log and track damaged/expired inventory |
+| /warehouse/reports | StockReport.jsx | Godown-wise stock valuation, movement history, low-stock report |
+| /warehouse/setup | WarehouseSetup.jsx | Configure godowns, set alerts, link staff operators |
+
+### Key Warehouse Data Rules
+
+- stockMovements are immutable (append-only via security rules, update and delete blocked)
+- Barcode uniqueness enforced via Firestore atomic transactions on barcodeIndex/{barcode}
+- Stock transfers between godowns use runTransaction for concurrency-safe atomic updates
+
+---
+
+## All Application Routes
+
+### Public Routes
+
+| Route | Component | Description |
+|---|---|---|
+| / | LandingPage | Marketing landing page |
+| /signin | AuthTransition | Business owner sign in |
+| /signup | AuthTransition | New business registration |
+| /pay/:userId/* | PublicInvoicePayPage | Public invoice payment Razorpay |
+| /pay/invoice/* | PublicInvoicePayPage | Alternative payment URL format |
+
+### Business Portal (Firebase Auth required)
+
+| Route | Component | Description |
+|---|---|---|
+| /dashboard | Dashboard | Main business dashboard |
+| /invoices | InvoiceManagement | Invoice list, search, export |
+| /invoices/create | CreateInvoicePage | New invoice builder |
+| /challans | DeliveryChallans | Delivery challan list |
+| /challans/create | CreateDeliveryChallanPage | New delivery challan |
+| /delivery-challans | DeliveryChallans | Alternate route alias |
+| /delivery-challans/create | CreateDeliveryChallanPage | Alternate route alias |
+| /recurring-invoices | RecurringInvoices | Recurring billing list |
+| /recurring-invoices/new | RecurringInvoices | New recurring invoice |
+| /clients | ClientManagement | Customer / vendor directory |
+| /customers/new | ClientManagement | Add new customer shortcut |
+| /products | ProductsList | Product catalogue |
+| /payments | Payment | Payment records |
+| /expenses | Expenses | Expense tracker |
+| /reports | RevenueLineChart | Revenue analytics |
+| /ai-assistant | AIAssistant | Gemini AI chatbot |
+| /settings | SettingsPage | Company settings |
+| /seed-data | DataSeeder | Dev: seed Firestore data |
+| /clear-and-reseed | ClearAndReseed | Dev: reset and reseed |
+| /fy-archives | FYArchives | Financial year archives |
+
+### Warehouse Portal (Firebase Auth required)
+
+| Route | Component | Description |
+|---|---|---|
+| /warehouse/ | WarehouseDashboard | Inventory overview |
+| /warehouse/products | WarehouseProducts | Product registry |
+| /warehouse/scan | BarcodeScanner | Barcode scanner |
+| /warehouse/stock-in | StockIn | Receive stock |
+| /warehouse/stock-out | StockOut | Issue stock |
+| /warehouse/movements | StockMovements | Movement ledger |
+| /warehouse/damaged | DamagedStock | Damaged goods log |
+| /warehouse/reports | StockReport | Inventory reports |
+| /warehouse/setup | WarehouseSetup | Godown configuration |
+
+### POS Portal (POS PIN or Firebase Auth)
+
+| Route | Component | Description |
+|---|---|---|
+| /pos/login | POSLogin | Cashier PIN login |
+| /pos/ | POSDashboard | Shift dashboard |
+| /pos/billing | POSPage | Main POS billing terminal |
+| /pos/customers | POSCustomers | Customer management |
+| /pos/products | POSProductsCatalog | Product catalog |
+
+### Super Admin Portal (Super Admin Auth required)
+
+| Route | Component | Description |
+|---|---|---|
+| /super-admin/login | SuperAdminLogin | Admin login |
+| /super-admin/forgot-password | SuperAdminForgotPassword | Reset email |
+| /super-admin/reset-password | SuperAdminResetPassword | New password |
+| /super-admin/2fa | SuperAdmin2FA | TOTP 2FA verification |
+| /super-admin/dashboard | SuperAdminDashboard | Platform overview |
+| /super-admin/businesses | BusinessesList | All tenants |
+| /super-admin/businesses/:id | BusinessDetail | Tenant detail and controls |
+| /super-admin/platform/users | BusinessUsersList | All tenant staff |
+| /super-admin/platform/branches | BranchesList | All branches |
+| /super-admin/platform/godowns | GodownsList | All godowns |
+| /super-admin/platform/terminals | POSTerminalsList | All POS terminals |
+| /super-admin/subscriptions/plans | SubscriptionPlans | Plan builder |
+| /super-admin/subscriptions/list | SubscriptionsList | Active subscriptions |
+| /super-admin/subscriptions/payments | PlatformPayments | Payments and refunds |
+| /super-admin/subscriptions/revenue | RevenueAnalytics | Revenue dashboard |
+| /super-admin/subscriptions/coupons | CouponsManagement | Coupon management |
+| /super-admin/analytics | PlatformAnalytics | Platform analytics |
+| /super-admin/support/tickets | SupportTickets | Support tickets |
+| /super-admin/support/announcements | Announcements | Platform announcements |
+| /super-admin/security/admin-users | AdminUsers | Admin account management |
+| /super-admin/security/roles | RolesAndPermissions | RBAC role management |
+| /super-admin/security/audit-logs | AuditLogs | Audit trail |
+| /super-admin/security/login-activity | LoginActivity | Login history |
+| /super-admin/security/sessions | ActiveSessions | Active session monitor |
+| /super-admin/system/health | SystemHealth | Service health |
+| /super-admin/system/settings | SystemSettings | Global platform settings |
+| /super-admin/system/backups | BackupsManagement | Backup management |
+| /super-admin/system/maintenance | MaintenanceMode | Maintenance toggle |
+
+---
+
+## Backend API Endpoints
+
+The Express server runs on port 5000, proxied through Vite in development.
+
+### PDF Generation
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /generate-pdf | Renders invoice/challan HTML via Puppeteer and returns PDF binary |
+
+### Payment Gateway (Razorpay)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /create-razorpay-order | Creates a Razorpay order and returns orderId for frontend checkout |
+| POST | /verify-razorpay-payment | Verifies HMAC signature of a completed Razorpay payment |
+| POST | /admin/refund | Issues full/partial Razorpay refund (Super Admin only) |
+
+### Email
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /send-invoice-email | Sends invoice PDF as email attachment via Nodemailer |
+
+### CRON Jobs (every 5 minutes via node-cron)
+
+| Job | Function | Description |
+|---|---|---|
+| Subscription Lifecycle | processSubscriptions() | Transitions Trial to Active to Expired to Suspended; applies grace periods |
+| Recurring Invoices | processRecurringInvoices() | Generates invoices from active recurring templates when due |
+| Analytics Aggregation | aggregatePlatformAnalytics() | Aggregates revenue, users, businesses, writes to analytics/platform |
+
+---
+
+## Firebase Collections Schema
+
+### Root-Level Collections
+
+```
+/users/{userId}                      Tenant profile document
+  +-- /customers/{docId}             CRM contacts
+  +-- /products/{docId}              Product catalogue
+  +-- /invoices/{docId}              Invoice records
+  +-- /payments/{docId}              Payment entries
+  +-- /expenses/{docId}              Expense records
+  +-- /recurringInvoices/{docId}     Recurring billing templates
+  +-- /deliveryChallans/{docId}      Delivery challans
+  +-- /settings/{docId}              Company settings
+  +-- /cashiers/{docId}              POS cashier accounts PIN-based
+  +-- /staff/{docId}                 Warehouse staff
+  +-- /branches/{docId}              Branch offices
+  +-- /godowns/{docId}               Warehouse/godown definitions
+  +-- /terminals/{docId}             POS terminal registrations
+  +-- /stock/{docId}                 Current stock per product+godown
+  +-- /stockMovements/{docId}        Immutable stock movement ledger
+  +-- /damaged_stock/{docId}         Damaged goods records
+  +-- /barcodeIndex/{barcode}        Unique barcode to product mapping
+  +-- /appSettings/{docId}           App-level configuration cache
+
+/adminUsers/{adminId}                Super Admin and staff accounts
+/adminRoles/{roleId}                 RBAC role definitions with permissions map
+/auditLogs/{logId}                   Immutable platform audit trail
+/loginActivity/{docId}               Admin login history
+/activeSessions/{docId}              Live admin session tokens
+/subscriptionPlans/{planId}          Platform subscription plan definitions
+/subscriptionsList/{docId}           All tenant subscription instances
+/platformPayments/{docId}            Platform-level payment records
+/announcements/{docId}               Platform broadcast announcements
+/supportTickets/{ticketId}           Tenant support requests
+/coupons/{couponId}                  Discount coupon codes
+/analytics/platform                  Aggregated platform analytics single doc
+/system/settings                     Global platform configuration
+/system/maintenance                  Maintenance mode state
+/system/health                       Service health indicators
+/systemBackups/{docId}               Backup metadata records
+```
+
+### Key Tenant Document Fields
+
+```js
 {
-  "html": "<div>Invoice markup</div>",
-  "css": "body { ... }",
-  "baseUrl": "http://localhost:5175/"
+  companyName: string,
+  ownerName: string,
+  phone: string,
+  gstin: string,
+  address: string,
+  city: string,
+  state: string,
+  pincode: string,
+  logoURL: string,
+  status: "Active" | "Suspended" | "Expired" | "Trial",
+  planName: string,
+  subscriptionExpiry: Timestamp,
+  totalSales: number,
+  usersCount: number,
+  branchesCount: number,
+  createdAt: Timestamp
 }
 ```
 
-Behavior:
+---
 
-- `html` is required.
-- JSON payloads up to 50 MB are accepted.
-- Puppeteer renders the submitted document.
-- The response has `Content-Type: application/pdf`.
-- The server returns HTTP 400 when HTML is missing.
-- The server returns HTTP 500 when PDF generation fails.
+## Firestore Security Rules
 
-The backend currently enables CORS for local frontend requests.
+File: firestore.rules
 
-### Recurring invoice endpoints
+The security rules enforce strict multi-tenant isolation and RBAC for Super Admins.
 
-These endpoints require a Firebase ID token in the `Authorization` header:
+### Key Helper Functions
 
-```http
-Authorization: Bearer <firebase-id-token>
+```
+isAuthenticated()           -> request.auth != null
+isOwner(userId)             -> auth.uid == userId (tenant isolation)
+isAdmin()                   -> uid exists in /adminUsers collection
+isSuperAdmin()              -> isAdmin() AND role == "Super Admin"
+hasPermission(name)         -> isSuperAdmin() OR role permissions map has name=true
+isLinkedWarehouseReader()   -> Currently aliased to isOwner (extensible)
 ```
 
-- `POST /recurring-invoices/process` processes due profiles for the authenticated user, creates normal invoices, updates schedule dates, and sends the notification email.
-- `POST /recurring-invoices/test-email` sends a configuration test email.
+### Rule Strategy Summary
 
-When Firebase Admin is configured, the backend also runs the processor every five minutes. A Firestore run document under each profile prevents duplicate invoice generation during retries.
+| Collection | Read | Write |
+|---|---|---|
+| users/{userId} | Owner only | Owner (protected fields blocked); Admin with permission |
+| users/{uid}/invoices | Owner | Owner |
+| users/{uid}/payments | Owner | Owner |
+| users/{uid}/cashiers | Owner | Owner |
+| users/{uid}/stockMovements | Owner | Owner (create only, update/delete blocked) |
+| adminUsers | Any Admin | Super Admin only |
+| adminRoles | Any Admin | Super Admin only |
+| auditLogs | Admin with View Analytics | Any Admin (append only) |
+| subscriptionPlans | Public | Admin with Change Plan permission |
+| supportTickets | Admin | Admin |
+| /* (all others) | false | false |
 
-## Firebase Data Model
+CRITICAL: Tenant users cannot modify status, planName, subscriptionExpiry, totalSales, usersCount, or branchesCount on their own document. These fields are write-protected at the security rules level.
 
-The client stores application data beneath the authenticated user document:
+---
 
-```text
-users/{uid}
-  customers/{customerId}
-  products/{productId}
-  invoices/{invoiceId}
-  payments/{paymentId}
-  expenses/{expenseId}
-  recurringInvoices/{recurringInvoiceId}
-  settings/{settingId}
+## Context Providers
+
+All providers are nested in App.jsx in this order (outermost to innermost):
+
+```
+AuthProvider
+  CompanyProfileProvider
+    ToastProvider
+      AIAssistantProvider
+        OperatorProvider
+          SuperAdminAuthProvider
+            Router
 ```
 
-### Recurring invoice fields
+| Context | File | Provides |
+|---|---|---|
+| AuthContext | AuthContext.jsx | user, authInitialized, Firebase sign-in/sign-out |
+| CompanyProfileContext | CompanyProfileContext.jsx | companyProfile (tenant Firestore doc), loading |
+| ToastContext | ToastContext.jsx | showToast(message, type) global toast function |
+| AIAssistantContext | AIAssistantContext.jsx | Gemini AI chat state, message history, loading |
+| OperatorContext | OperatorContext.jsx | POS cashier session, shift state, login/logout |
+| SuperAdminAuthContext | SuperAdminAuthContext.jsx | adminUser, 2FA state, login, logout, verify2FA, startImpersonation, stopImpersonation |
 
-Recurring profiles store customer, schedule, items, calculations, notes, status, `nextRunDate`, and `lastRunDate`. Generated invoices are written to the existing invoice collection with a `recurringInvoiceId` reference.
+---
 
-```text
-users/{uid}/recurringInvoices/{profileId}
-users/{uid}/recurringInvoices/{profileId}/runs/{nextRunDate}
+## Custom Hooks
+
+### useFirestore.js - Business Portal Hooks
+
+All hooks use onSnapshot for real-time Firestore updates.
+
+| Hook | Collection | Returns |
+|---|---|---|
+| useInvoices() | invoices | { invoices, loading } |
+| useProducts() | products | { products, loading } |
+| useCustomers() | customers | { customers, loading } |
+| usePayments() | payments | { payments, loading } |
+| useExpenses() | expenses | { expenses, loading } |
+| useRecurringInvoices() | recurringInvoices | { recurringInvoices, loading } |
+| useCashiers() | cashiers | { cashiers, loading } |
+| useDashboardStats() | Multiple aggregated | { stats, loading } |
+
+### useSuperAdminFirestore.js - Super Admin Hooks
+
+| Hook | Collection | Returns |
+|---|---|---|
+| useBusinesses() | users | { businesses, loading } |
+| useAdminUsers() | adminUsers | { adminUsers, loading } |
+| useAdminRoles() | adminRoles | { roles, loading } |
+| useAuditLogs() | auditLogs | { auditLogs, loading } |
+| useLoginActivity() | loginActivity | { loginActivity, loading } |
+| useActiveSessions() | activeSessions | { sessions, loading } |
+| useSubscriptions() | subscriptionsList | { subscriptions, loading } |
+| useSubscriptionPlans() | subscriptionPlans | { plans, loading } |
+| usePlatformPayments() | platformPayments | { payments, loading } |
+| useSupportTickets() | supportTickets | { tickets, loading } |
+| useAnnouncements() | announcements | { announcements, loading } |
+| usePlatformAnalytics() | analytics/platform | { analytics, loading } |
+| useMaintenanceMode() | system/maintenance | { maintenance, loading } |
+| useSystemSettings() | system/settings | { settings, loading } |
+| useBackups() | systemBackups | { backups, loading } |
+| useSystemHealth() | system/health | { health, loading } |
+| usePlatformTerminals() | users collectionGroup | { terminals, loading } |
+| usePlatformBranches() | users collectionGroup | { branches, loading } |
+| usePlatformGodowns() | users collectionGroup | { godowns, loading } |
+| usePlatformUsers() | users collectionGroup | { users, loading } |
+
+### useWarehouse.js - Warehouse Hooks
+
+Large hook file (55KB) covering all warehouse operations:
+
+- useGodowns(), useWarehouseProducts(), useStockMovements(), useStockReport()
+- stockIn(), stockOut(), stockTransfer(), addDamagedStock()
+- useBarcodeScanner(), lookupBarcode()
+
+---
+
+## Environment Variables
+
+### Backend (Backend/.env)
+
+```
+PORT=5000
+FIREBASE_PROJECT_ID=your-firebase-project-id
+FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project.iam.gserviceaccount.com
+FIREBASE_PRIVATE_KEY=your_private_key
+RAZORPAY_KEY_ID=rzp_live_xxxxxxxxxxxx
+RAZORPAY_KEY_SECRET=your_razorpay_secret
+SMTP_HOST=smtp.your-provider.com
+SMTP_PORT=587
+SMTP_USER=your@email.com
+SMTP_PASS=your_smtp_password
 ```
 
-The `runs` document is an idempotency lock and is created transactionally before an invoice is generated.
+### Frontend (Frontend/.env)
 
-### Customer fields
-
-Customer records can contain fields such as:
-
-- `name`
-- `displayName`
-- `customerType`
-- `salutation`
-- `firstName`
-- `lastName`
-- `companyName` or `company`
-- `email`
-- `phone`
-- `mobile`
-- `address`
-- `customerLanguage`
-- `gstin` or `taxId`
-- `notes`
-- `serialNumber`
-
-### Product fields
-
-Product records can contain:
-
-- `name`
-- `hsn`
-- `price`
-- `unit`
-- `description`
-- `oldPrice`
-- `priceHistory`
-
-### Invoice fields
-
-Invoice records can contain:
-
-- `invoiceNumber`
-- `invoiceDate`
-- `dueDate`
-- `poNumber`
-- `poDate`
-- `dcNumber`
-- `dcDate`
-- `clientId` / customer reference fields
-- `items` or `products`
-- `cgst`
-- `sgst`
-- `igst`
-- `invoiceNotes`
-- `declaration`
-- `bankDetails`
-- `status`
-- `isRoundOff`
-- computed totals and payment values
-
-The UI labels `dcNumber` and `dcDate` as D.O. Number and D.O. Date.
-
-### Expense fields
-
-Expense records can contain:
-
-- `title`
-- `category`
-- `amount`
-- `currency`
-- `expenseDate`
-- `notes`
-- `customerId`
-- `customerName`
-- `itemized`
-- `receiptName`
-
-Receipt selection currently stores the selected file name in the expense form. Actual binary receipt storage is not implemented by the current expense form.
-
-## Authentication and Security
-
-Security rules are deny-by-default and bind user data to the authenticated Firebase UID.
-
-### Firestore rules
-
-The rules in `firestore.rules` allow an authenticated user to access only:
-
-```text
-users/{request.auth.uid}/...
+```
+VITE_FIREBASE_API_KEY=AIzaSy...
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project-id
+VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
+VITE_FIREBASE_APP_ID=1:123456789:web:...
+VITE_GEMINI_API_KEY=your_gemini_api_key
+VITE_RAZORPAY_KEY_ID=rzp_live_xxxxxxxxxxxx
 ```
 
-Allowed user-owned subcollections include customers, products, invoices, payments, expenses, and settings. Other paths are denied.
+---
 
-### Storage rules
+## Getting Started
 
-The rules in `storage.rules` allow authenticated users to upload image files under their own logo path:
+### Prerequisites
 
-```text
-logos/{request.auth.uid}/{fileName}
+- Node.js v18+
+- Firebase project with Firestore, Auth, and Storage enabled
+- Razorpay account (test or live keys)
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/technovanam/Billing_Software.git
+cd Billing_Software
 ```
 
-Uploads are limited to images smaller than 2 MB. Other Storage paths are denied.
+### 2. Configure Firebase
 
-### Deploy rules
+1. Go to the Firebase Console at https://console.firebase.google.com/
+2. Enable Firestore, Authentication (Email/Password), and Storage
+3. Download the Service Account Key and save as Backend/serviceAccountKey.json
+4. Copy Firebase SDK config into Frontend/src/lib/firebase/config.js
 
-Install and authenticate the Firebase CLI, then from the repository root run:
+### 3. Deploy Security Rules and Indexes
 
-```powershell
-firebase deploy --only firestore:rules
-firebase deploy --only storage
+```bash
+firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-Review `SECURITY.md` before changing rules or introducing new data paths.
+### 4. Start the Backend
 
-## Core Workflows
-
-### Sign up
-
-1. Open `/signup`.
-2. Create a Firebase email/password account.
-3. Create the owner profile under `users/{uid}`.
-4. Optionally upload the company logo to Firebase Storage.
-5. Continue to the protected application.
-
-### Create a customer
-
-1. Open the Customers list from the sidebar.
-2. Click Add Customer.
-3. Navigate to `/customers/new`.
-4. Complete the inline form.
-5. Save the record.
-6. Return to `/clients`.
-
-### Create an invoice
-
-1. Open `/invoices`.
-2. Start a new invoice.
-3. Select a customer.
-4. Add products and quantities.
-5. Enter invoice, due date, P.O., and D.O. information.
-6. Review taxes and totals.
-7. Save, preview, print, or generate a PDF.
-
-### Record an expense
-
-1. Open `/expenses`.
-2. Click Add Expense.
-3. Complete the inline Record Expense section.
-4. Select a category and enter amount.
-5. Optionally itemize, select a customer, add notes, and choose a receipt file.
-6. Click Save Expense.
-7. Review the KPI totals and expense list.
-
-## Testing
-
-Run the production build:
-
-```powershell
-Set-Location Frontend
-npm run build
-```
-
-Run all Playwright tests:
-
-```powershell
-npm test
-```
-
-Run tests with a visible browser:
-
-```powershell
-npm run test:headed
-```
-
-Run the Playwright UI mode:
-
-```powershell
-npm run test:ui
-```
-
-Run browser-specific tests:
-
-```powershell
-npm run test:chromium
-npm run test:firefox
-npm run test:webkit
-```
-
-Run mobile projects:
-
-```powershell
-npm run test:mobile
-```
-
-Open the last Playwright report:
-
-```powershell
-npm run test:report
-```
-
-The Playwright web server starts the frontend with `npm run dev` and expects port `5175`.
-
-## Database Seeding
-
-The seeder is documented in `Backend/SEEDING_INSTRUCTIONS.md`.
-
-Basic process:
-
-```powershell
-Set-Location Backend
+```bash
+cd Backend
 npm install
-# Place serviceAccountKey.json in this directory
-node seedData.js
-```
-
-The documented seed set creates large sample collections, including customers, products, invoices, and payments. Seeding writes to Firebase and should only be run against a project where test data is acceptable.
-
-Before seeding:
-
-- Confirm the Firebase project in the service-account key.
-- Confirm the target database is not production unless intentionally seeding it.
-- Keep the service-account JSON out of source control.
-- Review the seeder paths before using it with a new project.
-
-## Production Build and Preview
-
-Build the frontend:
-
-```powershell
-Set-Location Frontend
-npm run build
-```
-
-Preview the generated frontend build:
-
-```powershell
-npm run preview
-```
-
-The preview script uses port `8080` and binds to `0.0.0.0`.
-
-The `dist/` directory is generated output and should not be manually edited.
-
-## Troubleshooting
-
-### `ERR_NAME_NOT_RESOLVED` for `identitytoolkit.googleapis.com`
-
-This error occurs before Firebase can authenticate. It means the browser or operating system cannot resolve Firebase's Google API hostname. It is usually a DNS, network, VPN, proxy, firewall, or hosts-file issue rather than an invalid email/password.
-
-Check the following:
-
-1. Open another website to confirm internet access.
-2. Try resolving the host in PowerShell:
-
-   ```powershell
-   Resolve-DnsName identitytoolkit.googleapis.com
-   ```
-
-3. Flush the Windows DNS cache:
-
-   ```powershell
-   ipconfig /flushdns
-   ```
-
-4. Temporarily test with a trusted DNS resolver such as `1.1.1.1` or `8.8.8.8` according to your organization's policy.
-5. Check VPN, proxy, antivirus, firewall, and corporate network restrictions.
-6. Check the Windows hosts file for an incorrect Google API entry:
-
-   ```text
-   C:\Windows\System32\drivers\etc\hosts
-   ```
-
-7. Confirm the Firebase Authentication Email/Password provider is enabled.
-8. Confirm the frontend's Firebase project variables point to the intended project.
-
-Do not fix this by exposing an Admin SDK key in the frontend. Firebase web API keys are intended for client configuration; authorization is enforced by Firebase rules.
-
-### `Missing or insufficient permissions`
-
-Check:
-
-- The user is authenticated.
-- The request path is under `users/{authenticatedUid}/...`.
-- The deployed Firestore rules match the local `firestore.rules` file.
-- The Firebase project selected in `.env` is the same project where rules were deployed.
-- The authenticated account has not expired or been signed out.
-
-Deploy the rules again if needed:
-
-```powershell
-firebase deploy --only firestore:rules
-```
-
-### PDF generation fails
-
-Check:
-
-- The backend service is running on port `5000`.
-- The frontend can reach `http://localhost:5000/generate-pdf`.
-- Puppeteer can start on the current machine.
-- The submitted invoice HTML is not empty.
-- The request payload is below the 50 MB JSON limit.
-
-Start the service directly to inspect logs:
-
-```powershell
-Set-Location Backend
 npm start
 ```
 
-### Firebase config missing during build
+Server starts on http://localhost:5000
 
-Set every required `VITE_FIREBASE_*` variable in `Frontend/.env`, then restart Vite. Vite reads environment variables when the dev server starts; changing `.env` while it is running requires a restart.
+### 5. Start the Frontend
 
-### Port already in use
+```bash
+cd Frontend
+npm install
+npm run dev
+```
 
-The default ports are:
+App starts on http://localhost:5173
 
-- Frontend: `5175` for development and Playwright.
-- Backend: `5000` for PDF generation.
-- Frontend preview: `8080`.
+### 6. Seed the Super Admin
 
-Stop the process using the port or update the relevant configuration and frontend request URL together.
+```bash
+cd Backend
+node seedSuperAdmin.js
+```
 
-### Seed service-account error
+This creates the Super Admin account:
+- Email: admin@technovanam.com
+- Password: SuperAdmin@2026!
+- Portal URL: http://localhost:5173/super-admin/login
 
-If `seedData.js` reports that `serviceAccountKey.json` is missing:
+---
 
-1. Download a new private key from Firebase Console.
-2. Save it as `Backend/serviceAccountKey.json`.
-3. Confirm the file is ignored by Git.
-4. Run the seeder from the `Backend` directory.
+## Seeding Data
+
+All seed scripts are in Backend/ and require a valid serviceAccountKey.json:
+
+| Script | Command | Description |
+|---|---|---|
+| seedSuperAdmin.js | node seedSuperAdmin.js | Creates Super Admin Firebase Auth account and Firestore document |
+| seedData.js | node seedData.js | Seeds a full demo business with invoices, products, customers |
+| seedDemoUser.js | node seedDemoUser.js | Creates a demo tenant account |
+| seedFirestore.js | node seedFirestore.js | Seeds basic Firestore structure and config |
+| seedCoupons.js | node seedCoupons.js | Seeds discount coupon codes |
+| seedWarehouseUser.js | node seedWarehouseUser.js | Creates a warehouse operator account |
+| linkWarehouseToAdmin.js | node linkWarehouseToAdmin.js | Links warehouse operator to a specific tenant |
+
+---
 
 ## Deployment
 
-A typical deployment requires:
+### Frontend - Firebase Hosting
 
-1. Build the frontend with `npm run build`.
-2. Host the generated `Frontend/dist` directory on a static hosting service.
-3. Configure the production domain in Firebase Authentication authorized domains.
-4. Deploy Firestore and Storage rules.
-5. Host the Express PDF service separately if PDF generation is required.
-6. Update the frontend PDF endpoint from the local `localhost:5000` URL to the deployed backend URL.
-7. Configure CORS on the backend for the deployed frontend origin.
-8. Set production Firebase environment variables in the hosting provider.
-9. Never deploy `Backend/serviceAccountKey.json` with the frontend or public server assets.
-
-The repository currently contains Firebase rule files and project configuration, but it does not contain a complete production hosting workflow. Hosting, DNS, TLS, environment secrets, and backend deployment must be configured for the target platform.
-
-## Development Guidelines
-
-- Keep Firestore paths scoped to the authenticated user.
-- Use existing hooks and contexts instead of creating ad-hoc Firestore clients.
-- Keep business logic in hooks or feature components and shared UI in `components/`.
-- Preserve the existing React/Tailwind visual system.
-- Run `npm run build` after frontend changes.
-- Run focused Playwright tests for user-facing workflow changes.
-- Do not commit `.env`, service-account files, generated credentials, or local debug output.
-- Keep modal and inline form scrolling isolated from the page where a popup is intentionally used.
-- Validate new fields in both create and edit flows.
-- Update Firestore rules when adding a new collection or path.
-
-## Known Considerations
-
-- The frontend currently contains some legacy naming such as `clientId` and `dcNumber` for compatibility, while the UI uses Customer and D.O. terminology.
-- The backend PDF service uses a fixed local port and a local URL in the frontend; production deployment requires making that endpoint configurable.
-- Receipt upload in the expense form currently records the selected filename in the expense document. It does not yet upload receipt bytes to Firebase Storage.
-- Firebase client configuration fallback values exist in the client module for development convenience. Production should provide all required `VITE_FIREBASE_*` variables explicitly.
-- The seeding utility requires a Firebase Admin service-account key and should be reviewed before use because seed scripts can write large amounts of data.
-- The Vite build may report a circular manual chunk warning. This is a bundling warning and does not currently prevent a successful build.
-
-## Useful Commands Summary
-
-```powershell
-# Install frontend dependencies
-Set-Location Frontend
-npm install
-
-# Start frontend
-npm run dev
-
-# Build frontend
+```bash
+cd Frontend
 npm run build
-
-# Run browser tests
-npm test
-
-# Start backend PDF service
-Set-Location ..\Backend
-npm install
-npm start
-
-# Seed Firebase test data
-node seedData.js
-
-# Deploy Firebase rules from repository root
-Set-Location ..
-firebase deploy --only firestore:rules
-firebase deploy --only storage
+firebase deploy --only hosting
 ```
 
-## License and Ownership
+### Backend - Node.js Server
 
-No license file is currently defined in the repository. Add an explicit license before distributing the project outside its intended organization.
+Deploy to Render, Railway, Google Cloud Run, or any Node.js host:
+
+```bash
+cd Backend
+npm start
+```
+
+### CORS for Firebase Storage
+
+```bash
+gsutil cors set cors.json gs://your-project.appspot.com
+```
+
+---
+
+## License
+
+Proprietary - 2026 TechnoVanam. All rights reserved.
+
+---
+
+## Security
+
+Please review SECURITY.md for responsible disclosure guidelines and security contact information.
+
+---
+
+Built with love by the TechnoVanam Engineering Team
