@@ -254,11 +254,27 @@ async function aggregatePlatformAnalytics() {
         }
 
         // Gather payments for revenue calculation
-        const paymentsSnap = await db.collectionGroup('payments').where('status', '==', 'Successful').get();
         let totalRevenue = 0;
-        paymentsSnap.forEach(p => {
-            totalRevenue += p.data().amount || 0;
-        });
+        try {
+            const paymentsSnap = await db.collectionGroup('payments').where('status', '==', 'Successful').get();
+            paymentsSnap.forEach(p => {
+                totalRevenue += p.data().amount || 0;
+            });
+        } catch (cgError) {
+            console.warn('Notice: CollectionGroup index missing or building for payments (status). Using fallback scan.');
+            for (const doc of usersSnap.docs) {
+                try {
+                    const paymentsSub = await doc.ref.collection('payments').get();
+                    paymentsSub.forEach(p => {
+                        const pData = p.data();
+                        const st = (pData.status || pData.paymentStatus || '').toLowerCase();
+                        if (st === 'successful' || st === 'completed' || st === 'paid') {
+                            totalRevenue += Number(pData.amount) || 0;
+                        }
+                    });
+                } catch (_) {}
+            }
+        }
 
         const mrr = totalRevenue / 12; // Simplified MRR based on all-time successful split for this demo
         
