@@ -545,10 +545,12 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const { user, authInitialized } = useContext(AuthContext);
 
-  // If already signed in, redirect to dashboard
+  // If already signed in, redirect to respective dashboard
   useEffect(() => {
     if (authInitialized && user) {
-      navigate("/dashboard", { replace: true });
+      const email = (user.email || "").toLowerCase();
+      const isWarehouse = email === "wh.demo@technovanam.in" || email.startsWith("wh.");
+      navigate(isWarehouse ? "/warehouse" : "/dashboard", { replace: true });
     }
   }, [authInitialized, user, navigate]);
 

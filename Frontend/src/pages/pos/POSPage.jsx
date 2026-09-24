@@ -820,65 +820,62 @@ export default function POSPage() {
   }, [toastSuccess]);
 
   return (
-    <div className="flex flex-1 h-full min-h-0 flex-col bg-slate-100 text-slate-800 overflow-hidden font-sans">
-      {/* ================= TOP POS REAL-TIME HEADER ================= */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-5 shadow-xs z-30">
+    <div className="flex flex-1 h-full min-h-0 flex-col bg-slate-100 text-slate-800 overflow-hidden font-mazzard">
+      {/* ================= PAGE HEADER (Matching Admin Dashboard) ================= */}
+      <header className="flex shrink-0 flex-col lg:flex-row justify-between items-start lg:items-center gap-3 px-4 sm:px-6 lg:px-8 pt-6 pb-4">
         {/* Left: Branding & Terminal Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <img
             src={companyLogo}
             alt="Logo"
-            className="h-10 w-10 object-contain rounded-xl bg-slate-50 p-1 border border-slate-200 shadow-2xs"
+            className="h-10 w-10 object-contain rounded-lg bg-white p-1 border border-gray-200 shadow-sm"
           />
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-base font-bold text-slate-900 tracking-tight truncate max-w-[220px]">
-                {companyName}
-              </span>
-              <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-2xs">
+              <h1 className="text-2xl font-bold text-gray-900 truncate">POS Billing</h1>
+              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white">
                 POS Terminal
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 font-medium">Billing & Barcode Workstation</p>
+            <p className="text-sm text-gray-600 mt-1 truncate">
+              {companyName} · Billing & Barcode Workstation
+            </p>
           </div>
         </div>
 
-        {/* Center: Today's Real-time Sales Stats & Cashier Info */}
-        <div className="hidden md:flex items-center gap-4">
-          <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-1.5 border border-emerald-200 text-xs text-emerald-800">
-            <TrendingUp className="h-3.5 w-3.5 text-emerald-600" />
-            <span className="font-bold">Today: ₹{todayStats.revenue.toLocaleString("en-IN")}</span>
-            <span className="text-[10px] text-emerald-600 font-semibold">({todayStats.count} bills)</span>
+        {/* Right: Today's Sales, Cashier Info & Quick Action Controls */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="hidden md:flex items-center gap-2 rounded-lg bg-white px-3 py-2 border border-gray-200 shadow-sm text-sm text-gray-700">
+            <TrendingUp className="h-4 w-4 text-green-500" />
+            <span className="font-semibold text-gray-900">Today: ₹{todayStats.revenue.toLocaleString("en-IN")}</span>
+            <span className="text-xs text-gray-500">({todayStats.count} bills)</span>
           </div>
 
-          <div className="flex items-center gap-1.5 rounded-xl bg-slate-50 px-3.5 py-1.5 border border-slate-200 text-xs text-slate-700">
-            <User className="h-3.5 w-3.5 text-slate-500" />
+          <div className="hidden md:flex items-center gap-1.5 rounded-lg bg-white px-3 py-2 border border-gray-200 shadow-sm text-sm text-gray-600">
+            <User className="h-4 w-4 text-gray-400" />
             <span>
-              Cashier: <strong className="font-bold text-slate-900">{cashierId}</strong>
+              Cashier: <strong className="font-semibold text-gray-900">{cashierId}</strong>
             </span>
           </div>
-        </div>
 
-        {/* Right: Quick Action Controls */}
-        <div className="flex items-center gap-2.5">
           {/* Resume Bills (Held Bills) Counter Button */}
           <button
             onClick={() => setIsPausedDrawerOpen(true)}
-            className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition shadow-2xs cursor-pointer ${
+            className={`flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors shadow-sm cursor-pointer ${
               pausedBills.length > 0
                 ? "border-amber-400 bg-amber-50 text-amber-900 hover:bg-amber-100 ring-2 ring-amber-400/30 animate-pulse"
-                : "border-slate-200 bg-white hover:bg-slate-50 text-slate-700"
+                : "border-gray-200 bg-white hover:bg-gray-50 text-gray-700"
             }`}
             title="View and resume held customer bills"
           >
-            <Bookmark className={`h-3.5 w-3.5 ${pausedBills.length > 0 ? "text-amber-600" : "text-slate-400"}`} />
+            <Bookmark className={`h-4 w-4 ${pausedBills.length > 0 ? "text-amber-600" : "text-gray-400"}`} />
             <span>Resume Bills ({pausedBills.length})</span>
           </button>
 
           {/* Barcode Scanner Button */}
           <button
             onClick={() => setIsScannerOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2 text-xs font-bold shadow-md shadow-blue-500/20 transition cursor-pointer"
+            className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
             title="Open barcode / QR scanner (F8)"
           >
             <Barcode className="h-4 w-4" />
@@ -888,16 +885,16 @@ export default function POSPage() {
       </header>
 
       {/* ================= MAIN SPLIT BILLING WORKSTATION ================= */}
-      <div className="flex flex-1 min-h-0 overflow-hidden p-4 gap-4">
+      <div className="flex flex-1 min-h-0 overflow-hidden px-4 sm:px-6 lg:px-8 pb-6 gap-6">
         {/* ================= LEFT COLUMN: CUSTOMER BAR, SEARCH & PRODUCTS BILLING TABLE ================= */}
-        <div className="flex flex-1 min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-1 min-h-0 flex-col rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden">
           
           {/* 1. TOP CUSTOMER INFORMATION & LOOKUP BAR (Above Product Search) */}
           <div className="p-3.5 border-b border-slate-200 bg-blue-50/40 relative z-20 shrink-0">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               {/* Customer Icon & Badge */}
               <div className="flex items-center gap-2 shrink-0">
-                <div className="h-8 w-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                <div className="h-8 w-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
                   <Users className="h-4 w-4" />
                 </div>
                 <div className="hidden md:block">
@@ -923,7 +920,7 @@ export default function POSPage() {
                       if (!selectedCustomerId) setIsCustomerDropdownOpen(true);
                     }}
                     placeholder="Search existing customer by name..."
-                    className={`w-full rounded-xl border pl-9 pr-4 py-2 text-xs font-semibold shadow-2xs transition ${
+                    className={`w-full rounded-lg border pl-9 pr-4 py-2 text-xs font-semibold shadow-2xs transition ${
                       selectedCustomerId
                         ? "bg-slate-50 border-slate-200 text-slate-800 cursor-default"
                         : "bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -933,7 +930,7 @@ export default function POSPage() {
 
                 {/* Existing Customer Autocomplete Dropdown */}
                 {!selectedCustomerId && isCustomerDropdownOpen && filteredCustomerSuggestions.length > 0 && (
-                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-52 overflow-y-auto">
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-xl z-50 overflow-hidden divide-y divide-slate-100 max-h-52 overflow-y-auto">
                     <div className="px-3 py-1.5 bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex justify-between items-center">
                       <span>Matching Customers ({filteredCustomerSuggestions.length})</span>
                       <span className="text-[9px] text-slate-400">Click to select</span>
@@ -946,7 +943,7 @@ export default function POSPage() {
                       >
                         <div className="min-w-0">
                           <p className="font-bold text-slate-900 truncate">{cust.name}</p>
-                          <p className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                          <p className="text-[10px] text-slate-500 tabular-nums flex items-center gap-1">
                             <Phone className="h-2.5 w-2.5 text-slate-400" />
                             {cust.phone}
                           </p>
@@ -974,7 +971,7 @@ export default function POSPage() {
                     setIsCustomerDropdownOpen(true);
                   }}
                   placeholder="Phone (+91...)"
-                  className={`w-full rounded-xl border pl-9 pr-3 py-2 text-xs font-semibold font-mono shadow-2xs transition ${
+                  className={`w-full rounded-lg border pl-9 pr-3 py-2 text-xs font-semibold tabular-nums shadow-2xs transition ${
                     selectedCustomerId
                       ? "bg-slate-50 border-slate-200 text-slate-800 cursor-default"
                       : "bg-white border-slate-300 text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
@@ -991,14 +988,14 @@ export default function POSPage() {
                     setNewCustFormPhone("+91 ");
                     setIsAddCustomerModalOpen(true);
                   }}
-                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer shrink-0"
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition cursor-pointer shrink-0"
                   title="Add a new customer to directory"
                 >
                   <UserPlus className="h-3.5 w-3.5" />
                   <span className="whitespace-nowrap">+ Add Customer</span>
                 </button>
               ) : (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs shrink-0">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-2xs shrink-0">
                   <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
                   <span>Customer Linked</span>
                 </div>
@@ -1020,7 +1017,7 @@ export default function POSPage() {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
                 placeholder="Scan product barcode or search product name / product no (F2)..."
-                className="w-full rounded-xl border border-slate-300 bg-white pl-14 pr-16 py-2.5 text-xs font-semibold text-slate-900 placeholder-slate-400 shadow-xs transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+                className="w-full rounded-lg border border-slate-300 bg-white pl-14 pr-16 py-2.5 text-xs font-semibold text-slate-900 placeholder-slate-400 shadow-xs transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
                 autoFocus
               />
               {searchTerm && (
@@ -1036,7 +1033,7 @@ export default function POSPage() {
             {/* Quick Catalog Browse Toggle */}
             <button
               onClick={() => setShowCatalogDrawer(!showCatalogDrawer)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-xl border text-xs font-bold transition cursor-pointer shrink-0 ${
+              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-lg border text-xs font-bold transition cursor-pointer shrink-0 ${
                 showCatalogDrawer
                   ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                   : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
@@ -1067,16 +1064,16 @@ export default function POSPage() {
                     <div
                       key={prod.id}
                       onClick={() => addToCart(prod)}
-                      className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-blue-500 hover:shadow-sm transition cursor-pointer flex items-center justify-between gap-2"
+                      className="p-2.5 rounded-lg border border-slate-200 bg-white hover:border-blue-500 hover:shadow-sm transition cursor-pointer flex items-center justify-between gap-2"
                     >
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-bold text-slate-800 truncate">{prod.name}</p>
-                        <p className="text-[10px] font-mono text-slate-400 truncate">
+                        <p className="text-[10px] tabular-nums text-slate-400 truncate">
                           {prod.productNo || prod.hsn || "151800"}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
-                        <p className="text-xs font-black text-slate-900">₹{rateVal.toFixed(2)}</p>
+                        <p className="text-xs font-bold text-slate-900">₹{rateVal.toFixed(2)}</p>
                         <span className="text-[10px] text-blue-600 font-bold">+ Add</span>
                       </div>
                     </div>
@@ -1105,7 +1102,7 @@ export default function POSPage() {
                   <tr>
                     <td colSpan={7} className="py-20 text-center text-slate-400">
                       <div className="flex flex-col items-center justify-center max-w-sm mx-auto">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 mb-3 border border-blue-100 shadow-2xs">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-blue-50 text-blue-600 mb-3 border border-blue-100 shadow-2xs">
                           <Barcode className="h-8 w-8" />
                         </div>
                         <h4 className="text-base font-bold text-slate-800">Billing Table is Empty</h4>
@@ -1124,7 +1121,7 @@ export default function POSPage() {
                                 unit: "1 Kg",
                               });
                             }}
-                            className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-bold transition"
+                            className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-bold transition"
                           >
                             + Quick Demo Item (₹150)
                           </button>
@@ -1141,7 +1138,7 @@ export default function POSPage() {
                       </td>
 
                       {/* Product No / HSN (Plain text format in one line) */}
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700 text-xs whitespace-nowrap">
+                      <td className="py-3.5 px-4 tabular-nums font-semibold text-slate-700 text-xs whitespace-nowrap">
                         {item.productNo || item.hsn || `PRD-${String(index + 1).padStart(3, "0")}`}
                       </td>
 
@@ -1188,7 +1185,7 @@ export default function POSPage() {
                       </td>
 
                       {/* Amount */}
-                      <td className="py-3.5 px-4 text-right font-black text-slate-900 text-sm">
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900 text-sm">
                         ₹{Number(item.total).toFixed(2)}
                       </td>
 
@@ -1227,12 +1224,12 @@ export default function POSPage() {
               summaryScrollRef.current.scrollTop += e.deltaY;
             }
           }}
-          className="w-96 lg:w-[420px] shrink-0 flex flex-col h-full min-h-0 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden"
+          className="w-96 lg:w-[420px] shrink-0 flex flex-col h-full min-h-0 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-200 overflow-hidden"
         >
           {/* Header (Clean Header without Clear button) */}
-          <div className="border-b border-slate-200 px-4 py-3.5 bg-slate-50/90 shrink-0">
-            <h3 className="text-sm font-bold text-slate-900">Billing Summary</h3>
-            <p className="text-[11px] font-mono text-slate-500 font-semibold">Bill No: {billNumber}</p>
+          <div className="border-b border-gray-200 px-4 py-3.5 bg-gray-50/50 shrink-0">
+            <h3 className="text-lg font-semibold text-gray-900">Billing Summary</h3>
+            <p className="text-[11px] tabular-nums text-slate-500 font-semibold">Bill No: {billNumber}</p>
           </div>
 
           {/* Calculation Body - Smooth Native Mouse Wheel & Touch Scrolling */}
@@ -1242,7 +1239,7 @@ export default function POSPage() {
             style={{ overscrollBehavior: "contain" }}
           >
             {/* 1. Item Count & Subtotal */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2 text-xs">
+            <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Total Items:</span>
                 <span className="font-bold text-slate-900">{cartSummary.totalItems} items</span>
@@ -1258,7 +1255,7 @@ export default function POSPage() {
             </div>
 
             {/* 2. Taxes Breakdown (CGST, SGST, Total GST) */}
-            <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3 space-y-1.5 text-xs">
+            <div className="rounded-lg border border-blue-100 bg-blue-50/40 p-3 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>CGST ({cgstRate.toFixed(2)}%):</span>
                 <span className="font-semibold text-slate-800">₹{cartSummary.cgstAmount.toFixed(2)}</span>
@@ -1274,20 +1271,20 @@ export default function POSPage() {
             </div>
 
             {/* 3. Prominent Net Payable Total Amount & Round-Off Indicator */}
-            <div className="rounded-2xl bg-slate-900 p-4 text-white shadow-md">
+            <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                <span className="text-sm font-medium text-gray-600">
                   {paymentMode === "Cash" ? "Net Payable (Cash Round-off)" : "Total Amount (Exact Decimal)"}
                 </span>
-                <span className="rounded-md bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-300 border border-emerald-500/30">
+                <span className="rounded-full bg-green-600 px-2 py-0.5 text-[10px] font-medium text-white">
                   {paymentMode === "Cash" ? "Rounded" : "Exact"}
                 </span>
               </div>
-              <p className="text-3xl font-black text-emerald-400 mt-1 tracking-tight">
+              <p className="text-3xl font-bold text-gray-900 mt-1 tracking-tight">
                 ₹{paymentMode === "Cash" ? cartSummary.roundedTotalAmount.toFixed(2) : cartSummary.exactTotalAmount.toFixed(2)}
               </p>
               {paymentMode === "Cash" && cartSummary.exactTotalAmount > 0 && (
-                <div className="mt-1.5 pt-1.5 border-t border-slate-800 flex justify-between text-[11px] text-slate-400">
+                <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-xs text-gray-500">
                   <span>Exact Total: ₹{cartSummary.exactTotalAmount.toFixed(2)}</span>
                   <span>
                     Round Off: {cartSummary.roundOffDiff >= 0 ? "+" : ""}
@@ -1302,7 +1299,7 @@ export default function POSPage() {
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide">
                 Select Payment Mode
               </label>
-              <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-lg border border-slate-200">
                 <button
                   type="button"
                   onClick={() => setPaymentMode("Cash")}
@@ -1332,7 +1329,7 @@ export default function POSPage() {
 
             {/* 5A. CASH PAYMENT SECTION */}
             {paymentMode === "Cash" && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-3 animate-fade-in">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3.5 space-y-3 animate-fade-in">
                 <div>
                   <div className="flex justify-between items-center mb-1.5">
                     <label className="text-xs font-bold text-slate-700 uppercase tracking-wide">
@@ -1350,7 +1347,7 @@ export default function POSPage() {
                       value={cashReceived}
                       onChange={(e) => setCashReceived(e.target.value)}
                       placeholder={cartSummary.roundedTotalAmount > 0 ? String(cartSummary.roundedTotalAmount) : "0"}
-                      className="w-full rounded-xl border border-slate-300 bg-white pl-8 pr-4 py-2.5 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                      className="w-full rounded-lg border border-slate-300 bg-white pl-8 pr-4 py-2.5 text-base font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                     />
                   </div>
                 </div>
@@ -1382,7 +1379,7 @@ export default function POSPage() {
                     Balance Returned by Cashier:
                   </span>
                   <span
-                    className={`text-sm font-black px-2.5 py-1 rounded-lg ${
+                    className={`text-sm font-bold px-2.5 py-1 rounded-lg ${
                       cartSummary.balancePaid > 0
                         ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
                         : cartSummary.amountDue > 0 && cart.length > 0
@@ -1402,7 +1399,7 @@ export default function POSPage() {
 
             {/* 5B. ONLINE PAYMENT (RAZORPAY) SECTION */}
             {paymentMode === "Online" && (
-              <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-3 animate-fade-in">
+              <div className="rounded-lg border border-blue-200 bg-blue-50/50 p-4 space-y-3 animate-fade-in">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Smartphone className="h-5 w-5 text-blue-600" />
@@ -1413,10 +1410,10 @@ export default function POSPage() {
                   </span>
                 </div>
 
-                <div className="bg-white rounded-xl p-3 border border-slate-200 space-y-1 text-xs">
+                <div className="bg-white rounded-lg p-3 border border-slate-200 space-y-1 text-xs">
                   <div className="flex justify-between text-slate-600">
                     <span>Payable Total:</span>
-                    <span className="font-black text-slate-900 text-sm">
+                    <span className="font-bold text-slate-900 text-sm">
                       ₹{cartSummary.exactTotalAmount.toFixed(2)}
                     </span>
                   </div>
@@ -1426,11 +1423,11 @@ export default function POSPage() {
                 </div>
 
                 {onlinePaymentDetails ? (
-                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800 flex items-center gap-2">
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800 flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
                     <div className="truncate">
                       <p className="font-bold">Payment Verified</p>
-                      <p className="text-[10px] font-mono text-emerald-700 truncate">
+                      <p className="text-[10px] tabular-nums text-emerald-700 truncate">
                         ID: {onlinePaymentDetails.paymentId}
                       </p>
                     </div>
@@ -1440,7 +1437,7 @@ export default function POSPage() {
                     type="button"
                     onClick={handleRazorpayPayment}
                     disabled={cart.length === 0 || isProcessingRazorpay}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-3 text-xs font-bold shadow-md shadow-blue-500/20 disabled:opacity-40 transition cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white py-3 text-xs font-bold shadow-sm disabled:opacity-40 transition cursor-pointer"
                   >
                     <ExternalLink className="h-4 w-4" />
                     <span>{isProcessingRazorpay ? "Processing..." : "Pay"}</span>
@@ -1457,7 +1454,7 @@ export default function POSPage() {
               type="button"
               onClick={handlePauseBill}
               disabled={cart.length === 0}
-              className="flex items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 py-3.5 px-4 text-xs font-bold shadow-xs disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer shrink-0"
+              className="flex items-center justify-center gap-2 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 py-3.5 px-4 text-xs font-bold shadow-xs disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer shrink-0"
               title="Pause this bill to attend waiting customers"
             >
               <PauseCircle className="h-4 w-4 text-amber-600" />
@@ -1469,7 +1466,7 @@ export default function POSPage() {
               type="button"
               onClick={() => setIsReceiptOpen(true)}
               disabled={cart.length === 0}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white py-3.5 text-sm font-bold shadow-md shadow-blue-500/25 disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer"
+              className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white py-3.5 text-sm font-medium disabled:opacity-40 disabled:pointer-events-none transition cursor-pointer"
             >
               <Receipt className="h-4 w-4" />
               <span>Generate & Print Bill (F9)</span>
@@ -1483,11 +1480,11 @@ export default function POSPage() {
       {/* 0. Resume Customer Bills Drawer Modal */}
       {isPausedDrawerOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
+          <div className="w-full max-w-xl bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]">
             {/* Header */}
             <div className="px-5 py-4 border-b border-slate-200 bg-amber-50/70 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                <div className="h-9 w-9 rounded-lg bg-amber-500 text-white flex items-center justify-center shadow-xs">
                   <Bookmark className="h-5 w-5" />
                 </div>
                 <div>
@@ -1520,22 +1517,22 @@ export default function POSPage() {
                 pausedBills.map((pb, idx) => (
                   <div
                     key={pb.id}
-                    className="rounded-2xl border border-amber-200 bg-amber-50/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:bg-amber-50 hover:shadow-sm"
+                    className="rounded-lg border border-amber-200 bg-amber-50/40 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition hover:bg-amber-50 hover:shadow-sm"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="h-6 w-6 rounded-lg bg-amber-100 text-amber-800 text-xs font-black flex items-center justify-center">
+                        <span className="h-6 w-6 rounded-lg bg-amber-100 text-amber-800 text-xs font-bold flex items-center justify-center">
                           {idx + 1}
                         </span>
                         <h4 className="font-bold text-slate-900 text-sm">{pb.customerName}</h4>
-                        <span className="text-[10px] font-semibold text-slate-400 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">
+                        <span className="text-[10px] font-semibold text-slate-400 tabular-nums bg-white px-2 py-0.5 rounded border border-slate-200">
                           {pb.savedAt}
                         </span>
                       </div>
 
                       <div className="flex items-center gap-3 text-xs text-slate-500 pl-8">
                         {pb.customerPhone && pb.customerPhone !== "-" && (
-                          <span className="flex items-center gap-1 font-mono">
+                          <span className="flex items-center gap-1 tabular-nums">
                             <Phone className="h-3 w-3 text-slate-400" />
                             {pb.customerPhone}
                           </span>
@@ -1543,7 +1540,7 @@ export default function POSPage() {
                         <span>•</span>
                         <span>{pb.totalItems || pb.cart?.length || 0} item(s)</span>
                         <span>•</span>
-                        <span className="font-black text-slate-900">₹{Number(pb.totalAmount || 0).toFixed(2)}</span>
+                        <span className="font-bold text-slate-900">₹{Number(pb.totalAmount || 0).toFixed(2)}</span>
                       </div>
                     </div>
 
@@ -1551,7 +1548,7 @@ export default function POSPage() {
                       <button
                         type="button"
                         onClick={(e) => handleDeletePausedBill(pb.id, e)}
-                        className="p-2 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs transition cursor-pointer"
+                        className="p-2 rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 text-xs transition cursor-pointer"
                         title="Delete bill"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -1560,7 +1557,7 @@ export default function POSPage() {
                       <button
                         type="button"
                         onClick={() => handleResumeBill(pb)}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/20 transition cursor-pointer"
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-sm transition cursor-pointer"
                       >
                         <PlayCircle className="h-4 w-4" />
                         <span>Resume Bill</span>
@@ -1579,7 +1576,7 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => setIsPausedDrawerOpen(false)}
-                className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
               >
                 Close
               </button>
@@ -1643,11 +1640,11 @@ export default function POSPage() {
       {/* 3. + Add New Customer Quick Modal */}
       {isAddCustomerModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+          <div className="w-full max-w-md bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden">
             {/* Modal Header */}
             <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="h-9 w-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                <div className="h-9 w-9 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
                   <UserPlus className="h-5 w-5" />
                 </div>
                 <div>
@@ -1678,7 +1675,7 @@ export default function POSPage() {
                     value={newCustFormName}
                     onChange={(e) => setNewCustFormName(e.target.value)}
                     placeholder="e.g. Ramesh Kumar"
-                    className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-4 py-2.5 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-4 py-2.5 text-xs font-semibold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                     autoFocus
                   />
                 </div>
@@ -1701,7 +1698,7 @@ export default function POSPage() {
                     }}
                     placeholder="+91 98765 43210"
                     maxLength="15"
-                    className="w-full rounded-xl border border-slate-300 bg-white pl-9 pr-4 py-2.5 text-xs font-semibold font-mono text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    className="w-full rounded-lg border border-slate-300 bg-white pl-9 pr-4 py-2.5 text-xs font-semibold tabular-nums text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                   />
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">Default +91 with 10-digit mobile number</p>
@@ -1712,14 +1709,14 @@ export default function POSPage() {
                 <button
                   type="button"
                   onClick={() => setIsAddCustomerModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  className="px-4 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingNewCustomer}
-                  className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-500/20 disabled:opacity-40 transition cursor-pointer"
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm disabled:opacity-40 transition cursor-pointer"
                 >
                   <UserPlus className="h-4 w-4" />
                   <span>{isSavingNewCustomer ? "Saving..." : "Save & Link Customer"}</span>

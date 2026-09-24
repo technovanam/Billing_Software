@@ -14,7 +14,20 @@ export const SuperAdminAuthContext = createContext(null);
 export function useSuperAdminAuth() {
   const context = useContext(SuperAdminAuthContext);
   if (!context) {
-    throw new Error("useSuperAdminAuth must be used within SuperAdminAuthProvider");
+    console.warn("useSuperAdminAuth called outside SuperAdminAuthProvider. Returning safe fallback.");
+    return {
+      adminUser: null,
+      isAuthenticated: false,
+      is2FAPending: false,
+      pendingAdmin: null,
+      impersonatedBusiness: null,
+      isImpersonating: false,
+      login: async () => { throw new Error("SuperAdminAuthProvider not configured"); },
+      verify2FA: async () => false,
+      logout: () => {},
+      startImpersonation: () => {},
+      stopImpersonation: () => {},
+    };
   }
   return context;
 }

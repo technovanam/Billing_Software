@@ -21,27 +21,32 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid));
     }
-    
+
     function getAdminRole() {
       return get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.role;
     }
-    
+
     function isSuperAdmin() {
       return isAdmin() && getAdminRole() == "Super Admin";
     }
-    
+
     function hasPermission(permissionName) {
       return isAdmin() && (
-        getAdminRole() == "Super Admin" || 
+        getAdminRole() == "Super Admin" ||
         get(/databases/$(database)/documents/adminRoles/$(getAdminRole())).data.permissions.get(permissionName, false) == true
       );
     }
 
-    // -------------------------------------------------------------------------
-    // User document: company profile (signup). Only owner; validate shape/size.
+    // Warehouse: allows a linked reader (e.g., a warehouse operator) read access
+    // Currently mapped to owner only — extend to a dedicated role when required.
+    function isLinkedWarehouseReader(userId) {
+      return isOwner(userId);
+    }
+
+
     // -------------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isOwner(userId) || hasPermission('View Businesses');
+      allow read: if isOwner(userId);
       // Profile write only with validated fields (no arbitrary client data)
       allow create: if isOwner(userId)
         && request.resource.data.keys().hasOnly([
@@ -72,16 +77,13 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
       match /products/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Analytics');
-        allow write: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
       match /invoices/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Analytics');
-        allow write: if isOwner(userId);
+        allow read, write: if isOwner(userId);
       }
       match /payments/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Payments');
-        allow write: if isOwner(userId) || hasPermission('Process Refund');
+        allow read, write: if isOwner(userId);
       }
       match /expenses/{docId} {
         allow read: if isOwner(userId) || hasPermission('View Analytics');
@@ -92,11 +94,53 @@ service cloud.firestore {
         allow write: if isOwner(userId);
       }
       match /settings/{docId} {
+        allow read: if true;
+        allow write: if isOwner(userId);
+      }
+      match /deliveryChallans/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // ── Warehouse / Godown collections ────────────────────────────────────
+
+
+      // Current stock per product+godown — owner can read/write
+      // Mutation operations (IN/OUT/transfer) use atomic Firestore client transactions.
+      // Backend mutations go through Firebase Admin SDK which bypasses rules — this
+      // rule covers direct client-side writes used in this implementation.
+      match /stock/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Stock movements — append-only ledger.
+      // Reads allowed, creates allowed, update & delete explicitly denied to protect
+      // audit integrity. (Admin SDK on backend can still correct if needed.)
+      match /stockMovements/{docId} {
+        allow read:   if isOwner(userId);
+        allow create: if isOwner(userId);
+        allow update, delete: if false;   // movements are immutable
+      }
+
+      // Damaged Stock — separated inventory tracking
+      match /damaged_stock/{docId} {
+        allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
+      }
+      match /damagedStock/{docId} {
+        allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
+      }
+
+      // Barcode index — barcode IS the doc ID; uniqueness enforced via transaction.
+      match /barcodeIndex/{barcode} {
+        allow read: if isOwner(userId) || isLinkedWarehouseReader(userId);
+        allow write: if isOwner(userId);
+      }
+
+      // Staff definitions — for operator picker
+      match /staff/{docId} {
         allow read, write: if isOwner(userId);
       }
       match /cashiers/{docId} {
-        allow read: if isOwner(userId) || hasPermission('View Users');
-        allow write: if isOwner(userId) || hasPermission('Suspend User') || hasPermission('Reset Password');
+        allow read, write: if isOwner(userId);
       }
       match /branches/{docId} {
         allow read: if isOwner(userId) || hasPermission('View Businesses');

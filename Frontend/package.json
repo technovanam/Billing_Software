@@ -29,6 +29,8 @@
     "@syncfusion/ej2-base": "^31.1.22",
     "@syncfusion/ej2-react-charts": "^31.1.23",
     "@tailwindcss/vite": "^4.1.12",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0",
     "apexcharts": "^5.3.5",
     "axios": "^1.11.0",
     "firebase": "^12.3.0",
@@ -45,7 +47,8 @@
     "react-datepicker": "^8.7.0",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.8.2",
-    "tailwindcss": "^4.1.13"
+    "tailwindcss": "^4.1.13",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

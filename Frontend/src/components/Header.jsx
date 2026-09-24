@@ -14,7 +14,6 @@ import {
   LayoutDashboard,
   FileText,
   Truck,
-  Repeat,
   Users,
   Package,
   UserCheck,
@@ -25,11 +24,10 @@ import {
   Settings,
 } from "lucide-react";
 
-const navItems = [
+const billingNavItems = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
   { name: "Invoices", path: "/invoices", icon: FileText },
-  { name: "Delivery Challans", path: "/delivery-challans", icon: Truck },
-  { name: "Recurring Invoices", path: "/recurring-invoices", icon: Repeat },
+  { name: "Delivery Challans", path: "/challans", icon: Truck },
   { name: "Customers", path: "/clients", icon: Users },
   { name: "Products", path: "/products", icon: Package },
   { name: "Cashier Management", path: "/cashiers", icon: UserCheck },
@@ -95,12 +93,13 @@ export default function Header() {
           />
           <div className="min-w-0">
             <p className="text-lg font-bold text-slate-900 truncate">{headerCompanyName}</p>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600">Billing</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600">Admin Portal</p>
           </div>
         </div>
 
         <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-          {navItems.map((item) => {
+          {/* ── Admin / Billing Navigation ── */}
+          {billingNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink

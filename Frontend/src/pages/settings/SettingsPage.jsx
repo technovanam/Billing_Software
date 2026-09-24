@@ -343,6 +343,32 @@ const ProfileSettings = () => {
         </div>
       </div>
 
+      {/* Admin UID — share with warehouse users */}
+      <div className="p-6 border border-blue-100 rounded-xl bg-blue-50">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-sm font-bold text-blue-900">Your Admin UID</span>
+          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">For Warehouse Linking</span>
+        </div>
+        <p className="text-xs text-blue-700 mb-3">
+          Share this UID with your warehouse operator. They paste it in{" "}
+          <strong>Warehouse Portal → Setup &amp; Linking</strong> to see your product catalog.
+        </p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 text-xs bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-slate-700 truncate">
+            {user?.uid || "Loading…"}
+          </code>
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(user?.uid || "");
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+          >
+            Copy UID
+          </button>
+        </div>
+      </div>
+
       {/* Change Password Section */}
       <div className="p-6 border border-gray-200 rounded-xl">
         <h2 className="text-lg font-bold text-gray-900 mb-6">
