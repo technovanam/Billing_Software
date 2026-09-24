@@ -6,7 +6,7 @@ import { useToast } from "../../context/ToastContext";
 
 const UNITS = ["Piece", "Box", "Kilogram", "Gram", "Meter", "Litre", "Hour", "Dozen", "Pair", "Bag", "Tube", "Pack"];
 
-export default function ProductManualAdd({ barcode, godown, onSuccess, onCancel }) {
+export default function ProductManualAdd({ barcode, onSuccess, onCancel }) {
   const { createProduct } = useCreateWarehouseProduct();
   const toast = useToast();
 
@@ -36,7 +36,6 @@ export default function ProductManualAdd({ barcode, godown, onSuccess, onCancel 
       toast.error("Product name is required.");
       return;
     }
-    const targetGodownId = godown?.id || "mainGodown";
 
     setSaving(true);
     const result = await createProduct({
@@ -44,7 +43,6 @@ export default function ProductManualAdd({ barcode, godown, onSuccess, onCancel 
       name: form.name.trim(),
       barcode: String(form.barcode || "").trim(),
       initialQuantity: Number(initialQty) || 0,
-      godownId: targetGodownId,
     });
     setSaving(false);
 
@@ -224,30 +222,19 @@ export default function ProductManualAdd({ barcode, godown, onSuccess, onCancel 
           />
         </div>
 
-        {/* Initial Stock & Godown */}
+        {/* Initial Stock */}
         <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-xl space-y-2">
           <p className="text-xs font-bold text-blue-900 uppercase tracking-wider">Initial Stock Assignment</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-blue-800 mb-1">Initial Quantity *</label>
-              <input
-                type="number"
-                min="0"
-                value={initialQty}
-                onChange={(e) => setInitialQty(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-blue-800 mb-1">Godown Context</label>
-              <input
-                type="text"
-                value={godown?.name || "Main Godown"}
-                readOnly
-                className="w-full px-3 py-1.5 bg-blue-100/50 border border-blue-200 rounded-lg text-sm font-semibold text-blue-900 outline-none cursor-not-allowed"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-blue-800 mb-1">Initial Quantity *</label>
+            <input
+              type="number"
+              min="0"
+              value={initialQty}
+              onChange={(e) => setInitialQty(Math.max(0, parseInt(e.target.value) || 0))}
+              className="w-full px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            />
           </div>
         </div>
 
@@ -276,7 +263,6 @@ export default function ProductManualAdd({ barcode, godown, onSuccess, onCancel 
 
 ProductManualAdd.propTypes = {
   barcode: PropTypes.string.isRequired,
-  godown: PropTypes.object,
   onSuccess: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 };

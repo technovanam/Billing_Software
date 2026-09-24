@@ -101,6 +101,33 @@ async function recordClientMovement(uid, movement) {
   return null;
 }
 
+// Helper to get damaged records safely from settings/damagedStock
+async function getClientDamagedRecords(uid) {
+  try {
+    const sDoc = await getDoc(doc(db, "users", uid, "settings", "damagedStock"));
+    if (sDoc.exists() && Array.isArray(sDoc.data().records)) {
+      return sDoc.data().records;
+    }
+  } catch (_) {}
+  return [];
+}
+
+// Helper to record damaged item safely in settings/damagedStock
+async function recordClientDamagedRecord(uid, record) {
+  try {
+    const current = await getClientDamagedRecords(uid);
+    const newRec = {
+      id: record.id || `dmg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      ...record,
+      createdAt: record.createdAt || new Date().toISOString(),
+    };
+    const updated = [newRec, ...current].slice(0, 500);
+    await setDoc(doc(db, "users", uid, "settings", "damagedStock"), { records: updated }, { merge: true });
+    return newRec;
+  } catch (_) {}
+  return null;
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Godowns Hook
 // ────────────────────────────────────────────────────────────────────────────
@@ -376,8 +403,7 @@ export const useStockOut = () => {
         if (!targetDoc) throw new Error(`Product with barcode "${code}" not found.`);
 
         const pData = targetDoc.data();
-        const currentGodownStock = pData.godownStock || {};
-        const available = Number(currentGodownStock[targetGodownId]) || 0;
+        const available = Number(pData.stock) || 0;
 
         if (available < qty) {
           const err = new Error(`Insufficient stock. Available: ${available}, Requested: ${qty}`);
@@ -391,13 +417,10 @@ export const useStockOut = () => {
           };
         }
 
-        const newGodownQty = available - qty;
-        const newTotalStock = Math.max(0, (Number(pData.stock) || 0) - qty);
-        const updatedGodownStock = { ...currentGodownStock, [targetGodownId]: newGodownQty };
+        const newTotalStock = Math.max(0, available - qty);
 
         await updateDoc(targetDoc.ref, {
           stock: newTotalStock,
-          godownStock: updatedGodownStock,
           updatedAt: serverTimestamp(),
         });
 
@@ -733,17 +756,22 @@ export const useWarehouseStats = () => {
       const totalSkus = products.length;
 
       let totalUnits = 0;
+      let totalDamagedUnits = 0;
+      let totalDamagedValue = 0;
       let totalInventoryValue = 0;
       let lowStockCount = 0;
       let outOfStockCount = 0;
 
       products.forEach((p) => {
         const qty = Number(p.stock) || 0;
+        const dQty = Number(p.damagedStock) || 0;
         const price = Number(p.purchasePrice || p.price) || 0;
         const minLvl = Number(p.minStockLevel) || 0;
 
         totalUnits += qty;
+        totalDamagedUnits += dQty;
         totalInventoryValue += qty * price;
+        totalDamagedValue += dQty * price;
 
         if (qty === 0) {
           outOfStockCount++;
@@ -792,6 +820,8 @@ export const useWarehouseStats = () => {
         // Aliased to match dashboard field names
         totalProducts: totalSkus,
         totalStock: totalUnits,
+        totalDamagedStock: totalDamagedUnits,
+        totalDamagedValue,
         totalInventoryValue,
         lowStock: lowStockCount,
         outOfStock: outOfStockCount,
@@ -844,6 +874,7 @@ export const useStockReport = (groupBy = "product") => {
             const data = snap.docs.map((d) => {
               const p = d.data();
               const total = Number(p.stock) || 0;
+              const damaged = Number(p.damagedStock) || 0;
               const minLvl = Number(p.minStockLevel) || 0;
               const price = Number(p.purchasePrice || p.price) || 0;
               const prodObj = {
@@ -859,10 +890,13 @@ export const useStockReport = (groupBy = "product") => {
                 price: p.price || "0",
                 minStockLevel: minLvl,
                 stock: total,
+                damagedStock: damaged,
+                godownDamagedStock: p.godownDamagedStock || {},
                 totalStock: total,
                 totalQuantity: total,
                 imageUrl: p.imageUrl || "",
                 totalValue: total * price,
+                damagedValue: damaged * price,
                 godownStock: p.godownStock || { mainGodown: total },
                 status: total === 0 ? "OUT_OF_STOCK" : total <= minLvl && minLvl > 0 ? "LOW_STOCK" : "IN_STOCK",
               };
@@ -899,6 +933,7 @@ export const useStockReport = (groupBy = "product") => {
       const data = snap.docs.map((d) => {
         const p = d.data();
         const total = Number(p.stock) || 0;
+        const damaged = Number(p.damagedStock) || 0;
         const minLvl = Number(p.minStockLevel) || 0;
         const price = Number(p.purchasePrice || p.price) || 0;
         const prodObj = {
@@ -914,10 +949,13 @@ export const useStockReport = (groupBy = "product") => {
           price: p.price || "0",
           minStockLevel: minLvl,
           stock: total,
+          damagedStock: damaged,
+          godownDamagedStock: p.godownDamagedStock || {},
           totalStock: total,
           totalQuantity: total,
           imageUrl: p.imageUrl || "",
           totalValue: total * price,
+          damagedValue: damaged * price,
           godownStock: p.godownStock || { mainGodown: total },
           status: total === 0 ? "OUT_OF_STOCK" : total <= minLvl && minLvl > 0 ? "LOW_STOCK" : "IN_STOCK",
         };
@@ -963,6 +1001,7 @@ export const useProducts = () => {
             const list = snap.docs.map((d) => {
               const p = d.data();
               const stock = Number(p.stock) || 0;
+              const damagedStock = Number(p.damagedStock) || 0;
               const minLvl = Number(p.minStockLevel) || 0;
               return {
                 id: d.id,
@@ -973,6 +1012,8 @@ export const useProducts = () => {
                 price: Number(p.price) || 0,
                 purchasePrice: Number(p.purchasePrice) || 0,
                 stock,
+                damagedStock,
+                godownDamagedStock: p.godownDamagedStock || {},
                 minStockLevel: minLvl,
                 description: p.description || "",
                 brand: p.brand || "",
@@ -1009,6 +1050,7 @@ export const useProducts = () => {
       const list = snap.docs.map((d) => {
         const p = d.data();
         const stock = Number(p.stock) || 0;
+        const damagedStock = Number(p.damagedStock) || 0;
         const minLvl = Number(p.minStockLevel) || 0;
         return {
           id: d.id,
@@ -1019,6 +1061,8 @@ export const useProducts = () => {
           price: Number(p.price) || 0,
           purchasePrice: Number(p.purchasePrice) || 0,
           stock,
+          damagedStock,
+          godownDamagedStock: p.godownDamagedStock || {},
           minStockLevel: minLvl,
           description: p.description || "",
           brand: p.brand || "",
@@ -1054,3 +1098,352 @@ export const useProducts = () => {
 
   return { products, loading, refetch: fetchProducts, updateProduct, deleteProduct };
 };
+
+// ────────────────────────────────────────────────────────────────────────────
+// Damaged / Wastage Stock Hook
+// ────────────────────────────────────────────────────────────────────────────
+export const useDamagedStock = () => {
+  const { user } = useContext(AuthContext);
+  const toast = useToast();
+  const { operatorName } = useOperator();
+  const [damagedRecords, setDamagedRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Subscribe to real-time damaged stock records from settings/damagedStock
+  useEffect(() => {
+    if (!user) {
+      setDamagedRecords([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    let unsubscribe = () => {};
+
+    try {
+      const sRef = doc(db, "users", user.uid, "settings", "damagedStock");
+      unsubscribe = onSnapshot(
+        sRef,
+        (snap) => {
+          if (snap.exists() && Array.isArray(snap.data().records)) {
+            const list = snap.data().records.map((r) => ({
+              ...r,
+              quantity: Number(r.quantity) || 1,
+              purchasePrice: Number(r.purchasePrice) || 0,
+              price: Number(r.price) || 0,
+            }));
+            list.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+            setDamagedRecords(list);
+          } else {
+            setDamagedRecords([]);
+          }
+          setLoading(false);
+        },
+        async () => {
+          const list = await getClientDamagedRecords(user.uid);
+          setDamagedRecords(list);
+          setLoading(false);
+        }
+      );
+    } catch (_) {
+      getClientDamagedRecords(user.uid).then((list) => {
+        setDamagedRecords(list);
+        setLoading(false);
+      });
+    }
+
+    return () => unsubscribe();
+  }, [user]);
+
+  /**
+   * Adds product to damaged stock:
+   * - Deducts quantity from usable live stock (product.stock & godownStock[godownId])
+   * - Increments damagedStock and godownDamagedStock on the product
+   * - Logs damage incident record into settings/damagedStock (and subcollection if permitted)
+   * - Appends to stock movements ledger with type "DAMAGE"
+   */
+  const recordDamage = useCallback(
+    async ({
+      productId = "",
+      barcode = "",
+      godownId = "mainGodown",
+      godownName = "Main Godown",
+      quantity = 1,
+      reason = "Physical Damage / Broken",
+      remarks = "",
+    }) => {
+      const qty = Math.max(1, Number(quantity) || 1);
+      const code = String(barcode || "").trim();
+      const targetGodownId = godownId || "mainGodown";
+
+      try {
+        if (!user) throw new Error("Not logged in");
+
+        // 1. Find product in user's products collection first
+        let targetDoc = null;
+        const prodsSnap = await getDocs(collection(db, "users", user.uid, "products"));
+        for (const d of prodsSnap.docs) {
+          const data = d.data();
+          if (productId && d.id === productId) {
+            targetDoc = d;
+            break;
+          }
+          if (code && (String(data.barcode || "").trim() === code || d.id === code)) {
+            targetDoc = d;
+            break;
+          }
+        }
+
+        // If not found in user.uid, fallback to effectiveUid
+        if (!targetDoc) {
+          const effectiveUid = await getEffectiveUid(user.uid);
+          if (effectiveUid !== user.uid) {
+            const effSnap = await getDocs(collection(db, "users", effectiveUid, "products"));
+            for (const d of effSnap.docs) {
+              const data = d.data();
+              if (productId && d.id === productId) {
+                targetDoc = d;
+                break;
+              }
+              if (code && (String(data.barcode || "").trim() === code || d.id === code)) {
+                targetDoc = d;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!targetDoc) {
+          throw new Error(`Product ${productId || code ? `"${productId || code}"` : ""} not found.`);
+        }
+
+        const pData = targetDoc.data();
+        const currentLiveTotal = Number(pData.stock) || 0;
+        const currentGodownStock = pData.godownStock || {};
+        const availableInGodown = Number(currentGodownStock[targetGodownId]) ?? currentLiveTotal;
+
+        // Validation: must have sufficient live stock to separate into damaged
+        if (availableInGodown < qty) {
+          const errMsg = `Insufficient usable stock in this godown. Available: ${availableInGodown}, Requested to mark damaged: ${qty}`;
+          toast.error(errMsg);
+          return { success: false, error: errMsg };
+        }
+
+        // Calculate new live stock (reduced by quantity)
+        const newGodownLiveQty = Math.max(0, availableInGodown - qty);
+        const newTotalLiveQty = Math.max(0, currentLiveTotal - qty);
+
+        // Calculate new damaged stock (increased by quantity)
+        const currentDamagedTotal = Number(pData.damagedStock) || 0;
+        const newDamagedTotal = currentDamagedTotal + qty;
+        const currentGodownDamaged = pData.godownDamagedStock || {};
+        const newGodownDamagedQty = (Number(currentGodownDamaged[targetGodownId]) || 0) + qty;
+
+        const updatedGodownStock = { ...currentGodownStock, [targetGodownId]: newGodownLiveQty };
+        const updatedGodownDamaged = { ...currentGodownDamaged, [targetGodownId]: newGodownDamagedQty };
+
+        // Atomically update product live and damaged stock
+        await updateDoc(targetDoc.ref, {
+          stock: newTotalLiveQty,
+          godownStock: updatedGodownStock,
+          damagedStock: newDamagedTotal,
+          godownDamagedStock: updatedGodownDamaged,
+          updatedAt: serverTimestamp(),
+        });
+
+        const nowIso = new Date().toISOString();
+        const recId = `dmg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const incidentPayload = {
+          id: recId,
+          productId: targetDoc.id,
+          productBarcode: pData.barcode || code || "",
+          productName: pData.name || "Product",
+          category: pData.category || "General",
+          unit: pData.unit || "Piece",
+          purchasePrice: Number(pData.purchasePrice) || 0,
+          price: Number(pData.price) || 0,
+          godownId: targetGodownId,
+          godownName: godownName || "Godown",
+          quantity: qty,
+          reason,
+          remarks: remarks.trim(),
+          operatorName: operatorName || "Operator",
+          userEmail: user.email || "",
+          status: "DAMAGED",
+          createdAt: nowIso,
+        };
+
+        // 1. Save to settings/damagedStock (guaranteed write permissions for authenticated user)
+        await recordClientDamagedRecord(user.uid, incidentPayload);
+
+        // 2. Also try writing to subcollection if supported, ignoring permission errors
+        try {
+          await addDoc(collection(db, "users", user.uid, "damaged_stock"), incidentPayload);
+        } catch (_) {}
+
+        // 3. Record stock movement in ledger (type: DAMAGE)
+        await recordClientMovement(user.uid, {
+          productBarcode: pData.barcode || code || "",
+          productName: pData.name || "Product",
+          godownId: targetGodownId,
+          godownName,
+          quantity: qty,
+          type: "DAMAGE",
+          referenceNo: `DMG-${recId.slice(-6).toUpperCase()}`,
+          remarks: `Moved to Damaged Stock: ${reason}${remarks ? ` - ${remarks}` : ""}`,
+          operatorName: operatorName || "",
+          userEmail: user.email || "",
+        });
+
+        toast.success(`Moved ${qty} ${pData.unit || "unit(s)"} of "${pData.name}" to Damaged Stock. Usable stock reduced.`);
+        return {
+          success: true,
+          id: recId,
+          newLiveStock: newTotalLiveQty,
+          newGodownStock: newGodownLiveQty,
+          damagedStock: newDamagedTotal,
+        };
+      } catch (err) {
+        const msg = err.message || "Failed to record damaged stock";
+        toast.error(msg);
+        return { success: false, error: msg };
+      }
+    },
+    [user, operatorName, toast]
+  );
+
+  /**
+   * Restore damaged stock back to usable live stock (e.g. repaired or logged in error)
+   */
+  const restoreDamage = useCallback(
+    async (recordId, remarks = "") => {
+      try {
+        if (!user) throw new Error("Not logged in");
+
+        const currentRecords = await getClientDamagedRecords(user.uid);
+        const recIndex = currentRecords.findIndex((r) => r.id === recordId);
+        if (recIndex === -1) throw new Error("Damage record not found");
+
+        const recData = currentRecords[recIndex];
+        if (recData.status === "RESTORED") {
+          throw new Error("This item has already been restored to usable stock.");
+        }
+
+        const qtyToRestore = Number(recData.quantity) || 1;
+        const targetGodownId = recData.godownId || "mainGodown";
+
+        // Find product
+        let prodSnap = await getDoc(doc(db, "users", user.uid, "products", recData.productId));
+        let pRef = prodSnap.ref;
+        if (!prodSnap.exists()) {
+          const effectiveUid = await getEffectiveUid(user.uid);
+          prodSnap = await getDoc(doc(db, "users", effectiveUid, "products", recData.productId));
+          pRef = prodSnap.ref;
+        }
+
+        if (prodSnap.exists()) {
+          const pData = prodSnap.data();
+          const currentLiveTotal = Number(pData.stock) || 0;
+          const currentGodownStock = pData.godownStock || {};
+          const currentGodownQty = Number(currentGodownStock[targetGodownId]) || 0;
+
+          const currentDamagedTotal = Number(pData.damagedStock) || 0;
+          const currentGodownDamaged = pData.godownDamagedStock || {};
+          const currentGodownDamagedQty = Number(currentGodownDamaged[targetGodownId]) || 0;
+
+          // Increment usable stock & decrement damaged stock
+          await updateDoc(pRef, {
+            stock: currentLiveTotal + qtyToRestore,
+            godownStock: { ...currentGodownStock, [targetGodownId]: currentGodownQty + qtyToRestore },
+            damagedStock: Math.max(0, currentDamagedTotal - qtyToRestore),
+            godownDamagedStock: { ...currentGodownDamaged, [targetGodownId]: Math.max(0, currentGodownDamagedQty - qtyToRestore) },
+            updatedAt: serverTimestamp(),
+          });
+        }
+
+        // Update record in settings/damagedStock
+        const updatedRecords = [...currentRecords];
+        updatedRecords[recIndex] = {
+          ...recData,
+          status: "RESTORED",
+          restoredAt: new Date().toISOString(),
+          restoredBy: operatorName || "Operator",
+          restoreRemarks: remarks || "Restored back to usable stock",
+        };
+        await setDoc(doc(db, "users", user.uid, "settings", "damagedStock"), { records: updatedRecords }, { merge: true });
+
+        // Record movement
+        await recordClientMovement(user.uid, {
+          productBarcode: recData.productBarcode || "",
+          productName: recData.productName || "Product",
+          godownId: targetGodownId,
+          quantity: qtyToRestore,
+          type: "ADJUSTMENT",
+          referenceNo: `RST-${recordId.slice(-6).toUpperCase()}`,
+          remarks: `Restored to Usable Live Stock from Damaged${remarks ? `: ${remarks}` : ""}`,
+          operatorName: operatorName || "",
+          userEmail: user.email || "",
+        });
+
+        toast.success(`Restored ${qtyToRestore} unit(s) back to usable live stock.`);
+        return { success: true };
+      } catch (err) {
+        toast.error(err.message || "Failed to restore stock");
+        return { success: false, error: err.message };
+      }
+    },
+    [user, operatorName, toast]
+  );
+
+  /**
+   * Permanently write off / scrap damaged item
+   */
+  const scrapDamage = useCallback(
+    async (recordId, remarks = "") => {
+      try {
+        if (!user) throw new Error("Not logged in");
+
+        const currentRecords = await getClientDamagedRecords(user.uid);
+        const recIndex = currentRecords.findIndex((r) => r.id === recordId);
+        if (recIndex === -1) throw new Error("Damage record not found");
+
+        const recData = currentRecords[recIndex];
+        const updatedRecords = [...currentRecords];
+        updatedRecords[recIndex] = {
+          ...recData,
+          status: "SCRAPPED",
+          scrappedAt: new Date().toISOString(),
+          scrappedBy: operatorName || "Operator",
+          scrapRemarks: remarks || "Disposed and written off",
+        };
+        await setDoc(doc(db, "users", user.uid, "settings", "damagedStock"), { records: updatedRecords }, { merge: true });
+
+        toast.success("Marked damaged item as written off / scrapped.");
+        return { success: true };
+      } catch (err) {
+        toast.error(err.message || "Failed to scrap item");
+        return { success: false, error: err.message };
+      }
+    },
+    [user, operatorName, toast]
+  );
+
+  // Derived aggregates
+  const activeDamagedRecords = damagedRecords.filter((r) => r.status === "DAMAGED");
+  const totalDamagedUnits = activeDamagedRecords.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0);
+  const totalDamagedValue = activeDamagedRecords.reduce(
+    (sum, r) => sum + (Number(r.quantity) || 0) * (Number(r.purchasePrice) || Number(r.price) || 0),
+    0
+  );
+
+  return {
+    damagedRecords,
+    activeDamagedRecords,
+    totalDamagedUnits,
+    totalDamagedValue,
+    loading,
+    recordDamage,
+    restoreDamage,
+    scrapDamage,
+  };
+};
+

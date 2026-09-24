@@ -3,27 +3,26 @@ import { useNavigate, NavLink, Outlet } from "react-router-dom";
 import PropTypes from "prop-types";
 import { AuthContext } from "../context/AuthContext";
 import { useCompanyProfile } from "../context/CompanyProfileContext";
-import { useOperator } from "../context/OperatorContext";
 import {
   Warehouse,
   Package,
   ScanBarcode,
   FileBarChart2,
-  UserCheck,
   LogOut,
+  Trash2,
 } from "lucide-react";
 
 const warehouseNavItems = [
   { name: "Warehouse Dashboard", path: "/warehouse", icon: Warehouse, end: true, badge: "Live" },
   { name: "Products", path: "/warehouse/products", icon: Package },
   { name: "Scan Barcode", path: "/warehouse/scan", icon: ScanBarcode },
+  { name: "Damaged Stock", path: "/warehouse/damaged", icon: Trash2 },
   { name: "Stock Report", path: "/warehouse/reports", icon: FileBarChart2 },
 ];
 
 export default function WarehouseLayout({ children }) {
   const { user, signOut } = useContext(AuthContext);
   const { companyProfile } = useCompanyProfile();
-  const { operatorName, role, openPicker, openRoleModal } = useOperator();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const navigate = useNavigate();
   const profileRef = useRef(null);
@@ -75,36 +74,7 @@ export default function WarehouseLayout({ children }) {
           </div>
         </div>
 
-        {/* Operator Switcher Card */}
-        <div className="px-3 pt-3 pb-1">
-          <div className="rounded-xl bg-slate-50 border border-slate-200 p-2.5">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Active Operator</span>
-              <button
-                type="button"
-                onClick={openRoleModal}
-                className="text-[10px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded transition-colors"
-                title="Change role"
-              >
-                {role}
-              </button>
-            </div>
-            <button
-              type="button"
-              onClick={openPicker}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-200 transition-all group"
-              title="Click to assign operator"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <UserCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                <span className="text-xs font-semibold text-slate-700 truncate group-hover:text-blue-600">
-                  {operatorName || "Assign Operator"}
-                </span>
-              </div>
-              <span className="text-[10px] font-medium text-slate-400 group-hover:text-blue-600">Switch</span>
-            </button>
-          </div>
-        </div>
+
 
         {/* Navigation List */}
         <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">

@@ -99,6 +99,14 @@ service cloud.firestore {
         allow update, delete: if false;   // movements are immutable
       }
 
+      // Damaged Stock — separated inventory tracking
+      match /damaged_stock/{docId} {
+        allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
+      }
+      match /damagedStock/{docId} {
+        allow read, write: if isOwner(userId) || isLinkedWarehouseReader(userId);
+      }
+
       // Barcode index — barcode IS the doc ID; uniqueness enforced via transaction.
       match /barcodeIndex/{barcode} {
         allow read: if isOwner(userId) || isLinkedWarehouseReader(userId);

@@ -4,7 +4,7 @@ import {
   Package, Plus, Search, Tag, BoxSelect, CheckCircle2,
   Eye, Edit2, Trash2, X, Loader2, RefreshCw,
 } from "lucide-react";
-import { useWarehouseStats, useGodowns, useProducts } from "../../hooks/useWarehouse";
+import { useWarehouseStats, useProducts } from "../../hooks/useWarehouse";
 import { useToast } from "../../context/ToastContext";
 import ProductManualAdd from "./ProductManualAdd";
 
@@ -15,7 +15,7 @@ const STATUS_STYLES = {
 };
 
 // ─── View Product Modal ───────────────────────────────────────────────────────
-const ViewProductModal = ({ product, godowns, onClose, onEdit }) => {
+const ViewProductModal = ({ product, onClose, onEdit }) => {
   if (!product) return null;
   const ss = STATUS_STYLES[product.status] || STATUS_STYLES.IN_STOCK;
 
@@ -77,9 +77,15 @@ const ViewProductModal = ({ product, godowns, onClose, onEdit }) => {
               </p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-              <p className="text-xs font-semibold text-slate-400">Total Stock</p>
+              <p className="text-xs font-semibold text-slate-400">Usable Live Stock</p>
               <p className={`text-lg font-extrabold mt-0.5 ${product.stock === 0 ? "text-rose-600" : "text-emerald-600"}`}>
                 {(product.stock ?? 0).toLocaleString("en-IN")} {product.unit || "units"}
+              </p>
+            </div>
+            <div className="p-3 rounded-xl bg-red-50 border border-red-100">
+              <p className="text-xs font-semibold text-red-600">Damaged / Wastage</p>
+              <p className="text-lg font-extrabold mt-0.5 text-red-600">
+                {(product.damagedStock ?? 0).toLocaleString("en-IN")} {product.unit || "units"}
               </p>
             </div>
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
@@ -90,23 +96,7 @@ const ViewProductModal = ({ product, godowns, onClose, onEdit }) => {
             </div>
           </div>
 
-          {/* Godown Stock Breakdown */}
-          {product.godownStock && Object.keys(product.godownStock).length > 0 && (
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Godown Distribution</p>
-              <div className="space-y-1.5">
-                {Object.entries(product.godownStock).map(([gId, qty]) => {
-                  const gName = godowns?.find((g) => g.id === gId)?.name || gId;
-                  return (
-                    <div key={gId} className="flex items-center justify-between text-xs px-3 py-2 bg-slate-50 rounded-lg">
-                      <span className="font-medium text-slate-700">{gName}</span>
-                      <span className="font-bold text-slate-900">{qty} {product.unit || "units"}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+
 
           {/* Description */}
           {product.description && (
@@ -143,7 +133,6 @@ const ViewProductModal = ({ product, godowns, onClose, onEdit }) => {
 
 ViewProductModal.propTypes = {
   product: PropTypes.object,
-  godowns: PropTypes.array,
   onClose: PropTypes.func.isRequired,
   onEdit: PropTypes.func.isRequired,
 };
@@ -363,7 +352,6 @@ DeleteProductModal.propTypes = {
 
 // ─── Main Warehouse Products Page ─────────────────────────────────────────────
 export default function WarehouseProducts() {
-  const { godowns } = useGodowns();
   const {
     products,
     loading: productsLoading,
@@ -593,6 +581,11 @@ export default function WarehouseProducts() {
                             min {p.minStockLevel}
                           </span>
                         )}
+                        {p.damagedStock > 0 && (
+                          <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 text-[10px] font-bold rounded bg-red-50 text-red-600 border border-red-200">
+                            <Trash2 size={10} /> {p.damagedStock} dmg
+                          </span>
+                        )}
                       </td>
 
                       {/* Status badge */}
@@ -647,7 +640,6 @@ export default function WarehouseProducts() {
       {viewingProduct && (
         <ViewProductModal
           product={viewingProduct}
-          godowns={godowns}
           onClose={() => setViewingProduct(null)}
           onEdit={(prod) => {
             setViewingProduct(null);
@@ -682,7 +674,6 @@ export default function WarehouseProducts() {
           <div className="w-full max-w-lg">
             <ProductManualAdd
               barcode={`EAN-${Date.now().toString().slice(-8)}`}
-              godown={godowns[0] || null}
               onSuccess={() => {
                 setIsManualAddOpen(false);
                 refetchProducts();

@@ -4,9 +4,9 @@ import { useNavigate } from "react-router-dom";
 import {
   Warehouse, ScanBarcode,
   Package, TrendingDown, AlertTriangle, RefreshCw,
-  Plus, ArrowRight, FileBarChart2, Link2,
+  Plus, ArrowRight, FileBarChart2, Link2, Trash2,
 } from "lucide-react";
-import { useWarehouseStats, useGodowns, useProducts } from "../../hooks/useWarehouse";
+import { useWarehouseStats, useProducts } from "../../hooks/useWarehouse";
 import { useOperator } from "../../context/OperatorContext";
 
 const TYPE_DOT_COLORS = {
@@ -15,6 +15,7 @@ const TYPE_DOT_COLORS = {
   TRANSFER_IN:  "bg-blue-500",
   TRANSFER_OUT: "bg-purple-500",
   ADJUSTMENT:   "bg-yellow-500",
+  DAMAGE:       "bg-red-600",
 };
 
 function getTimeAgo(date) {
@@ -129,7 +130,6 @@ StatCard.propTypes = {
 // ─── Main Warehouse Dashboard ────────────────────────────────────────────────
 export default function WarehouseDashboard() {
   const { stats, loading, refetch } = useWarehouseStats();
-  const { godowns } = useGodowns();
   const { products, refetch: refetchProducts } = useProducts();
   const { operatorName } = useOperator();
   const navigate = useNavigate();
@@ -152,6 +152,13 @@ export default function WarehouseDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => navigate("/warehouse/damaged")}
+            className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors shadow-xs"
+          >
+            <Trash2 className="w-4 h-4 text-red-600" />
+            Damaged Stock
+          </button>
           <button
             onClick={() => navigate("/warehouse/products")}
             className="bg-white border border-gray-300 text-gray-700 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-xs"
@@ -179,13 +186,13 @@ export default function WarehouseDashboard() {
         </div>
       </header>
 
-      {/* ── Stats Grid (Clean 4-Card Layout) ── */}
+      {/* ── Stats Grid (5-Card Layout) ── */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           <StatCard
             title="Total Products"
             value={totalProds}
@@ -195,11 +202,23 @@ export default function WarehouseDashboard() {
             onClick={() => navigate("/warehouse/products")}
           />
           <StatCard
-            title="Total Stock in Units"
+            title="Usable Live Stock"
             value={(stats?.totalStock ?? 0).toLocaleString("en-IN")}
             icon={<Warehouse className="w-5 h-5 text-blue-500" />}
-            subtext="Across All Godowns"
+            subtext="Available Live"
             subtextColor="blue"
+          />
+          <StatCard
+            title="Damaged / Wastage"
+            value={(stats?.totalDamagedStock ?? 0).toLocaleString("en-IN")}
+            valueLabel="Units separated"
+            secondaryValue={stats?.totalDamagedValue > 0 ? `₹${(stats.totalDamagedValue).toLocaleString("en-IN")}` : undefined}
+            secondaryValueLabel={stats?.totalDamagedValue > 0 ? "Est. Loss" : undefined}
+            isSecondaryValueRed={true}
+            icon={<Trash2 className="w-5 h-5 text-red-500" />}
+            subtext="Damaged Pool →"
+            subtextColor="orange"
+            onClick={() => navigate("/warehouse/damaged")}
           />
           <StatCard
             title="Low Stock Items"
@@ -277,21 +296,21 @@ export default function WarehouseDashboard() {
             <ArrowRight size={14} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
           </div>
           <p className="text-sm font-semibold text-slate-800">Stock Reports</p>
-          <p className="text-xs text-slate-400 mt-0.5">Godown inventory logs</p>
+          <p className="text-xs text-slate-400 mt-0.5">Inventory reports & valuation</p>
         </button>
 
         <button
-          onClick={() => navigate("/warehouse/setup")}
-          className="p-4 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:shadow-xs transition-all text-left group"
+          onClick={() => navigate("/warehouse/damaged")}
+          className="p-4 rounded-xl border border-red-200 bg-red-50/40 hover:border-red-400 hover:bg-red-50 hover:shadow-xs transition-all text-left group"
         >
           <div className="flex items-center justify-between mb-2">
-            <div className="w-9 h-9 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center font-bold">
-              <Link2 size={18} />
+            <div className="w-9 h-9 rounded-lg bg-red-100 text-red-600 flex items-center justify-center font-bold">
+              <Trash2 size={18} />
             </div>
-            <ArrowRight size={14} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRight size={14} className="text-slate-300 group-hover:text-red-600 group-hover:translate-x-0.5 transition-all" />
           </div>
-          <p className="text-sm font-semibold text-slate-800">Setup &amp; Linking</p>
-          <p className="text-xs text-slate-400 mt-0.5">Admin sync &amp; godowns</p>
+          <p className="text-sm font-semibold text-slate-800">Damaged / Wastage</p>
+          <p className="text-xs text-red-600 font-medium mt-0.5">Separate from live stock</p>
         </button>
       </div>
 
@@ -334,7 +353,7 @@ export default function WarehouseDashboard() {
                         {m.type})
                       </p>
                       <p className="text-xs text-slate-400">
-                        {m.godownName} {m.operatorName ? `· by ${m.operatorName}` : ""}
+                        {m.operatorName ? `by ${m.operatorName}` : "Stock movement"}
                       </p>
                     </div>
                   </div>

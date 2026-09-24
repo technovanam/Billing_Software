@@ -88,10 +88,9 @@ import WarehouseProducts from "./pages/warehouse/WarehouseProducts";
 import BarcodeScanner from "./pages/warehouse/BarcodeScanner";
 import StockIn from "./pages/warehouse/StockIn";
 import StockOut from "./pages/warehouse/StockOut";
-import StockTransfer from "./pages/warehouse/StockTransfer";
-import GodownManagement from "./pages/warehouse/GodownManagement";
 import StockMovements from "./pages/warehouse/StockMovements";
 import StockReport from "./pages/warehouse/StockReport";
+import DamagedStock from "./pages/warehouse/DamagedStock";
 import WarehouseSetup from "./pages/warehouse/WarehouseSetup";
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -158,7 +157,8 @@ export default function App() {
         <ToastProvider>
           <AIAssistantProvider>
             <OperatorProvider>
-              <Router>
+              <SuperAdminAuthProvider>
+                <Router>
                 <ScrollToTop />
                 <Routes>
                   {/* Public */}
@@ -180,9 +180,10 @@ export default function App() {
                             <Route path="/scan" element={<BarcodeScanner />} />
                             <Route path="/stock-in" element={<StockIn />} />
                             <Route path="/stock-out" element={<StockOut />} />
-                            <Route path="/transfer" element={<StockTransfer />} />
-                            <Route path="/godowns" element={<GodownManagement />} />
+                            <Route path="/transfer" element={<Navigate to="/warehouse" replace />} />
+                            <Route path="/godowns" element={<Navigate to="/warehouse" replace />} />
                             <Route path="/movements" element={<StockMovements />} />
+                            <Route path="/damaged" element={<DamagedStock />} />
                             <Route path="/reports" element={<StockReport />} />
                             <Route path="/setup" element={<WarehouseSetup />} />
                           </Routes>
@@ -230,7 +231,8 @@ export default function App() {
                 </Routes>
                 <ToastContainer />
               </Router>
-            </OperatorProvider>
+            </SuperAdminAuthProvider>
+          </OperatorProvider>
           </AIAssistantProvider>
         </ToastProvider>
       </CompanyProfileProvider>

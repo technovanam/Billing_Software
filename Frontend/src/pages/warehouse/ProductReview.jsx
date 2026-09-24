@@ -6,7 +6,7 @@ import { useToast } from "../../context/ToastContext";
 
 const UNITS = ["Piece", "Box", "Kilogram", "Gram", "Meter", "Litre", "Hour", "Dozen", "Pair", "Bag", "Tube", "Pack"];
 
-export default function ProductReview({ barcode, prefill, source, godown, onSuccess, onCancel }) {
+export default function ProductReview({ barcode, prefill, source, onSuccess, onCancel }) {
   const { createProduct } = useCreateWarehouseProduct();
   const toast = useToast();
 
@@ -36,7 +36,6 @@ export default function ProductReview({ barcode, prefill, source, godown, onSucc
       toast.error("Product name is required.");
       return;
     }
-    const targetGodownId = godown?.id || "mainGodown";
 
     setSaving(true);
     const result = await createProduct({
@@ -44,7 +43,6 @@ export default function ProductReview({ barcode, prefill, source, godown, onSucc
       name: form.name.trim(),
       barcode: String(form.barcode || "").trim(),
       initialQuantity: Number(initialQty) || 0,
-      godownId: targetGodownId,
     });
     setSaving(false);
 
@@ -193,27 +191,16 @@ export default function ProductReview({ barcode, prefill, source, godown, onSucc
         {/* Initial Stock Assignment */}
         <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
           <p className="text-xs font-bold text-emerald-900 uppercase tracking-wider">Opening Stock</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-emerald-800 mb-1">Quantity to Stock In</label>
-              <input
-                type="number"
-                min="0"
-                value={initialQty}
-                onChange={(e) => setInitialQty(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-emerald-500"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-emerald-800 mb-1">Target Godown</label>
-              <input
-                type="text"
-                value={godown?.name || "Main Godown"}
-                readOnly
-                className="w-full px-3 py-1.5 bg-emerald-100/50 border border-emerald-200 rounded-lg text-sm font-semibold text-emerald-900 outline-none cursor-not-allowed"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-emerald-800 mb-1">Quantity to Stock In</label>
+            <input
+              type="number"
+              min="0"
+              value={initialQty}
+              onChange={(e) => setInitialQty(Math.max(0, parseInt(e.target.value) || 0))}
+              className="w-full px-3 py-1.5 bg-white border border-emerald-300 rounded-lg text-sm font-bold text-center outline-none focus:ring-2 focus:ring-emerald-500"
+              required
+            />
           </div>
         </div>
 
@@ -244,7 +231,6 @@ ProductReview.propTypes = {
   barcode: PropTypes.string.isRequired,
   prefill: PropTypes.object,
   source: PropTypes.string,
-  godown: PropTypes.object,
   onSuccess: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 };

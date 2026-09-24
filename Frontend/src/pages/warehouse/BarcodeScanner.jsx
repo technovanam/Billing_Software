@@ -5,10 +5,9 @@ import {
   Loader2, Package, AlertTriangle, RefreshCw, ArrowDown, Zap,
 } from "lucide-react";
 import {
-  useGodowns, useBarcodeIndex, useStockIn,
+  useBarcodeIndex, useStockIn,
 } from "../../hooks/useWarehouse";
 import { useToast } from "../../context/ToastContext";
-import GodownSelector from "../../components/warehouse/GodownSelector";
 import ProductReview from "./ProductReview";
 import ProductManualAdd from "./ProductManualAdd";
 
@@ -55,7 +54,7 @@ const SessionHistory = ({ items }) => {
 SessionHistory.propTypes = { items: PropTypes.array.isRequired };
 
 // ─── Inline Stock Form (shown when Auto-Add is OFF and a product is resolved) ─
-const StockForm = ({ product, currentStock, godown, onConfirm, onCancel, loading }) => {
+const StockForm = ({ product, currentStock, onConfirm, onCancel, loading }) => {
   const [quantity, setQuantity] = useState(1);
   const [referenceNo, setReferenceNo] = useState("");
   const [remarks, setRemarks] = useState("");
@@ -72,7 +71,7 @@ const StockForm = ({ product, currentStock, godown, onConfirm, onCancel, loading
           <p className="text-xs text-slate-400 font-mono">Barcode: {product.barcode}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-xs text-slate-400">Current in {godown?.name}</p>
+          <p className="text-xs text-slate-400">Current Stock</p>
           <p className="text-xl font-extrabold text-slate-800">{currentStock}</p>
         </div>
       </div>
@@ -142,7 +141,6 @@ const StockForm = ({ product, currentStock, godown, onConfirm, onCancel, loading
 StockForm.propTypes = {
   product: PropTypes.object.isRequired,
   currentStock: PropTypes.number.isRequired,
-  godown: PropTypes.object,
   onConfirm: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
   loading: PropTypes.bool,
@@ -150,12 +148,10 @@ StockForm.propTypes = {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BarcodeScanner() {
-  const { godowns } = useGodowns();
   const { resolveBarcode } = useBarcodeIndex();
   const { stockIn } = useStockIn();
   const toast = useToast();
 
-  const [activeGodown, setActiveGodown] = useState(null);
   const inputRef = useRef(null);
   const lastScanRef = useRef({ barcode: "", time: 0 });
   const [inputValue, setInputValue] = useState("");
@@ -184,10 +180,6 @@ export default function BarcodeScanner() {
   const readerRef = useRef(null);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
-
-  useEffect(() => {
-    if (godowns?.length > 0 && !activeGodown) setActiveGodown(godowns[0]);
-  }, [godowns, activeGodown]);
 
   useEffect(() => {
     if (!cameraMode) {
@@ -226,10 +218,7 @@ export default function BarcodeScanner() {
   // ── Step 1: Scan → resolve the barcode ──────────────────────────────────────
   const handleScan = useCallback(async (rawBarcode) => {
     const barcode = rawBarcode.trim();
-    if (!barcode || !activeGodown) {
-      if (!activeGodown) toast.error("Please select a godown first.");
-      return;
-    }
+    if (!barcode) return;
     const now = Date.now();
     if (barcode === lastScanRef.current.barcode && now - lastScanRef.current.time < DEBOUNCE_MS) {
       setInputValue("");
@@ -243,7 +232,7 @@ export default function BarcodeScanner() {
     setProcessing(true);
 
     try {
-      const resolved = await resolveBarcode(barcode, activeGodown.id);
+      const resolved = await resolveBarcode(barcode);
 
       if (resolved.found) {
         // If Auto-Add is enabled, directly add stock!
@@ -252,7 +241,6 @@ export default function BarcodeScanner() {
           setCommitting(true);
           const result = await stockIn({
             barcode: resolved.product.barcode,
-            godownId: activeGodown.id,
             quantity: qtyToAdd,
             referenceNo: autoReference || "",
             remarks: autoRemarks || "",
@@ -295,7 +283,7 @@ export default function BarcodeScanner() {
     } finally {
       setProcessing(false);
     }
-  }, [activeGodown, resolveBarcode, autoAdd, scanQty, autoReference, autoRemarks, stockIn, toast]);
+  }, [resolveBarcode, autoAdd, scanQty, autoReference, autoRemarks, stockIn, toast]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && inputValue.trim()) handleScan(inputValue.trim());
@@ -303,13 +291,12 @@ export default function BarcodeScanner() {
 
   // ── Step 2: Confirm stock in (manual mode) ──────────────────────────────────
   const handleConfirm = useCallback(async ({ quantity, referenceNo, remarks }) => {
-    if (!resolvedProduct || !activeGodown) return;
+    if (!resolvedProduct) return;
     setCommitting(true);
     const { product } = resolvedProduct;
 
     const result = await stockIn({
       barcode: product.barcode,
-      godownId: activeGodown.id,
       quantity: Number(quantity),
       referenceNo,
       remarks,
@@ -329,7 +316,7 @@ export default function BarcodeScanner() {
     } else {
       toast.error(result.error || "Operation failed.");
     }
-  }, [resolvedProduct, activeGodown, stockIn, toast]);
+  }, [resolvedProduct, stockIn, toast]);
 
   const handleReviewSuccess = (product, qty) => {
     setReviewData(null);
@@ -365,13 +352,12 @@ export default function BarcodeScanner() {
         </button>
       </div>
 
-      {/* Godown + Camera row */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex items-center justify-between">
-        <GodownSelector activeGodown={activeGodown} onChange={setActiveGodown} />
+      {/* Camera Bar */}
+      <div className="flex justify-end">
         <button
           onClick={() => setCameraMode((v) => !v)}
           className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-            cameraMode ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+            cameraMode ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
           }`}
         >
           {cameraMode ? <Camera size={14} /> : <CameraOff size={14} />}
@@ -496,11 +482,10 @@ export default function BarcodeScanner() {
       )}
 
       {/* ── Step 2 Form: after barcode resolved ─────────────────────────────── */}
-      {resolvedProduct && activeGodown && (
+      {resolvedProduct && (
         <StockForm
           product={resolvedProduct.product}
           currentStock={resolvedProduct.stock}
-          godown={activeGodown}
           onConfirm={handleConfirm}
           onCancel={resetAll}
           loading={committing}
@@ -508,22 +493,20 @@ export default function BarcodeScanner() {
       )}
 
       {/* External lookup review */}
-      {reviewData && activeGodown && (
+      {reviewData && (
         <ProductReview
           barcode={reviewData.barcode}
           prefill={reviewData.prefill}
           source={reviewData.source}
-          godown={activeGodown}
           onSuccess={handleReviewSuccess}
           onCancel={() => setReviewData(null)}
         />
       )}
 
       {/* Manual add */}
-      {manualAddData && activeGodown && (
+      {manualAddData && (
         <ProductManualAdd
           barcode={manualAddData.barcode}
-          godown={activeGodown}
           onSuccess={handleManualAddSuccess}
           onCancel={() => setManualAddData(null)}
         />

@@ -5,15 +5,12 @@ import {
 import { useBarcodeIndex, useStockOut } from "../../hooks/useWarehouse";
 import { useToast } from "../../context/ToastContext";
 import { useOperator, ROLES } from "../../context/OperatorContext";
-import GodownSelector from "../../components/warehouse/GodownSelector";
 
 export default function StockOut() {
   const { resolveBarcode } = useBarcodeIndex();
   const { stockOut } = useStockOut();
   const { role, hasPermission } = useOperator();
   const toast = useToast();
-
-  const [activeGodown, setActiveGodown] = useState(null);
 
   const inputRef = useRef(null);
   const [barcodeInput, setBarcodeInput] = useState("");
@@ -40,27 +37,27 @@ export default function StockOut() {
     setLastResult(null);
     setResolving(true);
 
-    const result = await resolveBarcode(bc, activeGodown?.id);
+    const result = await resolveBarcode(bc);
     setResolving(false);
 
     if (result.found) {
       setProduct(result.product);
-      setCurrentStock(result.stock?.quantity || 0);
+      setCurrentStock(Number(result.product?.stock) || result.stock?.quantity || 0);
       setQuantity(1);
     } else {
       setNotFound(true);
     }
-  }, [barcodeInput, activeGodown, resolveBarcode]);
+  }, [barcodeInput, resolveBarcode]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleResolve();
   };
 
   const handleStockOut = useCallback(async () => {
-    if (!product || !activeGodown || quantity <= 0) return;
+    if (!product || quantity <= 0) return;
 
     if (quantity > currentStock) {
-      setErrorMsg(`Insufficient stock in ${activeGodown.name}. Available: ${currentStock}, Requested: ${quantity}`);
+      setErrorMsg(`Insufficient stock. Available: ${currentStock}, Requested: ${quantity}`);
       return;
     }
 
@@ -69,7 +66,6 @@ export default function StockOut() {
 
     const result = await stockOut({
       barcode: product.barcode || barcodeInput,
-      godownId: activeGodown.id,
       quantity: Number(quantity),
       referenceNo,
       remarks,
@@ -79,7 +75,7 @@ export default function StockOut() {
     if (result.success) {
       setLastResult({ product, removed: quantity, newQuantity: result.newQuantity });
       setCurrentStock(result.newQuantity);
-      toast.success(`−${quantity} ${product.name} removed from ${activeGodown.name}`);
+      toast.success(`−${quantity} ${product.name} dispatched`);
       setBarcodeInput("");
       setProduct(null);
       setQuantity(1);
@@ -89,7 +85,7 @@ export default function StockOut() {
     } else {
       setErrorMsg(result.error || "Stock-out failed.");
     }
-  }, [product, activeGodown, quantity, currentStock, referenceNo, remarks, stockOut, barcodeInput, toast]);
+  }, [product, quantity, currentStock, referenceNo, remarks, stockOut, barcodeInput, toast]);
 
   return (
     <div className="w-full space-y-6">
@@ -113,11 +109,6 @@ export default function StockOut() {
           <span>You are in <strong>{role}</strong> role. Stock Out is view-only for this session.</span>
         </div>
       )}
-
-      {/* Godown Selector */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <GodownSelector activeGodown={activeGodown} onChange={setActiveGodown} />
-      </div>
 
       {/* Barcode Search Box */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
@@ -158,7 +149,7 @@ export default function StockOut() {
       </div>
 
       {/* Product Card & Quantity */}
-      {product && activeGodown && (
+      {product && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 animate-fade-in-up">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold">
@@ -169,7 +160,7 @@ export default function StockOut() {
               <p className="text-xs text-slate-400 font-mono">Barcode: {product.barcode}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-400 font-medium">Available in {activeGodown.name}</p>
+              <p className="text-xs text-slate-400 font-medium">Available Live Stock</p>
               <p className={`text-lg font-extrabold ${currentStock === 0 ? "text-rose-600" : "text-slate-800"}`}>
                 {currentStock}
               </p>
@@ -179,7 +170,7 @@ export default function StockOut() {
           {currentStock === 0 ? (
             <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-center gap-3 text-rose-700 text-sm">
               <AlertTriangle size={18} className="shrink-0" />
-              <span>Cannot dispatch. This product is completely out of stock in {activeGodown.name}.</span>
+              <span>Cannot dispatch. This product is completely out of stock.</span>
             </div>
           ) : (
             <>

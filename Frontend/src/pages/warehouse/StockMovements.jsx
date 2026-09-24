@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import {
   ClipboardList, Filter, ChevronLeft, ChevronRight, RefreshCw,
-  ArrowDown, ArrowUp, ArrowLeftRight, Package, User,
+  ArrowDown, ArrowUp, ArrowLeftRight, Package, User, Trash2,
 } from "lucide-react";
-import { useStockMovements, useGodowns } from "../../hooks/useWarehouse";
+import { useStockMovements } from "../../hooks/useWarehouse";
 import { useProducts } from "../../hooks/useFirestore";
 import { useOperator } from "../../context/OperatorContext";
 
@@ -13,6 +13,7 @@ const TYPE_STYLES = {
   TRANSFER_IN:  { label: "TRANSFER IN",  cls: "bg-blue-100 text-blue-700",       Icon: ArrowDown },
   TRANSFER_OUT: { label: "TRANSFER OUT", cls: "bg-violet-100 text-violet-700",   Icon: ArrowUp   },
   ADJUSTMENT:   { label: "ADJUSTMENT",   cls: "bg-amber-100 text-amber-700",     Icon: Package   },
+  DAMAGE:       { label: "DAMAGED",      cls: "bg-red-100 text-red-700",         Icon: Trash2    },
 };
 
 function formatDate(ts) {
@@ -28,17 +29,14 @@ function formatDate(ts) {
 }
 
 export default function StockMovements() {
-  const { godowns } = useGodowns();
   const { allProducts } = useProducts({});
   const { staffList } = useOperator();
 
-  const [filterGodown, setFilterGodown] = useState("");
   const [filterType, setFilterType] = useState("ALL");
   const [filterOperator, setFilterOperator] = useState("");
   const [filterBarcode, setFilterBarcode] = useState("");
 
   const { movements, loading, hasMore, hasPrev, nextPage, prevPage, refetch } = useStockMovements({
-    godownId: filterGodown || undefined,
     type: filterType === "ALL" ? undefined : filterType,
     operatorName: filterOperator || undefined,
     productBarcode: filterBarcode || undefined,
@@ -74,20 +72,7 @@ export default function StockMovements() {
           <Filter size={15} className="text-slate-500" />
           <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Filters</span>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Godown</label>
-            <select
-              value={filterGodown}
-              onChange={(e) => setFilterGodown(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Godowns</option>
-              {godowns.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1">Movement Type</label>
@@ -145,7 +130,6 @@ export default function StockMovements() {
                 <tr>
                   <th className="px-5 py-3.5 font-bold">Timestamp</th>
                   <th className="px-5 py-3.5 font-bold">Product</th>
-                  <th className="px-5 py-3.5 font-bold">Godown</th>
                   <th className="px-5 py-3.5 font-bold">Type</th>
                   <th className="px-5 py-3.5 font-bold text-right">Quantity</th>
                   <th className="px-5 py-3.5 font-bold">Operator</th>
@@ -168,9 +152,6 @@ export default function StockMovements() {
                         {m.productBarcode && (
                           <p className="text-xs text-slate-400 font-mono">{m.productBarcode}</p>
                         )}
-                      </td>
-                      <td className="px-5 py-3.5 text-slate-700 font-medium">
-                        {m.godownName || "—"}
                       </td>
                       <td className="px-5 py-3.5">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold ${style.cls}`}>

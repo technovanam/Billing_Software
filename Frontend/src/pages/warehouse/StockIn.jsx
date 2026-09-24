@@ -6,15 +6,12 @@ import {
 import { useBarcodeIndex, useStockIn } from "../../hooks/useWarehouse";
 import { useToast } from "../../context/ToastContext";
 import { useOperator, ROLES } from "../../context/OperatorContext";
-import GodownSelector from "../../components/warehouse/GodownSelector";
 
 export default function StockIn() {
   const { resolveBarcode } = useBarcodeIndex();
   const { stockIn } = useStockIn();
   const { role, hasPermission } = useOperator();
   const toast = useToast();
-
-  const [activeGodown, setActiveGodown] = useState(null);
 
   // Barcode / product state
   const inputRef = useRef(null);
@@ -41,29 +38,28 @@ export default function StockIn() {
     setLastResult(null);
     setResolving(true);
 
-    const result = await resolveBarcode(bc, activeGodown?.id);
+    const result = await resolveBarcode(bc);
     setResolving(false);
 
     if (result.found) {
       setProduct(result.product);
-      setCurrentStock(result.stock?.quantity || 0);
+      setCurrentStock(Number(result.product?.stock) || result.stock?.quantity || 0);
       setQuantity(1);
     } else {
       setNotFound(true);
     }
-  }, [barcodeInput, activeGodown, resolveBarcode]);
+  }, [barcodeInput, resolveBarcode]);
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter") handleResolve();
   };
 
   const handleStockIn = useCallback(async () => {
-    if (!product || !activeGodown || quantity <= 0) return;
+    if (!product || quantity <= 0) return;
     setAdding(true);
 
     const result = await stockIn({
       barcode: product.barcode || barcodeInput,
-      godownId: activeGodown.id,
       quantity: Number(quantity),
       referenceNo,
       remarks,
@@ -72,7 +68,7 @@ export default function StockIn() {
 
     if (result.success) {
       setLastResult({ product, added: quantity, newQuantity: result.newQuantity });
-      toast.success(`+${quantity} ${product.name} added to ${activeGodown.name}`);
+      toast.success(`+${quantity} ${product.name} added to stock`);
       setBarcodeInput("");
       setProduct(null);
       setQuantity(1);
@@ -80,7 +76,7 @@ export default function StockIn() {
       setRemarks("");
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [product, activeGodown, quantity, referenceNo, remarks, stockIn, barcodeInput, toast]);
+  }, [product, quantity, referenceNo, remarks, stockIn, barcodeInput, toast]);
 
   return (
     <div className="w-full space-y-6">
@@ -93,7 +89,7 @@ export default function StockIn() {
         </div>
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Stock In</h1>
-          <p className="text-sm text-slate-500">Add inventory units to godown with movement logging</p>
+          <p className="text-sm text-slate-500">Add inventory units with movement logging</p>
         </div>
       </div>
 
@@ -104,11 +100,6 @@ export default function StockIn() {
           <span>You are in <strong>{role}</strong> role. Stock In is view-only for this session.</span>
         </div>
       )}
-
-      {/* Godown Selector */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <GodownSelector activeGodown={activeGodown} onChange={setActiveGodown} />
-      </div>
 
       {/* Barcode Search Box */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
@@ -149,7 +140,7 @@ export default function StockIn() {
       </div>
 
       {/* Product Details & Quantity Input */}
-      {product && activeGodown && (
+      {product && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 animate-fade-in-up">
           <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
             <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -160,7 +151,7 @@ export default function StockIn() {
               <p className="text-xs text-slate-400 font-mono">Barcode: {product.barcode}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-400 font-medium">Current in {activeGodown.name}</p>
+              <p className="text-xs text-slate-400 font-medium">Current Stock</p>
               <p className="text-lg font-extrabold text-slate-800">{currentStock}</p>
             </div>
           </div>
@@ -229,7 +220,7 @@ export default function StockIn() {
           <div className="flex-1">
             <p className="font-bold text-emerald-900">{lastResult.product.name}</p>
             <p className="text-sm text-emerald-700">
-              +{lastResult.added} units added · New stock in godown: <strong>{lastResult.newQuantity}</strong>
+              +{lastResult.added} units added · New stock: <strong>{lastResult.newQuantity}</strong>
             </p>
           </div>
         </div>

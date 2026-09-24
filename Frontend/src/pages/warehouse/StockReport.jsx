@@ -3,12 +3,12 @@ import {
   FileBarChart2, Download, AlertTriangle, Package, RefreshCw,
   Search, AlertCircle, CheckCircle2,
 } from "lucide-react";
-import { useGodowns, useStockReport } from "../../hooks/useWarehouse";
+import { useStockReport } from "../../hooks/useWarehouse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 // ─── Excel Export ────────────────────────────────────────────────────────────
-async function exportToExcel(rows, godownName, totals) {
+async function exportToExcel(rows, totals) {
   const XLSX = await import("xlsx");
 
   const data = rows.map((r, idx) => ({
@@ -16,7 +16,6 @@ async function exportToExcel(rows, godownName, totals) {
     "Product Name": r.name,
     "Barcode": r.barcode || "—",
     "Category": r.category || "—",
-    "Godown": r.godownDisplay || godownName,
     "Stock": r.totalStock,
     "Unit": r.unit || "Piece",
     "Purchase Price (₹)": r.purchasePrice > 0 ? r.purchasePrice : 0,
@@ -31,7 +30,6 @@ async function exportToExcel(rows, godownName, totals) {
     "Product Name": `TOTAL (${rows.length} Products)`,
     "Barcode": "",
     "Category": "",
-    "Godown": "",
     "Stock": totals.totalStock,
     "Unit": "",
     "Purchase Price (₹)": "",
@@ -43,29 +41,28 @@ async function exportToExcel(rows, godownName, totals) {
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Stock Report");
-  XLSX.writeFile(wb, `stock-report-${godownName?.replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `stock-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 // ─── PDF Export ──────────────────────────────────────────────────────────────
-function exportToPdf(rows, godownName, totals) {
+function exportToPdf(rows, totals) {
   const doc = new jsPDF({ orientation: "landscape" });
 
   doc.setFontSize(14);
   doc.setFont("helvetica", "bold");
-  doc.text(`Stock Report — ${godownName}`, 14, 15);
+  doc.text("Stock Report", 14, 15);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.text(`Generated: ${new Date().toLocaleString("en-IN")}`, 14, 22);
 
   autoTable(doc, {
     startY: 28,
-    head: [["#", "Product Name", "Barcode", "Category", "Godown", "Stock", "Unit", "Purchase Price (₹)", "Stock Value (₹)", "Min Level", "Status"]],
+    head: [["#", "Product Name", "Barcode", "Category", "Stock", "Unit", "Purchase Price (₹)", "Stock Value (₹)", "Min Level", "Status"]],
     body: rows.map((r, i) => [
       (i + 1).toString(),
       r.name,
       r.barcode || "—",
       r.category || "—",
-      r.godownDisplay || godownName,
       (r.totalStock || 0).toString(),
       r.unit || "Piece",
       r.purchasePrice > 0 ? `₹${Number(r.purchasePrice).toLocaleString("en-IN")}` : "—",
@@ -76,8 +73,8 @@ function exportToPdf(rows, godownName, totals) {
     styles: { fontSize: 8, cellPadding: 2.5 },
     headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: "bold" },
     didParseCell: (data) => {
-      const status = data.row.raw?.[10];
-      if (data.column.index === 10) {
+      const status = data.row.raw?.[9];
+      if (data.column.index === 9) {
         if (status === "OUT OF STOCK") data.cell.styles.textColor = [220, 38, 38];
         else if (status === "LOW STOCK") data.cell.styles.textColor = [217, 119, 6];
         else data.cell.styles.textColor = [5, 150, 105];
@@ -95,18 +92,12 @@ function exportToPdf(rows, godownName, totals) {
     Math.min(195, finalY + 10)
   );
 
-  doc.save(`stock-report-${godownName?.replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  doc.save(`stock-report-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 export default function StockReport() {
-  const { godowns } = useGodowns();
-  const [selectedGodown, setSelectedGodown] = useState("");
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("ALL");
-
-  const godownName = selectedGodown
-    ? godowns.find((g) => g.id === selectedGodown)?.name || "All Godowns"
-    : "All Godowns";
 
   const { reportData, loading, refetch } = useStockReport("product");
 
@@ -122,25 +113,7 @@ export default function StockReport() {
       const unit = item.unit || p.unit || "Piece";
       const purchasePrice = Number(item.purchasePrice || p.purchasePrice) || 0;
       const min = Number(item.minStockLevel ?? p.minStockLevel ?? 0);
-
-      const godownStock = item.godownStock || p.godownStock || {};
-      let total = Number(item.totalStock ?? item.totalQuantity ?? item.stock ?? p.stock ?? 0);
-      if (selectedGodown) {
-        total = Number(godownStock[selectedGodown] ?? 0);
-      }
-
-      // Godown display label
-      let godownDisplay = "Main Godown";
-      if (selectedGodown) {
-        godownDisplay = godowns.find((g) => g.id === selectedGodown)?.name || selectedGodown;
-      } else if (godownStock && Object.keys(godownStock).length > 0) {
-        const activeNames = Object.entries(godownStock)
-          .filter(([_, q]) => q > 0)
-          .map(([gid]) => godowns.find((g) => g.id === gid)?.name || gid);
-        if (activeNames.length > 0) {
-          godownDisplay = activeNames.join(", ");
-        }
-      }
+      const total = Number(item.totalStock ?? item.totalQuantity ?? item.stock ?? p.stock ?? 0);
 
       const isLow = total === 0 || (min > 0 && total <= min);
       const stockValue = total * purchasePrice;
@@ -153,7 +126,6 @@ export default function StockReport() {
         category,
         brand,
         unit,
-        godownDisplay,
         purchasePrice,
         minStockLevel: min,
         totalStock: total,
@@ -161,7 +133,7 @@ export default function StockReport() {
         isLow,
       };
     });
-  }, [reportData, selectedGodown, godowns]);
+  }, [reportData]);
 
   // Filtered rows
   const filtered = useMemo(() => {
@@ -200,7 +172,7 @@ export default function StockReport() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Stock Report</h1>
-            <p className="text-sm text-slate-500">Current inventory, godown locations and valuation</p>
+            <p className="text-sm text-slate-500">Current inventory valuation and stock levels</p>
           </div>
         </div>
 
@@ -216,7 +188,7 @@ export default function StockReport() {
             <span>Refresh</span>
           </button>
           <button
-            onClick={() => exportToPdf(filtered, godownName, totals)}
+            onClick={() => exportToPdf(filtered, totals)}
             disabled={loading || filtered.length === 0}
             className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 disabled:opacity-40 transition-colors shadow-sm"
           >
@@ -224,7 +196,7 @@ export default function StockReport() {
             Export PDF
           </button>
           <button
-            onClick={() => exportToExcel(filtered, godownName, totals)}
+            onClick={() => exportToExcel(filtered, totals)}
             disabled={loading || filtered.length === 0}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-40 transition-colors shadow-sm"
           >
@@ -236,23 +208,7 @@ export default function StockReport() {
 
       {/* ── Clean Filter Bar ── */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Godown</label>
-            <select
-              value={selectedGodown}
-              onChange={(e) => setSelectedGodown(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All Godowns</option>
-              {godowns.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
             <select
@@ -303,7 +259,6 @@ export default function StockReport() {
                   <th className="px-4 py-3">Product Name</th>
                   <th className="px-4 py-3">Barcode</th>
                   <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Godown</th>
                   <th className="px-4 py-3 text-right">Stock</th>
                   <th className="px-4 py-3">Unit</th>
                   <th className="px-4 py-3 text-right">Purchase Price (₹)</th>
@@ -332,7 +287,6 @@ export default function StockReport() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600 text-xs">{row.category || "—"}</td>
-                    <td className="px-4 py-3 text-slate-700 text-xs font-medium">{row.godownDisplay}</td>
                     <td className="px-4 py-3 text-right">
                       <span className={`text-sm font-bold ${
                         row.totalStock === 0
