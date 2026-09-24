@@ -89,97 +89,6 @@ const INITIAL_PLANS = [
     ],
     "subscribers": 427
   },
-  {
-    "id": "plan_6",
-    "name": "Free Trial",
-    "price": 5999,
-    "billingCycle": "Annually",
-    "status": "Active",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 362
-  },
-  {
-    "id": "plan_7",
-    "name": "Starter",
-    "price": 6999,
-    "billingCycle": "Monthly",
-    "status": "Active",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 78
-  },
-  {
-    "id": "plan_8",
-    "name": "Professional",
-    "price": 7999,
-    "billingCycle": "Annually",
-    "status": "Active",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 211
-  },
-  {
-    "id": "plan_9",
-    "name": "Business",
-    "price": 8999,
-    "billingCycle": "Monthly",
-    "status": "Active",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 63
-  },
-  {
-    "id": "plan_10",
-    "name": "Enterprise",
-    "price": 9999,
-    "billingCycle": "Annually",
-    "status": "Active",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 156
-  },
-  {
-    "id": "plan_11",
-    "name": "Free Trial",
-    "price": 10999,
-    "billingCycle": "Monthly",
-    "status": "Inactive",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 1
-  },
-  {
-    "id": "plan_12",
-    "name": "Starter",
-    "price": 11999,
-    "billingCycle": "Annually",
-    "status": "Active",
-    "features": [
-      "Invoicing",
-      "Inventory",
-      "CRM"
-    ],
-    "subscribers": 14
-  }
 ];
 const INITIAL_BUSINESSES = [
   {
@@ -1869,7 +1778,6 @@ class SuperAdminDataService {
   init() {
     Object.entries({
       [STORAGE_KEYS.BUSINESSES]: INITIAL_BUSINESSES,
-      [STORAGE_KEYS.PLANS]: INITIAL_PLANS,
       [STORAGE_KEYS.USERS]: INITIAL_USERS,
       [STORAGE_KEYS.BRANCHES]: INITIAL_BRANCHES,
       [STORAGE_KEYS.GODOWNS]: INITIAL_GODOWNS,
@@ -1891,6 +1799,9 @@ class SuperAdminDataService {
         localStorage.setItem(key, JSON.stringify(fallback));
       }
     });
+    
+    // Force reset plans to remove previously created duplicate plans
+    localStorage.setItem(STORAGE_KEYS.PLANS, JSON.stringify(INITIAL_PLANS));
   }
 
   get(key) {

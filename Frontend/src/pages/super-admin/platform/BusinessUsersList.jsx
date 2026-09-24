@@ -1,38 +1,46 @@
 import React, { useState, useMemo } from "react";
-import { superAdminService } from "../../../services/superAdminDataService";
-import { Users, Search, Filter, ShieldCheck, XCircle, CheckCircle2, RotateCcw, LogOut, Download } from "lucide-react";
+import { usePlatformBusinessUsers } from "../../../hooks/useSuperAdminFirestore";
+import { Users, Search, Filter, ShieldCheck, XCircle, CheckCircle2, RotateCcw, LogOut, Download, Loader2 } from "lucide-react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../../lib/firebase/config";
 
 export default function BusinessUsersList() {
-  const [users, setUsers] = useState(() => superAdminService.getUsers());
+  const { users, loading } = usePlatformBusinessUsers();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [roleFilter, setRoleFilter] = useState("All");
 
-  const handleToggleStatus = (id, currentStatus) => {
+  const handleToggleStatus = async (id, currentStatus, path) => {
+    if (!path) return alert("Firebase path is missing for this user.");
     const nextStatus = currentStatus === "Active" ? "Suspended" : "Active";
-    superAdminService.toggleUserStatus(id, nextStatus);
-    setUsers(superAdminService.getUsers());
+    try {
+      await updateDoc(doc(db, path), { status: nextStatus });
+    } catch (e) {
+      console.error(e);
+      alert("Failed to update user status.");
+    }
   };
 
   const handleForceLogout = (id, name) => {
-    superAdminService.logAudit("FORCE_LOGOUT", "User", id, "Platform", `Forced logout for user ${name}`);
-    alert(`Successfully invalidated all active sessions for ${name}.`);
+    alert(`Successfully invalidated all active sessions for ${name}. (Requires Auth Integration)`);
   };
 
   const handleResetPassword = (email) => {
-    alert(`Temporary password reset token dispatched to ${email}.`);
+    alert(`Temporary password reset token dispatched to ${email}. (Requires Auth Integration)`);
   };
 
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
-      if (statusFilter !== "All" && u.status !== statusFilter) return false;
-      if (roleFilter !== "All" && u.role !== roleFilter) return false;
+      const status = u.status || "Active";
+      const role = u.role || "Cashier";
+      if (statusFilter !== "All" && status !== statusFilter) return false;
+      if (roleFilter !== "All" && role !== roleFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         return (
-          u.name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q) ||
-          u.businessName.toLowerCase().includes(q)
+          (u.name || "").toLowerCase().includes(q) ||
+          (u.email || "").toLowerCase().includes(q) ||
+          (u.businessName || "").toLowerCase().includes(q)
         );
       }
       return true;
@@ -90,64 +98,78 @@ export default function BusinessUsersList() {
 
       {/* Users Table */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-gray-700">
-            <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
-              <tr>
-                <th className="p-3.5 px-4">NAME</th>
-                <th className="p-3.5 px-4">EMAIL</th>
-                <th className="p-3.5 px-4">BUSINESS</th>
-                <th className="p-3.5 px-4">ROLE</th>
-                <th className="p-3.5 px-4">BRANCH</th>
-                <th className="p-3.5 px-4">STATUS</th>
-                <th className="p-3.5 px-4">LAST LOGIN</th>
-                <th className="p-3.5 px-4 text-right">ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filteredUsers.length === 0 ? (
-                <tr><td colSpan={8} className="p-8 text-center text-gray-400">No users found.</td></tr>
-              ) : (
-                filteredUsers.map((u) => (
-                  <tr key={u.id} className="text-sm transition-colors hover:bg-gray-50 group">
-                    <td className="p-3.5 px-4 font-bold text-gray-900">{u.name}</td>
-                    <td className="p-3.5 px-4 text-gray-500">{u.email}</td>
-                    <td className="p-3.5 px-4 font-medium text-gray-800">{u.businessName}</td>
-                    <td className="p-3.5 px-4"><span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-medium text-gray-700">{u.role}</span></td>
-                    <td className="p-3.5 px-4 text-gray-600">{u.branch}</td>
-                    <td className="p-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        u.status === "Active"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
-                          : "bg-rose-50 text-rose-700 border-rose-200/60"
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${u.status === "Active" ? "bg-emerald-500" : "bg-rose-500"}`} />
-                        {u.status}
-                      </span>
-                    </td>
-                    <td className="p-3.5 px-4 text-gray-500 font-mono text-[11px]">{u.lastLogin}</td>
-                    <td className="p-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(u.id, u.status)}
-                          title={u.status === "Active" ? "Suspend User" : "Activate User"}
-                          className={`p-1.5 rounded-lg border text-xs transition ${
-                            u.status === "Active"
-                              ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100"
-                              : "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100"
-                          }`}
-                        >
-                          {u.status === "Active" ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleResetPassword(u.email)}
-                          title="Reset Password"
-                          className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-gray-600 hover:text-gray-900 border border-slate-200 transition"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
+            <p className="text-sm text-gray-500 font-medium animate-pulse">Loading users from Firebase...</p>
+          </div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+            <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
+              <Users className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">No users found</h3>
+            <p className="text-sm text-gray-500">There are no business users matching your criteria.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-gray-700">
+              <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
+                <tr>
+                  <th className="p-3.5 px-4">NAME</th>
+                  <th className="p-3.5 px-4">EMAIL</th>
+                  <th className="p-3.5 px-4">BUSINESS</th>
+                  <th className="p-3.5 px-4">ROLE</th>
+                  <th className="p-3.5 px-4">BRANCH</th>
+                  <th className="p-3.5 px-4">STATUS</th>
+                  <th className="p-3.5 px-4">LAST LOGIN</th>
+                  <th className="p-3.5 px-4 text-right">ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredUsers.map((u) => {
+                  const status = u.status || "Active";
+                  const role = u.role || "Cashier";
+                  return (
+                    <tr key={u.id} className="text-sm transition-colors hover:bg-gray-50 group">
+                      <td className="p-3.5 px-4 font-bold text-gray-900">{u.name || u.displayName || "Unknown User"}</td>
+                      <td className="p-3.5 px-4 text-gray-500">{u.email || "N/A"}</td>
+                      <td className="p-3.5 px-4 font-medium text-gray-800">{u.businessName || "Unknown"}</td>
+                      <td className="p-3.5 px-4"><span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-medium text-gray-700">{role}</span></td>
+                      <td className="p-3.5 px-4 text-gray-600">{u.branch || u.branchName || "N/A"}</td>
+                      <td className="p-3.5 px-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          status === "Active"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                            : "bg-rose-50 text-rose-700 border-rose-200/60"
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${status === "Active" ? "bg-emerald-500" : "bg-rose-500"}`} />
+                          {status}
+                        </span>
+                      </td>
+                      <td className="p-3.5 px-4 text-gray-500 font-mono text-[11px]">{u.lastLogin || "Never"}</td>
+                      <td className="p-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStatus(u.id, status, u.path)}
+                            title={status === "Active" ? "Suspend User" : "Activate User"}
+                            className={`p-1.5 rounded-lg border text-xs transition ${
+                              status === "Active"
+                                ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100"
+                                : "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100"
+                            }`}
+                          >
+                            {status === "Active" ? <XCircle className="w-3.5 h-3.5" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleResetPassword(u.email)}
+                            title="Reset Password"
+                            className="p-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-gray-600 hover:text-gray-900 border border-slate-200 transition"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
                         <button
                           type="button"
                           onClick={() => handleForceLogout(u.id, u.name)}
@@ -159,11 +181,12 @@ export default function BusinessUsersList() {
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

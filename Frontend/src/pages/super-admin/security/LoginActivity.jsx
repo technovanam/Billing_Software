@@ -1,15 +1,19 @@
 import React, { useState } from "react";
-import { superAdminService } from "../../../services/superAdminDataService";
-import { Clock, ShieldCheck, XCircle, Search, Laptop } from "lucide-react";
+import { useLoginActivity } from "../../../hooks/useSuperAdminFirestore";
+import { Clock, ShieldCheck, XCircle, Search, Laptop, Loader2 } from "lucide-react";
 
 export default function LoginActivity() {
-  const [activities] = useState(() => superAdminService.getLoginActivity());
+  const { loginActivity: activities, loading } = useLoginActivity();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filtered = activities.filter((a) => {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      return a.admin.toLowerCase().includes(q) || a.ip.includes(q) || a.device.toLowerCase().includes(q);
+      return (
+        (a.admin || "").toLowerCase().includes(q) ||
+        (a.ip || "").includes(q) ||
+        (a.device || "").toLowerCase().includes(q)
+      );
     }
     return true;
   });
@@ -37,43 +41,60 @@ export default function LoginActivity() {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <table className="w-full text-left text-xs text-gray-700">
-          <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
-            <tr>
-              <th className="p-3.5 px-4">ADMIN OPERATOR</th>
-              <th className="p-3.5 px-4">IP ADDRESS</th>
-              <th className="p-3.5 px-4">HARDWARE / DEVICE</th>
-              <th className="p-3.5 px-4">BROWSER CLIENT</th>
-              <th className="p-3.5 px-4">LOGIN TIME</th>
-              <th className="p-3.5 px-4">LOGOUT TIME</th>
-              <th className="p-3.5 px-4">RESULT</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {filtered.map((act) => (
-              <tr key={act.id} className="text-sm transition-colors hover:bg-gray-50 group">
-                <td className="p-3.5 px-4 font-bold text-gray-900">{act.admin}</td>
-                <td className="p-3.5 px-4 font-mono text-gray-500">{act.ip}</td>
-                <td className="p-3.5 px-4 text-gray-700">{act.device}</td>
-                <td className="p-3.5 px-4 text-gray-500">{act.browser}</td>
-                <td className="p-3.5 px-4 font-mono text-gray-700">{act.loginTime}</td>
-                <td className="p-3.5 px-4 font-mono text-gray-500">{act.logoutTime}</td>
-                <td className="p-3.5 px-4">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                      act.result === "Successful"
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
-                        : "bg-rose-50 text-rose-700 border-rose-200/60"
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${act.result === "Successful" ? "bg-emerald-500" : "bg-rose-500"}`} />
-                    {act.result}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
+            <p className="text-sm text-gray-500 font-medium animate-pulse">Loading login activity from Firebase...</p>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center px-4">
+            <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
+              <Laptop className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">No login activity found</h3>
+            <p className="text-sm text-gray-500">There are no administrative login records matching your criteria.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs text-gray-700">
+              <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
+                <tr>
+                  <th className="p-3.5 px-4">ADMIN OPERATOR</th>
+                  <th className="p-3.5 px-4">IP ADDRESS</th>
+                  <th className="p-3.5 px-4">HARDWARE / DEVICE</th>
+                  <th className="p-3.5 px-4">BROWSER CLIENT</th>
+                  <th className="p-3.5 px-4">LOGIN TIME</th>
+                  <th className="p-3.5 px-4">LOGOUT TIME</th>
+                  <th className="p-3.5 px-4">RESULT</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((act) => (
+                  <tr key={act.id} className="text-sm transition-colors hover:bg-gray-50 group">
+                    <td className="p-3.5 px-4 font-bold text-gray-900">{act.admin || "Unknown"}</td>
+                    <td className="p-3.5 px-4 font-mono text-gray-500">{act.ip || "N/A"}</td>
+                    <td className="p-3.5 px-4 text-gray-700">{act.device || "Unknown Device"}</td>
+                    <td className="p-3.5 px-4 text-gray-500">{act.browser || "Unknown Browser"}</td>
+                    <td className="p-3.5 px-4 font-mono text-gray-700">{act.loginTime || act.createdAt || "N/A"}</td>
+                    <td className="p-3.5 px-4 font-mono text-gray-500">{act.logoutTime || "Active"}</td>
+                    <td className="p-3.5 px-4">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                          act.result === "Successful" || act.result === "Success"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                            : "bg-rose-50 text-rose-700 border-rose-200/60"
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${act.result === "Successful" || act.result === "Success" ? "bg-emerald-500" : "bg-rose-500"}`} />
+                        {act.result || "Success"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

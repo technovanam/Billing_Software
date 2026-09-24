@@ -1,8 +1,18 @@
 import React, { useState, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { superAdminService } from "../../../services/superAdminDataService";
+import { 
+  usePlatformBusinesses, 
+  usePlatformBusinessUsers, 
+  usePlatformBranches, 
+  usePlatformGodowns, 
+  usePlatformTerminals, 
+  usePlatformPayments 
+} from "../../../hooks/useSuperAdminFirestore";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
 import ImpersonationModal from "../../../components/super-admin/ImpersonationModal";
+import { Loader2, ToggleLeft, ToggleRight } from "lucide-react";
+import { db } from "../../../lib/firebase/config";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import {
   Building2,
   Users,
@@ -35,20 +45,73 @@ export default function BusinessDetail() {
 
   const [activeTab, setActiveTab] = useState("overview");
   const [impersonateModalOpen, setImpersonateModalOpen] = useState(false);
+  const [isUpdatingFeatures, setIsUpdatingFeatures] = useState(false);
+
+  // Firestore hooks
+  const { businesses, loading: loadingBus } = usePlatformBusinesses();
+  const { users, loading: loadingUsers } = usePlatformBusinessUsers();
+  const { branches, loading: loadingBranches } = usePlatformBranches();
+  const { godowns, loading: loadingGodowns } = usePlatformGodowns();
+  const { terminals, loading: loadingTerminals } = usePlatformTerminals();
+  const { payments, loading: loadingPayments } = usePlatformPayments();
+  
+  // We can just use empty arrays for tickets and logs if we don't have dedicated hooks yet, 
+  // or fetch them. Since we migrated them, they exist but we might not have exposed them globally here.
+  const allTickets = [];
+  const allLogs = [];
 
   // Business data
   const business = useMemo(() => {
-    return superAdminService.getBusinessById(id) || superAdminService.getBusinesses()[0];
-  }, [id]);
+    if (!businesses.length) return null;
+    return businesses.find(b => b.id === id);
+  }, [id, businesses]);
 
   // Associated platform data
-  const allUsers = useMemo(() => superAdminService.getUsers().filter((u) => u.businessId === business?.id), [business?.id]);
-  const allBranches = useMemo(() => superAdminService.getBranches().filter((b) => b.businessId === business?.id), [business?.id]);
-  const allGodowns = useMemo(() => superAdminService.getGodowns().filter((g) => g.businessId === business?.id), [business?.id]);
-  const allTerminals = useMemo(() => superAdminService.getTerminals().filter((t) => t.businessId === business?.id), [business?.id]);
-  const allPayments = useMemo(() => superAdminService.getPayments().filter((p) => p.businessId === business?.id), [business?.id]);
-  const allTickets = useMemo(() => superAdminService.getTickets().filter((t) => t.businessId === business?.id), [business?.id]);
-  const allLogs = useMemo(() => superAdminService.getAuditLogs().filter((l) => l.entityId === business?.id || l.business === business?.name), [business?.id, business?.name]);
+  const allUsers = useMemo(() => users.filter((u) => u.path.includes(id)), [users, id]);
+  const allBranches = useMemo(() => branches.filter((b) => b.path.includes(id)), [branches, id]);
+  const allGodowns = useMemo(() => godowns.filter((g) => g.path.includes(id)), [godowns, id]);
+  const allTerminals = useMemo(() => terminals.filter((t) => t.path.includes(id)), [terminals, id]);
+  const allPayments = useMemo(() => payments.filter((p) => p.path.includes(id)), [payments, id]);
+
+  const isLoading = loadingBus || loadingUsers || loadingBranches || loadingGodowns || loadingTerminals || loadingPayments;
+
+  const AVAILABLE_FEATURES = [
+    { id: "pos", name: "POS Cashier Mode" },
+    { id: "billing", name: "Billing & E-Way Bill" },
+    { id: "multiBranch", name: "Multi-Outlet Sync" },
+    { id: "reports", name: "Advanced Reports" },
+    { id: "whatsapp", name: "WhatsApp Delivery" },
+    { id: "api", name: "API Access" },
+    { id: "crm", name: "CRM Module" },
+    { id: "inventory", name: "Advanced Inventory" }
+  ];
+
+  const handleToggleFeatureOverride = async (featId) => {
+    if (!business) return;
+    setIsUpdatingFeatures(true);
+    try {
+      const currentOverrides = business.customFeatures || {};
+      const newOverrides = { ...currentOverrides, [featId]: !currentOverrides[featId] };
+      await updateDoc(doc(db, "users", id), {
+        customFeatures: newOverrides,
+        updatedAt: serverTimestamp()
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to update feature override.");
+    } finally {
+      setIsUpdatingFeatures(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-12 text-center text-gray-400 flex flex-col items-center">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-4" />
+        <p className="text-base font-bold text-gray-900 mb-2">Loading Business Details...</p>
+      </div>
+    );
+  }
 
   if (!business) {
     return (
@@ -425,6 +488,41 @@ export default function BusinessDetail() {
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-100">
               <span className="text-gray-500">Renewal / Expiry Date</span>
               <div className="text-lg font-bold font-mono text-emerald-600 mt-1">{business.subscriptionExpiry}</div>
+            </div>
+          </div>
+          
+          {/* Feature Overrides */}
+          <div className="pt-6 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">Company-Level Feature Overrides</h3>
+                <p className="text-[11px] text-gray-500 mt-1">Enable or disable specific modules independently of the base plan.</p>
+              </div>
+              {isUpdatingFeatures && <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+              {AVAILABLE_FEATURES.map((feat) => {
+                const isEnabled = business.customFeatures?.[feat.id] === true;
+                return (
+                  <button
+                    key={feat.id}
+                    onClick={() => handleToggleFeatureOverride(feat.id)}
+                    disabled={isUpdatingFeatures}
+                    className={`flex items-center justify-between p-3 rounded-xl border text-left transition ${
+                      isEnabled ? "bg-blue-50 border-blue-200" : "bg-slate-50 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    <span className={`text-xs font-semibold ${isEnabled ? "text-blue-700" : "text-gray-600"}`}>
+                      {feat.name}
+                    </span>
+                    {isEnabled ? (
+                      <ToggleRight className="w-5 h-5 text-blue-600" />
+                    ) : (
+                      <ToggleLeft className="w-5 h-5 text-gray-400" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>

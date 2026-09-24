@@ -1,31 +1,38 @@
 import React, { useState } from "react";
-import { superAdminService } from "../../../services/superAdminDataService";
-import { Megaphone, Plus, Bell, Mail, Smartphone, Globe, Check, X } from "lucide-react";
+import { useAnnouncements } from "../../../hooks/useSuperAdminFirestore";
+import { Megaphone, Plus, Bell, Mail, Smartphone, Globe, Check, X, Loader2 } from "lucide-react";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../../../lib/firebase/config";
 
 export default function Announcements() {
-  const [announcements, setAnnouncements] = useState(() => superAdminService.getAnnouncements());
+  const { announcements, loading } = useAnnouncements();
   const [modalOpen, setModalOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [type, setType] = useState("Feature Update");
   const [target, setTarget] = useState("All Businesses");
 
-  const handleCreate = (e) => {
+  const handleCreate = async (e) => {
     e.preventDefault();
     if (!title.trim() || !content.trim()) return;
 
-    superAdminService.addAnnouncement({
-      title: title.trim(),
-      content: content.trim(),
-      type,
-      target,
-      channels: ["In-app", "Email"],
-    });
-
-    setAnnouncements(superAdminService.getAnnouncements());
-    setModalOpen(false);
-    setTitle("");
-    setContent("");
+    try {
+      await addDoc(collection(db, "announcements"), {
+        title: title.trim(),
+        content: content.trim(),
+        type,
+        target,
+        channels: ["In-app", "Email"],
+        status: "Active",
+        createdAt: serverTimestamp()
+      });
+      setModalOpen(false);
+      setTitle("");
+      setContent("");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to broadcast announcement.");
+    }
   };
 
   return (
@@ -48,33 +55,50 @@ export default function Announcements() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {announcements.map((anc) => (
-          <div key={anc.id} className="p-5 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span
-                  className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${
-                    anc.type === "Maintenance"
-                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : "bg-blue-50 text-blue-700 border-blue-200"
-                  }`}
-                >
-                  {anc.type}
-                </span>
-                <span className="text-[11px] text-gray-400 font-mono">{anc.publishedAt}</span>
-              </div>
-              <h3 className="text-sm font-bold text-gray-900 mb-2">{anc.title}</h3>
-              <p className="text-xs text-gray-600 leading-relaxed">{anc.content}</p>
-            </div>
-
-            <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
-              <span>Target: <strong className="text-gray-700">{anc.target}</strong></span>
-              <span className="text-emerald-600 font-bold">● Active Broadcast</span>
-            </div>
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
+          <p className="text-sm text-gray-500 font-medium animate-pulse">Loading announcements from Firebase...</p>
+        </div>
+      ) : announcements.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 text-center px-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+          <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
+            <Megaphone className="w-8 h-8 text-gray-400" />
           </div>
-        ))}
-      </div>
+          <h3 className="text-lg font-bold text-gray-900 mb-1">No announcements</h3>
+          <p className="text-sm text-gray-500">You haven't broadcasted any announcements yet.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {announcements.map((anc) => (
+            <div key={anc.id} className="p-5 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className={`px-2.5 py-0.5 rounded text-[10px] font-bold border ${
+                      anc.type === "Maintenance" || anc.type === "Emergency"
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-blue-50 text-blue-700 border-blue-200"
+                    }`}
+                  >
+                    {anc.type || "Update"}
+                  </span>
+                  <span className="text-[11px] text-gray-400 font-mono">{anc.publishedAt || (anc.createdAt ? new Date(anc.createdAt.seconds ? anc.createdAt.toDate() : anc.createdAt).toLocaleDateString() : "Unknown Date")}</span>
+                </div>
+                <h3 className="text-sm font-bold text-gray-900 mb-2">{anc.title}</h3>
+                <p className="text-xs text-gray-600 leading-relaxed">{anc.content}</p>
+              </div>
+
+              <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+                <span>Target: <strong className="text-gray-700">{anc.target || "All"}</strong></span>
+                <span className={`font-bold ${anc.status === "Archived" ? "text-gray-400" : "text-emerald-600"}`}>
+                  {anc.status === "Archived" ? "● Archived" : "● Active Broadcast"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {modalOpen && (
         <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4 animate-fadeIn">
@@ -99,7 +123,18 @@ export default function Announcements() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-gray-600 font-medium mb-1">Detailed Content</label>
+                <textarea
+                  required
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Explain what the update is, how it affects merchants, and any required actions..."
+                  className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none h-24 resize-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-gray-600 font-medium mb-1">Announcement Type</label>
                   <select
@@ -108,8 +143,9 @@ export default function Announcements() {
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
                   >
                     <option value="Feature Update">Feature Update</option>
-                    <option value="Maintenance">Maintenance</option>
-                    <option value="Critical Security">Critical Security</option>
+                    <option value="Maintenance">Maintenance Window</option>
+                    <option value="Emergency">Emergency Alert</option>
+                    <option value="Policy Change">Policy Change</option>
                   </select>
                 </div>
                 <div>
@@ -119,35 +155,20 @@ export default function Announcements() {
                     onChange={(e) => setTarget(e.target.value)}
                     className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
                   >
-                    <option value="All Businesses">All Businesses</option>
-                    <option value="Trial Users Only">Trial Users Only</option>
-                    <option value="Enterprise Tier Only">Enterprise Tier Only</option>
+                    <option value="All Businesses">All Tenants / Businesses</option>
+                    <option value="Premium Plans">Premium Plan Only</option>
+                    <option value="Free Plans">Free Plan Only</option>
                   </select>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-gray-600 font-medium mb-1">Message Content</label>
-                <textarea
-                  rows={4}
-                  required
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Detailed notification content displayed inside tenant dashboard header…"
-                  className="w-full p-2.5 rounded-xl bg-white border border-gray-200 text-gray-900 focus:border-blue-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+              <div className="pt-2">
                 <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-gray-600 hover:text-gray-900 font-medium"
+                  type="submit"
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition flex items-center justify-center gap-2"
                 >
-                  Cancel
-                </button>
-                <button type="submit" className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 font-bold text-white shadow-sm">
-                  Broadcast Now
+                  <Megaphone className="w-4 h-4" />
+                  <span>Publish & Push Notification</span>
                 </button>
               </div>
             </form>

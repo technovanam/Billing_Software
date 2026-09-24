@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
-import { superAdminService } from "../../../services/superAdminDataService";
+// Removed superAdminService import
 import { usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
 import { db } from "../../../lib/firebase/config";
 import { doc, updateDoc } from "firebase/firestore";
