@@ -17,9 +17,9 @@ export default function POSLogin() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [cashierId, setCashierId] = useState("BAL/086430");
-  const [pin, setPin] = useState("1234");
-  const [counterNumber, setCounterNumber] = useState("Counter 01");
+  const [cashierId, setCashierId] = useState("");
+  const [pin, setPin] = useState("");
+  const [counterNumber, setCounterNumber] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const companyName = companyProfile?.companyName || "Techno Vanam";
@@ -53,11 +53,6 @@ export default function POSLogin() {
         shiftStartTime: new Date().toISOString(),
       };
       localStorage.setItem("pos_cashier_session", JSON.stringify(session));
-
-      // Request fullscreen on user interaction
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(() => {});
-      }
 
       toastSuccess(`Cashier ${session.cashierId} signed in successfully!`);
       navigate("/pos");

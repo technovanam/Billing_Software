@@ -12,7 +12,6 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
 import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
-import { enterPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -66,29 +65,20 @@ export default function SignIn() {
     setLoading(true);
 
     try {
-      // 1. Try Super Admin Auth first
-      let isSuperAdmin = false;
-      try {
-        const res = await superAdminLogin(trimmedEmail, password, true);
-        if (res?.require2FA) {
-          navigate("/super-admin/2fa", { replace: true });
-        } else {
-          navigate("/super-admin/dashboard", { replace: true });
-        }
-        isSuperAdmin = true;
-      } catch (saErr) {
-        // If it's the master admin email but auth failed, don't fall through to Firebase
-        if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
-          toastError("Invalid Super Admin password. Please use 'SuperAdmin@2026!'");
+      // 1. Try Super Admin Auth only if password matches Super Admin password
+      if (password === "SuperAdmin@2026!") {
+        try {
+          const res = await superAdminLogin(trimmedEmail, password, true);
+          if (res?.require2FA) {
+            navigate("/super-admin/2fa", { replace: true });
+          } else {
+            navigate("/super-admin/dashboard", { replace: true });
+          }
           setLoading(false);
           return;
+        } catch (saErr) {
+          console.warn("Super admin auth attempt error:", saErr);
         }
-        // Otherwise, fall through to normal auth
-        isSuperAdmin = false;
-      }
-
-      if (isSuperAdmin) {
-        return; // Stop execution as we've already navigated
       }
 
       // 2. Check if the entered identifier matches any registered Cashier
@@ -159,8 +149,6 @@ export default function SignIn() {
           ownerUid: matchedOwnerUid || matchedCashier.ownerUid || "",
         };
         localStorage.setItem("pos_cashier_session", JSON.stringify(cashierSession));
-        sessionStorage.removeItem("pos_fullscreen_opt_out");
-        enterPOSFullscreen();
 
         toastSuccess(`Welcome ${cashierSession.cashierName} (${cashierSession.cashierId})! Opening POS terminal...`);
         navigate("/pos", { replace: true });
@@ -206,6 +194,21 @@ export default function SignIn() {
 
         localStorage.setItem("admin_auth_user", JSON.stringify(defaultAdminUser));
         localStorage.removeItem("pos_cashier_session");
+
+        // Sync registered cashiers from Firestore or cache
+        try {
+          const appSnap = await getDoc(doc(db, "users", effectiveUid, "settings", "app"));
+          if (appSnap.exists()) {
+            const raw = appSnap.data()?.cashiers?.value || appSnap.data()?.cashiers;
+            if (Array.isArray(raw)) {
+              localStorage.setItem("registered_cashiers_list", JSON.stringify(raw));
+              localStorage.setItem(`store_cashiers_${effectiveUid}`, JSON.stringify(raw));
+            }
+          }
+        } catch (syncErr) {
+          console.warn("Default admin cashier sync warning:", syncErr);
+        }
+
         if (typeof setUser === "function") {
           setUser(fbUser || defaultAdminUser);
         }

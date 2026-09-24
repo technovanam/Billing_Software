@@ -33,6 +33,8 @@ import POSPortalLayout from "./pages/pos/POSPortalLayout";
 import POSCustomers from "./pages/pos/POSCustomers";
 import POSDashboard from "./pages/pos/POSDashboard";
 import POSProductsCatalog from "./pages/pos/POSProductsCatalog";
+import POSSalesReturn from "./pages/pos/POSSalesReturn";
+import POSShiftManagement from "./pages/pos/POSShiftManagement";
 import ScrollToTop from "./components/ScrollToTop";
 import { useFormKeyboardNavigation } from "./hooks/useFormKeyboardNavigation";
 
@@ -156,8 +158,13 @@ export default function App() {
       <CompanyProfileProvider>
         <ToastProvider>
           <AIAssistantProvider>
+<<<<<<< HEAD
             <OperatorProvider>
               <SuperAdminAuthProvider>
+=======
+            <SuperAdminAuthProvider>
+              <OperatorProvider>
+>>>>>>> 5cecc8a (feat: add sales return and shift management modules, fix cashier routing and auth defaults)
                 <Router>
                 <ScrollToTop />
                 <Routes>
@@ -168,7 +175,40 @@ export default function App() {
                   <Route path="/pay/:userId/*" element={<PublicInvoicePayPage />} />
                   <Route path="/pay/invoice/*" element={<PublicInvoicePayPage />} />
 
-                  {/* Dedicated Warehouse Portal Routes */}
+                  {/* POS Terminal & Cashier Routes */}
+                  <Route path="/pos/login" element={<POSLogin />} />
+                  <Route
+                    path="/pos"
+                    element={
+                      <POSProtectedRoute>
+                        <POSPortalLayout />
+                      </POSProtectedRoute>
+                    }
+                  >
+                    <Route index element={<POSPage />} />
+                    <Route path="billing" element={<POSPage />} />
+                    <Route path="customers" element={<POSCustomers />} />
+                    <Route path="returns" element={<POSSalesReturn />} />
+                    <Route path="shifts" element={<POSShiftManagement />} />
+                    <Route path="dashboard" element={<POSDashboard />} />
+                    <Route path="products" element={<POSProductsCatalog />} />
+                  </Route>
+                  <Route
+                    path="/pos/portal"
+                    element={
+                      <POSProtectedRoute>
+                        <POSPortalLayout />
+                      </POSProtectedRoute>
+                    }
+                  >
+                    <Route index element={<Navigate to="/pos/billing" replace />} />
+                    <Route path="billing" element={<POSPage />} />
+                    <Route path="customers" element={<POSCustomers />} />
+                    <Route path="returns" element={<POSSalesReturn />} />
+                    <Route path="shifts" element={<POSShiftManagement />} />
+                    <Route path="dashboard" element={<POSDashboard />} />
+                    <Route path="products" element={<POSProductsCatalog />} />
+                  </Route>
                   <Route
                     path="/warehouse/*"
                     element={
@@ -217,7 +257,7 @@ export default function App() {
                               <Route path="/reports" element={<Report />} />
                               <Route path="/payments" element={<Payments />} />
                               <Route path="/expenses" element={<Expenses />} />
-                              <Route path="/ai-assistant" element={<AIAssistant />} />
+                              <Route path="/cashiers" element={<CashierManagement />} />
                               <Route path="/settings" element={<Settings />} />
                               <Route path="/seed-data" element={<DataSeeder />} />
                               <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
@@ -231,11 +271,11 @@ export default function App() {
                 </Routes>
                 <ToastContainer />
               </Router>
-            </SuperAdminAuthProvider>
-          </OperatorProvider>
-          </AIAssistantProvider>
-        </ToastProvider>
-      </CompanyProfileProvider>
-    </AuthProvider>
-  );
+            </OperatorProvider>
+          </SuperAdminAuthProvider>
+        </AIAssistantProvider>
+      </ToastProvider>
+    </CompanyProfileProvider>
+  </AuthProvider>
+);
 }

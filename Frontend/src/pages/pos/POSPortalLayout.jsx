@@ -3,18 +3,18 @@ import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
   Zap,
-  LogOut,
+  RotateCcw,
   Clock,
+  LogOut,
   Store,
-  Maximize2,
-  Minimize2,
 } from "lucide-react";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
-import usePOSFullscreen, { exitPOSFullscreen } from "../../hooks/usePOSFullscreen";
 
 const posNavItems = [
-  { name: "Customers", path: "/pos/customers", icon: Users },
   { name: "POS Billing", path: "/pos/billing", icon: Zap },
+  { name: "Customers", path: "/pos/customers", icon: Users },
+  { name: "Sales Return", path: "/pos/returns", icon: RotateCcw },
+  { name: "Shift Management", path: "/pos/shifts", icon: Clock },
 ];
 
 export default function POSPortalLayout() {
@@ -39,7 +39,6 @@ export default function POSPortalLayout() {
   });
 
   const [currentTime, setCurrentTime] = useState(new Date());
-  const { isFullscreen, toggleFullscreen, canToggle } = usePOSFullscreen();
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -48,8 +47,6 @@ export default function POSPortalLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem("pos_cashier_session");
-    sessionStorage.removeItem("pos_fullscreen_opt_out");
-    exitPOSFullscreen();
     navigate("/signin", { replace: true });
   };
 
@@ -110,18 +107,6 @@ export default function POSPortalLayout() {
 
         {/* Bottom Cashier Session Profile */}
         <div className="px-3 pb-4 shrink-0">
-          {canToggle && (
-            <button
-              type="button"
-              onClick={toggleFullscreen}
-              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-700 cursor-pointer"
-              title={isFullscreen ? "Exit full screen" : "Enter full screen"}
-            >
-              {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-              <span>{isFullscreen ? "Exit Full Screen" : "Full Screen Mode"}</span>
-            </button>
-          )}
-
           <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
             <div className="flex items-center justify-center gap-1.5">
               <Clock className="h-3.5 w-3.5 text-blue-600" />

@@ -16,6 +16,7 @@ import {
   User,
   Package,
   TrendingUp,
+  RotateCcw,
   LogOut,
   Barcode,
   LayoutGrid,
