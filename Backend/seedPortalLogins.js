@@ -10,12 +10,10 @@
  */
 require('dotenv').config({ quiet: true });
 const admin = require('firebase-admin');
-const path = require('path');
+const { initFirebaseAdmin } = require('./firebaseAdmin');
+const { hashPin } = require('./pos/pins');
 
-const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
-if (!admin.apps.length) {
-  admin.initializeApp({ credential: admin.credential.cert(require(serviceAccountPath)) });
-}
+initFirebaseAdmin();
 const db = admin.firestore();
 const auth = admin.auth();
 
@@ -87,10 +85,17 @@ async function main() {
   }, { merge: true });
 
   console.log('POS Cashiers');
-  const cashiers = CASHIERS.map((c) => ({ ...c, status: 'Active', ownerUid, createdAt: now }));
+  // The public list has no PINs; PINs are stored only as hashes in cashierSecrets.
+  const cashiers = CASHIERS.map(({ pin, ...c }) => ({ ...c, status: 'Active', ownerUid, createdAt: now }));
   await db.doc(`users/${ownerUid}/settings/app`).set({
     cashiers: { value: cashiers, description: 'Staff cashier terminals list', updatedAt: now },
   }, { merge: true });
+  for (const c of CASHIERS) {
+    await db.doc(`users/${ownerUid}/cashierSecrets/${c.cashierId}`).set(
+      { pinHash: await hashPin(c.pin), pinSetAt: now, active: true, failedCount: 0, lockedUntil: null },
+      { merge: true }
+    );
+  }
   cashiers.forEach((c) => console.log(`  saved    ${c.cashierId}`));
 
   console.log('\nDone. Logins (passwords are the DEMO_* values in Backend/.env):');

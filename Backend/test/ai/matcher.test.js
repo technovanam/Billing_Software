@@ -86,3 +86,15 @@ describe('customer matching', () => {
     assert.equal(matchCustomer('Zebra Enterprises', customers).status, 'unmatched');
   });
 });
+
+describe('inactive products', () => {
+  test('are never matched or offered as candidates', () => {
+    const { toProductRecord } = require('../../ai/matcher');
+    const { rawCatalog } = require('./helpers');
+    const products = rawCatalog.products.map((p) => toProductRecord(p.id === 'p_sugar' ? { ...p, isActive: false } : p));
+    const exact = matchProduct('Sugar', 'kg', products);
+    assert.equal(exact.status, 'unmatched');
+    assert.equal(exact.candidates.some((c) => c.product.id === 'p_sugar'), false);
+    assert.equal(matchProduct('Cement', null, products).best.product.id, 'p_cement', 'active products still match');
+  });
+});

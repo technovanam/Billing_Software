@@ -14,23 +14,15 @@ const crypto = require('crypto');
 const app = express();
 const PORT = 5000;
 
-// Initialize Firebase Admin if key file is present, or with projectId fallback
-const serviceAccountPath = path.join(__dirname, 'serviceAccountKey.json');
-if (!admin.apps.length) {
-    if (fs.existsSync(serviceAccountPath)) {
-        try {
-            admin.initializeApp({ credential: admin.credential.cert(require(serviceAccountPath)) });
-        } catch (e) {
-            console.warn('Firebase Admin initialization skipped:', e.message);
-        }
-    } else {
-        try {
-            admin.initializeApp({ projectId: process.env.FIREBASE_PROJECT_ID || 'billing-software-19d79' });
-        } catch (e) {
-            console.warn('Firebase Admin default project initialization skipped:', e.message);
-        }
-    }
+// Firebase Admin with real credentials, or no server at all (see firebaseAdmin.js).
+const { initFirebaseAdmin } = require('./firebaseAdmin');
+try {
+    initFirebaseAdmin();
+} catch (e) {
+    console.error(e.message);
+    process.exit(1);
 }
+const { verifyAuthHeader, AuthError } = require('./auth/verifyToken');
 const firestore = () => admin.firestore();
 const recipientEmail = process.env.RECURRING_INVOICE_EMAIL || 'mohammedsuhail100506@gmail.com';
 const mailer = () => nodemailer.createTransport({
@@ -44,40 +36,19 @@ function requireAdmin() {
     if (!admin.apps.length) throw new Error('Firebase Admin is not configured. Add Backend/serviceAccountKey.json.');
 }
 
+// Owner and warehouse routes. Tokens are always verified by Firebase Admin;
+// cashier tokens are refused here (cashiers use /api/pos and /api/ai only).
 async function authenticateRequest(req, res, next) {
     try {
-        const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-        if (!token) return res.status(401).json({ error: 'Authentication required' });
-
-        if (fs.existsSync(serviceAccountPath)) {
-            requireAdmin();
-            req.user = await admin.auth().verifyIdToken(token);
-            return next();
+        const identity = await verifyAuthHeader(req.headers.authorization);
+        if (identity.role === 'cashier') {
+            return res.status(403).json({ error: 'Cashier accounts cannot use this feature.' });
         }
-
-        try {
-            req.user = await admin.auth().verifyIdToken(token);
-            return next();
-        } catch (authErr) {
-            // Development fallback: decode JWT claims when serviceAccountKey.json is absent locally
-            const parts = token.split('.');
-            if (parts.length === 3) {
-                try {
-                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-                    if (payload && (payload.user_id || payload.sub)) {
-                        req.user = {
-                            uid: payload.user_id || payload.sub,
-                            email: payload.email || '',
-                            ...payload,
-                        };
-                        return next();
-                    }
-                } catch (_) {}
-            }
-            throw authErr;
-        }
+        req.user = { ...identity.claims, uid: identity.uid, email: identity.email, role: identity.role };
+        return next();
     } catch (error) {
-        res.status(401).json({ error: 'Invalid authentication token: ' + error.message });
+        const status = error instanceof AuthError ? error.status : 401;
+        return res.status(status).json({ error: error.message || 'Authentication required' });
     }
 }
 
@@ -327,6 +298,7 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(cors());
 const aiRouter = require('./ai/router').createAiRouter();
 app.use('/api/ai', aiRouter);
+app.use('/api/pos', require('./pos/router').createPosRouter());
 
 // Recurring invoice processing endpoints
 app.post('/recurring-invoices/process', authenticateRequest, async (req, res) => {

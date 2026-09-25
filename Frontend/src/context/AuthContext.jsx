@@ -5,6 +5,32 @@ import { auth } from "../lib/firebase/config";
 
 export const AuthContext = createContext();
 
+// Role and business from the verified token. Cashiers sign in with a
+// backend-issued custom token carrying role/businessUid/cashierId claims.
+async function withClaims(u) {
+    let claims = {};
+    try {
+        claims = (await u.getIdTokenResult()).claims || {};
+    } catch (_) {}
+    const isCashier = claims.role === "cashier" && claims.businessUid && claims.cashierId;
+    const email = String(u.email || "").toLowerCase();
+    return {
+        ...u,
+        uid: u.uid,
+        email: u.email,
+        displayName: isCashier ? claims.cashierName || claims.cashierId : u.displayName,
+        role: isCashier ? "cashier" : email.startsWith("wh.") ? "warehouse" : "owner",
+        businessUid: isCashier ? claims.businessUid : u.uid,
+        cashierId: isCashier ? claims.cashierId : null,
+        cashierName: isCashier ? claims.cashierName || claims.cashierId : null,
+        counter: isCashier ? claims.counter || null : null,
+        deviceId: isCashier ? claims.deviceId || null : null,
+    };
+}
+
+// Revoked cashier sessions fail this refresh, which signs them out.
+const CASHIER_SESSION_CHECK_MS = 2 * 60 * 1000;
+
 import PropTypes from 'prop-types';
 
 export const AuthProvider = ({ children }) => {
@@ -47,27 +73,35 @@ export const AuthProvider = ({ children }) => {
             return config;
         }, (err) => Promise.reject(err));
 
-        const savedAdmin = localStorage.getItem("admin_auth_user");
-        const defaultUser = savedAdmin ? JSON.parse(savedAdmin) : null;
+        // Clear any stale localStorage auth keys from previous builds.
+        // Auth state is now managed exclusively by Firebase SDK.
+        localStorage.removeItem("admin_auth_user");
 
-        const unsubscribe = onAuthStateChanged(auth, (u) => {
+        let sessionTimer = null;
+        const unsubscribe = onAuthStateChanged(auth, async (u) => {
+            clearInterval(sessionTimer);
             if (u) {
-                setUser({ ...u });
+                const next = await withClaims(u);
+                setUser(next);
+                if (next.role === "cashier") {
+                    // A cashier must never fall back to a cached owner session.
+                    sessionTimer = setInterval(() => {
+                        u.getIdToken(true).catch(() => {
+                            firebaseSignOut(auth).catch(() => {});
+                            localStorage.removeItem("pos_cashier_session");
+                        });
+                    }, CASHIER_SESSION_CHECK_MS);
+                }
             } else {
-                const storedAdmin = localStorage.getItem("admin_auth_user");
-                setUser(storedAdmin ? JSON.parse(storedAdmin) : null);
+                // Firebase says no signed-in user. Never fall back to localStorage.
+                setUser(null);
             }
             setAuthInitialized(true);
         });
 
-        // If local admin session exists, initialize immediately
-        if (defaultUser) {
-            setUser(defaultUser);
-            setAuthInitialized(true);
-        }
-
         return () => {
             unsubscribe();
+            clearInterval(sessionTimer);
             axios.interceptors.request.eject(interceptor);
         };
     }, []);

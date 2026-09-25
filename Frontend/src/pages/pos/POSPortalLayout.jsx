@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useContext } from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import {
   Users,
@@ -11,6 +11,9 @@ import {
   Zap,
 } from "lucide-react";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
+import { AuthContext } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { flushQueue, getPendingBills } from "../../services/posBillQueue";
 
 const posNavItems = [
   { name: "POS Billing", path: "/pos/billing", icon: Zap },
@@ -49,8 +52,54 @@ export default function POSPortalLayout() {
     return () => clearInterval(timer);
   }, []);
 
-  const handleLogout = () => {
+  const { user, signOut } = useContext(AuthContext);
+  const { success: toastSuccess, error: toastError } = useToast();
+  const ownerUid = user?.role === "cashier" ? user?.businessUid : user?.uid || cashierSession?.ownerUid;
+
+  // Automatically retry syncing pending bills when connection returns or on timer
+  useEffect(() => {
+    let syncing = false;
+    const trySyncQueue = async () => {
+      if (syncing || !navigator.onLine || !ownerUid) return;
+      const pending = getPendingBills();
+      if (pending.length === 0) return;
+      syncing = true;
+      try {
+        const { synced, failed } = await flushQueue(ownerUid);
+        if (synced > 0) {
+          toastSuccess(`${synced} offline bill(s) synced to cloud successfully!`);
+          window.dispatchEvent(new CustomEvent("pos_queue_updated"));
+        }
+        if (failed > 0) {
+          toastError(`${failed} bill(s) failed to sync. Will retry automatically.`);
+          window.dispatchEvent(new CustomEvent("pos_queue_updated"));
+        }
+      } catch (err) {
+        console.warn("Auto queue sync warning:", err);
+      } finally {
+        syncing = false;
+      }
+    };
+
+    window.addEventListener("online", trySyncQueue);
+    const intervalId = setInterval(trySyncQueue, 30000);
+    trySyncQueue();
+
+    return () => {
+      window.removeEventListener("online", trySyncQueue);
+      clearInterval(intervalId);
+    };
+  }, [ownerUid]);
+
+  // A cashier's session is ended on the server side too, so the next cashier
+  // on this counter signs in fresh.
+  const handleLogout = async () => {
     localStorage.removeItem("pos_cashier_session");
+    if (user?.role === "cashier") {
+      await signOut();
+      navigate("/pos/login", { replace: true });
+      return;
+    }
     navigate("/signin", { replace: true });
   };
 

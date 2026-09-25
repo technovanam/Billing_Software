@@ -98,13 +98,38 @@ import WarehouseSetup from "./pages/warehouse/WarehouseSetup";
 
 import PropTypes from 'prop-types';
 
+// Older builds cached cashier lists with plain-text PINs in localStorage.
+(function purgeCachedPins() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key !== "registered_cashiers_list" && !key?.startsWith("store_cashiers_")) continue;
+      const list = JSON.parse(localStorage.getItem(key) || "[]");
+      if (Array.isArray(list) && list.some((c) => c && "pin" in c)) {
+        localStorage.setItem(key, JSON.stringify(list.map(({ pin, ...c }) => c)));
+      }
+    }
+  } catch (_) {
+    /* storage unavailable */
+  }
+})();
+
+// The AI assistant (business questions) and warehouse operator tools are not
+// for cashiers, so their providers are not loaded for a cashier session.
+function StaffOnly({ provider: Provider, children }) {
+  const { user } = useContext(AuthContext);
+  if (user?.role === "cashier") return children;
+  return <Provider>{children}</Provider>;
+}
+
+StaffOnly.propTypes = {
+  provider: PropTypes.elementType.isRequired,
+  children: PropTypes.node.isRequired,
+};
+
+// POS needs a real Firebase session (a cashier token or the owner).
 function POSProtectedRoute({ children }) {
   const { user, authInitialized } = useContext(AuthContext);
-  const cashierSession = localStorage.getItem("pos_cashier_session");
-
-  if (cashierSession) {
-    return <>{children}</>;
-  }
 
   if (!authInitialized) {
     return (
@@ -118,7 +143,7 @@ function POSProtectedRoute({ children }) {
     return <>{children}</>;
   }
 
-  return <Navigate to="/signin?role=cashier" replace />;
+  return <Navigate to="/pos/login" replace />;
 }
 
 POSProtectedRoute.propTypes = {
@@ -140,6 +165,11 @@ function ProtectedRoute({ children }) {
     return <Navigate to="/signin" replace />;
   }
 
+  // Cashiers only use the POS portal.
+  if (user.role === "cashier") {
+    return <Navigate to="/pos/billing" replace />;
+  }
+
   return (
     <>
       <InactivityDetector />
@@ -157,9 +187,9 @@ export default function App() {
     <AuthProvider>
       <CompanyProfileProvider>
         <ToastProvider>
-          <AIAssistantProvider>
+          <StaffOnly provider={AIAssistantProvider}>
             <SuperAdminAuthProvider>
-              <OperatorProvider>
+              <StaffOnly provider={OperatorProvider}>
                 <Router>
                 <ScrollToTop />
                 <ImpersonationBanner />
@@ -352,9 +382,9 @@ export default function App() {
                 </Routes>
                 <ToastContainer />
               </Router>
-            </OperatorProvider>
+            </StaffOnly>
           </SuperAdminAuthProvider>
-        </AIAssistantProvider>
+        </StaffOnly>
       </ToastProvider>
     </CompanyProfileProvider>
   </AuthProvider>

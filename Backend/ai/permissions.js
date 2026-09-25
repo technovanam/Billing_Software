@@ -1,5 +1,5 @@
-// Role gate for AI intents. Cashiers have no Firebase login of their own yet, so
-// any request made from the POS screen is treated as a cashier (least privilege).
+// Role gate for AI intents. The role comes from the verified token
+// (see auth/verifyToken.js), never from which screen sent the request.
 const ROLE_INTENTS = {
   owner: new Set([
     'create_invoice', 'create_pos_bill', 'add_item', 'remove_item', 'update_qty',
@@ -18,12 +18,6 @@ const ROLE_CONTEXTS = {
   warehouse: new Set([]),
 };
 
-function resolveRole({ email, context }) {
-  const mail = String(email || '').toLowerCase();
-  if (mail.startsWith('wh.')) return 'warehouse';
-  if (context === 'pos') return 'cashier';
-  return 'owner';
-}
 
 function canUseContext(role, context) {
   return ROLE_CONTEXTS[role]?.has(context) || false;
@@ -39,4 +33,4 @@ function canManageAliases(role) {
   return role === 'owner';
 }
 
-module.exports = { resolveRole, canUseContext, canRunIntent, canManageAliases };
+module.exports = { canUseContext, canRunIntent, canManageAliases };

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useContext } from "react";
 import {
   Clock,
   UserCheck,
@@ -17,72 +17,28 @@ import {
   TrendingUp,
   Receipt,
   Plus,
+  WifiOff,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { useInvoices } from "../../hooks/useFirestore";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import { useToast } from "../../context/ToastContext";
+import usePosShifts from "../../hooks/usePosShifts";
+import { AuthContext } from "../../context/AuthContext";
+import { getPendingBills, flushQueue } from "../../services/posBillQueue";
 
 export default function POSShiftManagement() {
   const { allInvoices } = useInvoices();
   const { companyProfile } = useCompanyProfile();
   const { success: toastSuccess, error: toastError } = useToast();
 
-  const cashierSession = useMemo(() => {
-    try {
-      const saved = localStorage.getItem("pos_cashier_session");
-      return saved ? JSON.parse(saved) : { cashierId: "CSH-001", cashierName: "Arun", counterNumber: "Counter 01" };
-    } catch {
-      return { cashierId: "CSH-001", cashierName: "Arun", counterNumber: "Counter 01" };
-    }
-  }, []);
-
-  // Shifts state
-  const [shiftsHistory, setShiftsHistory] = useState(() => {
-    try {
-      const saved = localStorage.getItem("pos_cashier_shifts");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-
-    // Default active shift #102 as specified in requirements
-    return [
-      {
-        shiftNumber: 102,
-        cashierId: cashierSession.cashierId || "CSH-001",
-        cashierName: cashierSession.cashierName || "Arun",
-        counter: cashierSession.counterNumber || "Counter 01",
-        openingCash: 5000,
-        openedAt: new Date(new Date().setHours(9, 0, 0, 0)).toISOString(),
-        closedAt: null,
-        status: "Active", // "Active" | "Closed"
-        cashSales: 20000,
-        upiSales: 35000,
-        cardSales: 15000,
-        refunds: 2000,
-        closingCashDeclared: null,
-        notes: "Morning primary counter shift",
-      },
-      {
-        shiftNumber: 101,
-        cashierId: "CSH-002",
-        cashierName: "Sahanaa",
-        counter: "Counter 02",
-        openingCash: 3000,
-        openedAt: new Date(Date.now() - 86400000).toISOString(),
-        closedAt: new Date(Date.now() - 50400000).toISOString(),
-        status: "Closed",
-        cashSales: 18500,
-        upiSales: 22000,
-        cardSales: 9500,
-        refunds: 500,
-        closingCashDeclared: 21000,
-        notes: "Shift closed smoothly",
-      },
-    ];
-  });
-
-  const [activeShift, setActiveShift] = useState(() => {
-    return shiftsHistory.find((s) => s.status === "Active") || null;
-  });
+  // Shifts live in Firestore; the backend allows one open shift per cashier and per counter.
+  const { shifts: shiftsHistory, activeShift, open: openShiftRemote, close: closeShiftRemote } = usePosShifts();
+  const [isSaving, setIsSaving] = useState(false);
+  const { user } = useContext(AuthContext);
+  const cashierLabel = user?.cashierName || user?.displayName || "Owner";
+  const ownerUid = user?.role === "cashier" ? user?.businessUid : user?.uid;
 
   // Modal controls
   const [isOpenShiftModal, setIsOpenShiftModal] = useState(false);
@@ -90,26 +46,41 @@ export default function POSShiftManagement() {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [selectedShiftForSummary, setSelectedShiftForSummary] = useState(null);
 
+  // Pending unsynced bills blocking shift close
+  const [isPendingBlockModalOpen, setIsPendingBlockModalOpen] = useState(false);
+  const [pendingBlockList, setPendingBlockList] = useState([]);
+  const [isSyncingPending, setIsSyncingPending] = useState(false);
+
   // Form states
   const [openingCashInput, setOpeningCashInput] = useState("5000");
   const [closingCashDeclaredInput, setClosingCashDeclaredInput] = useState("");
   const [shiftNotesInput, setShiftNotesInput] = useState("");
 
-  // Sync shifts with localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem("pos_cashier_shifts", JSON.stringify(shiftsHistory));
-    } catch (_) {}
-  }, [shiftsHistory]);
+  // Sales during the open shift, from this cashier's POS bills since it opened.
+  const shiftSales = useMemo(() => {
+    if (!activeShift) return { cash: 0, online: 0 };
+    const since = activeShift.openedAt || "";
+    return (allInvoices || [])
+      .filter((inv) => inv.source === "POS Counter Terminal" && (inv.cashier || "") === activeShift.cashierId && String(inv.createdAt || "") >= since)
+      .reduce(
+        (acc, inv) => {
+          const amount = Number(inv.amount) || 0;
+          if (String(inv.paymentMode || "").toLowerCase().startsWith("cash")) acc.cash += amount;
+          else acc.online += amount;
+          return acc;
+        },
+        { cash: 0, online: 0 }
+      );
+  }, [activeShift, allInvoices]);
 
   // Real-time calculation for active shift
   const activeMetrics = useMemo(() => {
     if (!activeShift) return null;
 
     const opening = Number(activeShift.openingCash) || 0;
-    const cash = Number(activeShift.cashSales) || 0;
-    const upi = Number(activeShift.upiSales) || 0;
-    const card = Number(activeShift.cardSales) || 0;
+    const cash = shiftSales.cash;
+    const upi = shiftSales.online; // POS records online payments (UPI/card) together
+    const card = 0;
     const refunds = Number(activeShift.refunds) || 0;
 
     const totalSales = cash + upi + card;
@@ -127,60 +98,98 @@ export default function POSShiftManagement() {
       netRevenue,
       expectedCashInDrawer,
     };
-  }, [activeShift]);
+  }, [activeShift, shiftSales]);
 
   // Handle Open New Shift
-  const handleOpenShift = (e) => {
+  const handleOpenShift = async (e) => {
     e.preventDefault();
     const openingAmt = Number(openingCashInput) || 0;
-    const nextShiftNum = (shiftsHistory[0]?.shiftNumber || 100) + 1;
+    setIsSaving(true);
+    try {
+      const shift = await openShiftRemote(openingAmt, shiftNotesInput.trim());
+      setIsOpenShiftModal(false);
+      setShiftNotesInput("");
+      toastSuccess(`Shift #${shift.shiftNumber} opened successfully with ₹${openingAmt.toLocaleString("en-IN")} float!`);
+    } catch (err) {
+      // e.g. "Counter 01 already has an open shift #104 (Arun, Counter 01, open since ...)"
+      toastError(err.message || "Could not open the shift.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
-    const newShift = {
-      shiftNumber: nextShiftNum,
-      cashierId: cashierSession.cashierId || "CSH-001",
-      cashierName: cashierSession.cashierName || "Arun",
-      counter: cashierSession.counterNumber || "Counter 01",
-      openingCash: openingAmt,
-      openedAt: new Date().toISOString(),
-      closedAt: null,
-      status: "Active",
-      cashSales: 0,
-      upiSales: 0,
-      cardSales: 0,
-      refunds: 0,
-      closingCashDeclared: null,
-      notes: shiftNotesInput.trim(),
-    };
+  // Check pending bills before opening close shift modal
+  const handleInitiateCloseShift = () => {
+    const pending = getPendingBills();
+    if (pending.length > 0) {
+      setPendingBlockList(pending);
+      setIsPendingBlockModalOpen(true);
+      return;
+    }
+    setClosingCashDeclaredInput(String(activeMetrics?.expectedCashInDrawer || ""));
+    setIsCloseShiftModal(true);
+  };
 
-    const updated = [newShift, ...shiftsHistory.map((s) => ({ ...s, status: "Closed" }))];
-    setShiftsHistory(updated);
-    setActiveShift(newShift);
-    setIsOpenShiftModal(false);
-    setShiftNotesInput("");
-    toastSuccess(`Shift #${nextShiftNum} opened successfully with ₹${openingAmt.toLocaleString("en-IN")} float!`);
+  // Sync pending bills from the blocking modal
+  const handleSyncPendingBills = async () => {
+    if (!ownerUid) {
+      toastError("Store credentials missing. Please sign in again.");
+      return;
+    }
+    setIsSyncingPending(true);
+    try {
+      const { synced, failed } = await flushQueue(ownerUid);
+      const remaining = getPendingBills();
+      setPendingBlockList(remaining);
+      window.dispatchEvent(new CustomEvent("pos_queue_updated"));
+      if (synced > 0) {
+        toastSuccess(`${synced} bill(s) synced to cloud successfully!`);
+      }
+      if (remaining.length === 0) {
+        setIsPendingBlockModalOpen(false);
+        setClosingCashDeclaredInput(String(activeMetrics?.expectedCashInDrawer || ""));
+        setIsCloseShiftModal(true);
+      } else {
+        toastError(`${failed || remaining.length} bill(s) could not sync. Check internet connection.`);
+      }
+    } catch (err) {
+      toastError("Sync failed: " + (err.message || String(err)));
+    } finally {
+      setIsSyncingPending(false);
+    }
   };
 
   // Handle Close Active Shift
-  const handleCloseShift = (e) => {
+  const handleCloseShift = async (e) => {
     e.preventDefault();
     if (!activeShift) return;
-
-    const declaredCash = Number(closingCashDeclaredInput) || 0;
-    const closedShift = {
-      ...activeShift,
-      closedAt: new Date().toISOString(),
-      status: "Closed",
-      closingCashDeclared: declaredCash,
-      notes: shiftNotesInput.trim() || activeShift.notes,
-    };
-
-    const updated = shiftsHistory.map((s) => (s.shiftNumber === activeShift.shiftNumber ? closedShift : s));
-    setShiftsHistory(updated);
-    setActiveShift(null);
-    setIsCloseShiftModal(false);
-    setSelectedShiftForSummary(closedShift);
-    setIsSummaryModalOpen(true);
-    toastSuccess(`Shift #${closedShift.shiftNumber} closed! Shift summary generated.`);
+    const pending = getPendingBills();
+    if (pending.length > 0) {
+      setPendingBlockList(pending);
+      setIsCloseShiftModal(false);
+      setIsPendingBlockModalOpen(true);
+      toastError(`Cannot close shift: ${pending.length} unsynced bill(s) pending.`);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const declaredCash = Number(closingCashDeclaredInput) || 0;
+      const closedShift = await closeShiftRemote(
+        activeShift.id,
+        declaredCash,
+        { cashSales: activeMetrics?.cash || 0, upiSales: activeMetrics?.upi || 0, cardSales: 0 },
+        shiftNotesInput.trim() || undefined
+      );
+      setIsCloseShiftModal(false);
+      setShiftNotesInput("");
+      setSelectedShiftForSummary(closedShift);
+      setIsSummaryModalOpen(true);
+      toastSuccess(`Shift #${closedShift.shiftNumber} closed! Shift summary generated.`);
+    } catch (err) {
+      toastError(err.message || "Could not close the shift.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -202,10 +211,7 @@ export default function POSShiftManagement() {
         <div className="flex items-center gap-2">
           {activeShift ? (
             <button
-              onClick={() => {
-                setClosingCashDeclaredInput(String(activeMetrics?.expectedCashInDrawer || ""));
-                setIsCloseShiftModal(true);
-              }}
+              onClick={handleInitiateCloseShift}
               className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-bold shadow-xs transition cursor-pointer"
             >
               <Square className="w-4 h-4 fill-white" />
@@ -436,7 +442,7 @@ export default function POSShiftManagement() {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
             <h3 className="text-base font-bold text-slate-900">Open Shift Counter</h3>
             <p className="text-xs text-slate-500">
-              Initialize drawer float and begin sales tracking for Cashier <strong>{cashierSession.cashierName}</strong>.
+              Initialize drawer float and begin sales tracking for Cashier <strong>{cashierLabel}</strong>.
             </p>
 
             <form onSubmit={handleOpenShift} className="space-y-4">
@@ -477,6 +483,7 @@ export default function POSShiftManagement() {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSaving}
                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm"
                 >
                   Confirm Open Shift
@@ -563,6 +570,7 @@ export default function POSShiftManagement() {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSaving}
                   className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold shadow-sm"
                 >
                   Confirm & Close Shift
@@ -656,6 +664,95 @@ export default function POSShiftManagement() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 4: PENDING BILLS BLOCKING SHIFT CLOSE */}
+      {isPendingBlockModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex justify-center items-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-red-200">
+            <div className="bg-red-50 p-5 border-b border-red-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shrink-0">
+                  <WifiOff className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-red-950">
+                    Cannot Close Shift: Unsynced Bills Pending
+                  </h3>
+                  <p className="text-xs text-red-700">
+                    {pendingBlockList.length} bill(s) saved on this device must sync to cloud first
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsPendingBlockModalOpen(false)}
+                className="text-red-400 hover:text-red-700 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-900 leading-relaxed flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <span>
+                  The shift cannot be closed while offline bills are still pending on this device. Closing now would cause discrepancies in shift totals and risk bill loss.
+                </span>
+              </div>
+
+              {/* Pending Bills List */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden max-h-56 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold uppercase text-[10px]">
+                    <tr>
+                      <th className="py-2.5 px-3">Bill ID</th>
+                      <th className="py-2.5 px-3">Customer</th>
+                      <th className="py-2.5 px-3 text-right">Amount</th>
+                      <th className="py-2.5 px-3">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-800">
+                    {pendingBlockList.map((bill) => (
+                      <tr key={bill.localId} className="hover:bg-slate-50">
+                        <td className="py-2 px-3 font-mono text-[11px] font-bold text-blue-700">
+                          {bill.payload?.invoiceNumber || bill.localId}
+                        </td>
+                        <td className="py-2 px-3 truncate max-w-[120px]">
+                          {bill.payload?.customerName || bill.payload?.client?.name || "Walk-in"}
+                        </td>
+                        <td className="py-2 px-3 text-right font-bold tabular-nums">
+                          ₹{Number(bill.payload?.amount || bill.payload?.totalAmount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="py-2 px-3 text-slate-500 text-[10px]">
+                          {bill.queuedAt ? new Date(bill.queuedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPendingBlockModalOpen(false)}
+                  className="px-4 py-2.5 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Back to POS
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSyncPendingBills}
+                  disabled={isSyncingPending}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition disabled:opacity-50 cursor-pointer"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncingPending ? "animate-spin" : ""}`} />
+                  <span>{isSyncingPending ? "Syncing..." : "Sync Pending Bills Now"}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

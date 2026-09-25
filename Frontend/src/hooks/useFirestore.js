@@ -4,6 +4,8 @@ import {
   doc,
   getDocs,
   getDoc,
+  query,
+  where,
   addDoc,
   setDoc,
   updateDoc,
@@ -14,39 +16,32 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "../lib/firebase/config";
 import { AuthContext } from "../context/AuthContext";
+import { listCashierStatus, setCashierPin, setCashierActive, removeCashierAccess } from "../services/posService";
 
-// Get store owner UID: from Firebase Auth user, or from cashier session if logged in via Cashier PIN
+// Cashier PINs live only as hashes on the backend; never store them here.
+const stripPins = (list) => (Array.isArray(list) ? list.map(({ pin, ...c }) => c) : []);
+
+// Get store owner UID: from Firebase Auth user, or from cashier's businessUid token claim.
+// Returns null when no real session exists. Never falls back to localStorage-guessed UIDs.
 function useUserId() {
   const { user } = useContext(AuthContext);
+  // Cashiers act on their business's data, not their own uid.
+  if (user?.role === "cashier" && user.businessUid) return user.businessUid;
   if (user?.uid) return user.uid;
 
+  // Cashier session written by posService.cashierLogin() — safe, tied to a real device token.
   try {
     const sessionStr = localStorage.getItem("pos_cashier_session");
     if (sessionStr) {
       const session = JSON.parse(sessionStr);
       if (session?.ownerUid) return session.ownerUid;
     }
-
-    const compProfile = localStorage.getItem("company_profile");
-    if (compProfile) {
-      const parsed = JSON.parse(compProfile);
-      if (parsed?.uid) return parsed.uid;
-    }
-
-    const lastUid = localStorage.getItem("last_logged_in_uid") || localStorage.getItem("store_owner_uid");
-    if (lastUid) return lastUid;
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith("store_cashiers_")) {
-        return key.replace("store_cashiers_", "");
-      }
-    }
   } catch (err) {
-    console.warn("useUserId cashier fallback error:", err);
+    console.warn("useUserId cashier session read error:", err);
   }
 
-  return "default_store";
+  // No authenticated session — return null so callers guard correctly.
+  return null;
 }
 
 // Firestore doc snapshot -> plain object with id; convert Timestamps to string dates for UI consistency
@@ -363,10 +358,18 @@ export const useCustomers = (options = {}) => {
 export const useInvoices = (options = {}) => {
   const uid = useUserId();
   // Live listeners need a real Firebase login; Firestore rules reject cached/fallback uids
-  const isSignedIn = Boolean(useContext(AuthContext).user?.uid);
+  const authUser = useContext(AuthContext).user;
+  const isSignedIn = Boolean(authUser?.uid);
+  // Cashiers may read POS bills only (Firestore rules); query and cache accordingly.
+  const isCashier = authUser?.role === "cashier";
+  const cacheKey = isCashier ? "store_invoices_cache_pos" : "store_invoices_cache";
+  const invoicesSource = (id) =>
+    isCashier
+      ? query(collection(db, "users", id, "invoices"), where("source", "==", "POS Counter Terminal"))
+      : collection(db, "users", id, "invoices");
   const [all, setAll] = useState(() => {
     try {
-      const cached = localStorage.getItem("store_invoices_cache");
+      const cached = localStorage.getItem(cacheKey);
       return cached ? JSON.parse(cached) : [];
     } catch {
       return [];
@@ -383,11 +386,11 @@ export const useInvoices = (options = {}) => {
     setLoading(true);
     setInvError(null);
     try {
-      const snap = await getDocs(collection(db, "users", uid, "invoices"));
+      const snap = await getDocs(invoicesSource(uid));
       const list = snapshotToItems(snap);
       if (list.length > 0) {
         setAll(list);
-        localStorage.setItem("store_invoices_cache", JSON.stringify(list));
+        localStorage.setItem(cacheKey, JSON.stringify(list));
       }
     } catch (err) {
       setInvError(err.message);
@@ -400,7 +403,7 @@ export const useInvoices = (options = {}) => {
   useEffect(() => {
     const handleLocalInvUpdate = (e) => {
       try {
-        const cached = localStorage.getItem("store_invoices_cache");
+        const cached = localStorage.getItem(cacheKey);
         if (cached) {
           setAll(JSON.parse(cached));
         } else if (e.detail?.invoice) {
@@ -424,12 +427,12 @@ export const useInvoices = (options = {}) => {
 
     setLoading(true);
     const unsubscribe = onSnapshot(
-      collection(db, "users", uid, "invoices"),
+      invoicesSource(uid),
       (snapshot) => {
         const list = snapshotToItems(snapshot);
         if (list.length > 0) {
           setAll(list);
-          localStorage.setItem("store_invoices_cache", JSON.stringify(list));
+          localStorage.setItem(cacheKey, JSON.stringify(list));
         }
         setLoading(false);
       },
@@ -444,7 +447,7 @@ export const useInvoices = (options = {}) => {
       window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
       window.removeEventListener("storage", handleLocalInvUpdate);
     };
-  }, [uid, isSignedIn]);
+  }, [uid, isSignedIn, isCashier]);
 
   const fyInvoices = useMemo(() => {
     return all.filter((inv) => isInCurrentFY(inv.invoiceDate || inv.createdAt));
@@ -521,7 +524,7 @@ export const useInvoices = (options = {}) => {
       setAll((prev) => {
         const updated = [newInvObj, ...prev];
         try {
-          localStorage.setItem("store_invoices_cache", JSON.stringify(updated));
+          localStorage.setItem(cacheKey, JSON.stringify(updated));
         } catch (_) {}
         return updated;
       });
@@ -531,21 +534,16 @@ export const useInvoices = (options = {}) => {
         new CustomEvent("store_invoice_added", { detail: { invoice: newInvObj } })
       );
 
-      // 3. Save to Firestore
-      try {
-        const data = {
-          ...cleanPayload,
-          createdAt: serverTimestamp(),
-        };
-        const ref = await addDoc(collection(db, "users", targetUid, "invoices"), data);
-        setAll((prev) =>
-          prev.map((i) => (i.id === newInvObj.id ? { ...i, id: ref.id } : i))
-        );
-        return { success: true, id: ref.id };
-      } catch (err) {
-        console.warn("Firestore addInvoice online error (cached locally):", err);
-        return { success: true, id: newInvObj.id, offline: true };
-      }
+      // 3. Save to Firestore — throws on failure so the caller can queue it
+      const data = {
+        ...cleanPayload,
+        createdAt: serverTimestamp(),
+      };
+      const ref = await addDoc(collection(db, "users", targetUid, "invoices"), data);
+      setAll((prev) =>
+        prev.map((i) => (i.id === newInvObj.id ? { ...i, id: ref.id } : i))
+      );
+      return { success: true, id: ref.id };
     },
     [uid]
   );
@@ -836,9 +834,19 @@ export const useRecurringInvoices = () => {
 };
 
 // Products — users/{uid}/products
+// Products are deactivated, never deleted (old bills keep their names).
+// isActive missing counts as active.
+export const isProductActive = (p) => p?.isActive !== false;
+
+// Pickers get active products only; pass { includeInactive: true } for the
+// admin product list.
 export const useProducts = (options = {}) => {
   const uid = useUserId();
-  const [all, setAll] = useState([]);
+  const [everything, setAll] = useState([]);
+  const all = useMemo(
+    () => (options.includeInactive ? everything : everything.filter(isProductActive)),
+    [everything, options.includeInactive]
+  );
   const [loading, setLoading] = useState(true);
   const [prodError, setProdError] = useState(null);
 
@@ -878,13 +886,13 @@ export const useProducts = (options = {}) => {
   const addProduct = useCallback(
     async (payload) => {
       if (!uid) return { success: false };
-      const nextSerialNumber = String(all.length + 1).padStart(2, "0");
-      const data = { serialNumber: nextSerialNumber, ...payload };
+      const nextSerialNumber = String(everything.length + 1).padStart(2, "0");
+      const data = { serialNumber: nextSerialNumber, isActive: true, ...payload };
       const ref = await addDoc(collection(db, "users", uid, "products"), data);
       setAll((prev) => [...prev, { id: ref.id, ...data }]);
       return { success: true, id: ref.id };
     },
-    [uid, all.length]
+    [uid, everything.length]
   );
 
   const editProduct = useCallback(
@@ -897,27 +905,21 @@ export const useProducts = (options = {}) => {
     [uid]
   );
 
-  const removeProduct = useCallback(
-    async (id) => {
+  // Deactivate / reactivate instead of deleting; serial numbers stay as they are.
+  const setProductActive = useCallback(
+    async (id, active) => {
       if (!uid) return { success: false };
-      await deleteDoc(doc(db, "users", uid, "products", id));
-      const filtered = all.filter((p) => p.id !== id);
-      const renumbered = filtered.map((p, index) => ({
-        ...p,
-        serialNumber: String(index + 1).padStart(2, "0"),
-      }));
-      for (let i = 0; i < renumbered.length; i++) {
-        await updateDoc(doc(db, "users", uid, "products", renumbered[i].id), {
-          serialNumber: renumbered[i].serialNumber,
-        });
-      }
-      setAll(renumbered);
+      const patch = { isActive: Boolean(active), ...(active ? { reactivatedAt: new Date().toISOString() } : { deactivatedAt: new Date().toISOString() }) };
+      await updateDoc(doc(db, "users", uid, "products", id), patch);
+      setAll((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
       return { success: true };
     },
-    [uid, all]
+    [uid]
   );
+  const deactivateProduct = useCallback((id) => setProductActive(id, false), [setProductActive]);
+  const reactivateProduct = useCallback((id) => setProductActive(id, true), [setProductActive]);
 
-  return { products: view, allProducts: all, loading, error: prodError, pagination: pageInfo, addProduct, editProduct, removeProduct, refetch };
+  return { products: view, allProducts: all, loading, error: prodError, pagination: pageInfo, addProduct, editProduct, deactivateProduct, reactivateProduct, refetch };
 };
 
 // Settings — single doc users/{uid}/settings/app
@@ -966,6 +968,17 @@ export const useSettings = () => {
 // Cashiers — stored inside users/{uid}/settings/app under 'cashiers' key (active in Firestore rules)
 export const useCashiers = (options = {}) => {
   const uid = useUserId();
+  const cashierAuthUser = useContext(AuthContext).user;
+  const [pinStatus, setPinStatus] = useState({});
+  const refreshPinStatus = useCallback(() => {
+    if (cashierAuthUser?.role !== "owner" || !cashierAuthUser?.uid) return;
+    listCashierStatus()
+      .then((list) => setPinStatus(Object.fromEntries(list.map((c) => [c.cashierId, c]))))
+      .catch((err) => console.warn("Cashier PIN status unavailable:", err.message));
+  }, [cashierAuthUser?.role, cashierAuthUser?.uid]);
+  useEffect(() => {
+    refreshPinStatus();
+  }, [refreshPinStatus]);
   const [all, setAll] = useState(() => {
     try {
       const local = uid ? localStorage.getItem(`store_cashiers_${uid}`) : null;
@@ -1055,7 +1068,8 @@ export const useCashiers = (options = {}) => {
     setPageInfo(res.pagination);
   }, [filtered, options.search, options.page, options.limit, options.sortBy, options.sortDirection]);
 
-  const persistCashiers = async (currentUid, newItems) => {
+  const persistCashiers = async (currentUid, items) => {
+    const newItems = stripPins(items);
     localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(newItems));
     localStorage.setItem("registered_cashiers_list", JSON.stringify(newItems));
     setAll(newItems);
@@ -1093,12 +1107,15 @@ export const useCashiers = (options = {}) => {
         phone: payload.phone || "",
         email: payload.email || "",
         counter: payload.counter || "Counter 01",
-        pin: payload.pin || "1234",
         status: payload.status || "Active",
         createdAt: new Date().toISOString(),
       };
       const newItems = [...all, newCashier];
       await persistCashiers(currentUid, newItems);
+      // PIN goes to the backend (hashed there); no default PIN.
+      if (payload.pin) await setCashierPin(newCashier.cashierId, payload.pin);
+      if (newCashier.status === "Inactive") await setCashierActive(newCashier.cashierId, false);
+      refreshPinStatus();
       return { success: true, id: newId };
     },
     [uid, all]
@@ -1108,8 +1125,15 @@ export const useCashiers = (options = {}) => {
     async (id, patch) => {
       const currentUid = uid || auth.currentUser?.uid;
       if (!currentUid) throw new Error("Authentication required.");
-      const newItems = all.map((c) => (c.id === id ? { ...c, ...patch } : c));
+      const { pin, ...rest } = patch || {};
+      const before = all.find((c) => c.id === id);
+      const newItems = all.map((c) => (c.id === id ? { ...c, ...rest } : c));
       await persistCashiers(currentUid, newItems);
+      const cashierId = rest.cashierId || before?.cashierId;
+      // PIN changes and deactivation also sign the cashier out (backend revokes).
+      if (pin) await setCashierPin(cashierId, pin);
+      if (before && rest.status && rest.status !== (before.status || "Active")) await setCashierActive(cashierId, rest.status !== "Inactive");
+      refreshPinStatus();
       return { success: true };
     },
     [uid, all]
@@ -1119,8 +1143,11 @@ export const useCashiers = (options = {}) => {
     async (id) => {
       const currentUid = uid || auth.currentUser?.uid;
       if (!currentUid) throw new Error("Authentication required.");
+      const target = all.find((c) => c.id === id);
       const newItems = all.filter((c) => c.id !== id);
       await persistCashiers(currentUid, newItems);
+      if (target?.cashierId) await removeCashierAccess(target.cashierId).catch((err) => console.warn("Cashier access removal:", err.message));
+      refreshPinStatus();
       return { success: true };
     },
     [uid, all]
@@ -1135,12 +1162,16 @@ export const useCashiers = (options = {}) => {
       const nextStatus = target.status === "Inactive" ? "Active" : "Inactive";
       const newItems = all.map((c) => (c.id === id ? { ...c, status: nextStatus } : c));
       await persistCashiers(currentUid, newItems);
+      await setCashierActive(target.cashierId, nextStatus === "Active");
+      refreshPinStatus();
       return { success: true, status: nextStatus };
     },
     [uid, all]
   );
 
   return {
+    pinStatus,
+    refreshPinStatus,
     cashiers: view,
     allCashiers: all,
     loading,

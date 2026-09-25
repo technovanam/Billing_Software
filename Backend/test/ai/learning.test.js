@@ -127,7 +127,9 @@ describe('ranking prefers the usual product', () => {
     const products = rawCatalog.products.map((p) => toProductRecord(p.id === 'p_rice_ponni' ? { ...p, active: false } : p));
     const ranking = createRanking({ stats: stats(), now: NOW });
     const line = applyCommand(riceCmd('Ravi Traders'), null, { ...catalog, products }, { context: 'invoice', ranking }).draft.items[0];
-    assert.equal(line.status, 'ambiguous');
+    assert.notEqual(line.product?.id, 'p_rice_ponni', 'the inactive usual product is not chosen');
+    assert.notEqual(line.source, 'learned');
+    assert.equal(line.candidates.some((c) => c.id === 'p_rice_ponni'), false, 'nor offered');
   });
 
   test('ranking never changes prices', () => {

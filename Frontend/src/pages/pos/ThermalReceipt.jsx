@@ -1,6 +1,6 @@
-import React, { useRef } from "react";
+import React, { useRef, useEffect } from "react";
 import PropTypes from "prop-types";
-import { Printer, CheckCircle2, ArrowLeft } from "lucide-react";
+import { Printer, CheckCircle2, ArrowLeft, AlertTriangle, WifiOff } from "lucide-react";
 
 // Generate a clean, fully-filled, continuous 1D Barcode matching retail receipts (like D-Mart)
 const Barcode1D = ({ value = "4150090110002" }) => {
@@ -65,12 +65,25 @@ export default function ThermalReceipt({
   onResetForNextCustomer,
   isSaved,
   saving,
+  syncStatus = "idle",
 }) {
   const receiptRef = useRef(null);
 
   const handlePrint = () => {
     window.print();
   };
+
+  // F9 keyboard shortcut to trigger thermal print
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "F9") {
+        e.preventDefault();
+        handlePrint();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const handleNewCustomerAndClose = () => {
     if (onResetForNextCustomer) {
@@ -147,24 +160,43 @@ export default function ThermalReceipt({
               onClick={!isSaved && !saving ? onSaveInvoice : undefined}
               disabled={isSaved || saving}
               className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-bold transition ${
-                isSaved
+                syncStatus === "pending"
+                  ? "bg-amber-500 text-white shadow-sm cursor-default"
+                  : isSaved
                   ? "bg-emerald-600 text-white shadow-sm cursor-default"
                   : saving
                   ? "bg-slate-100 text-slate-400 cursor-not-allowed"
                   : "bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm cursor-pointer"
               }`}
             >
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              <span>{isSaved ? "Saved" : saving ? "Saving..." : "Save Bill"}</span>
+              {syncStatus === "pending" ? (
+                <>
+                  <WifiOff className="h-3.5 w-3.5" />
+                  <span>Saved on device</span>
+                </>
+              ) : isSaved ? (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>Saved to cloud ✓</span>
+                </>
+              ) : saving ? (
+                <span>Saving...</span>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  <span>Save Bill</span>
+                </>
+              )}
             </button>
           )}
 
           <button
             onClick={handlePrint}
             className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 text-xs font-bold shadow-sm transition cursor-pointer"
+            title="Print receipt (F9)"
           >
             <Printer className="h-4 w-4" />
-            <span>Print</span>
+            <span>Print (F9)</span>
           </button>
         </div>
       </div>
@@ -203,6 +235,13 @@ export default function ThermalReceipt({
         <div className="border-t border-b border-black py-0.5 text-center my-1.5">
           <span className="font-bold text-xs tracking-widest uppercase">TAX INVOICE</span>
         </div>
+
+        {/* Offline / Pending Sync Notice */}
+        {syncStatus === "pending" && (
+          <div className="border border-dashed border-black py-1 text-center my-1.5 font-bold text-[9px] uppercase tracking-wider bg-slate-100">
+            *** Saved on this device, not yet synced ***
+          </div>
+        )}
 
         {/* Metadata: Bill No, Bill Dt, Time, Cashier ID, and Customer Info */}
         <div className="text-[9.5px] space-y-0.5 my-1.5">
@@ -409,4 +448,5 @@ ThermalReceipt.propTypes = {
   onSaveInvoice: PropTypes.func,
   isSaved: PropTypes.bool,
   saving: PropTypes.bool,
+  syncStatus: PropTypes.string,
 };

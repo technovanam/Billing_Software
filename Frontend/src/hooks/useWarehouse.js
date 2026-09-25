@@ -325,6 +325,11 @@ export const useStockIn = () => {
         }
 
         const pData = targetDoc.data();
+        if (pData.isActive === false) {
+          const msg = `"${pData.name || code}" is inactive. Reactivate it in Products before moving stock.`;
+          toast.error(msg);
+          return { success: false, error: msg, code: "PRODUCT_INACTIVE" };
+        }
         const currentGodownStock = pData.godownStock || {};
         const prevGodownQty = Number(currentGodownStock[targetGodownId]) || 0;
         const newGodownQty = prevGodownQty + qty;
@@ -403,6 +408,11 @@ export const useStockOut = () => {
         if (!targetDoc) throw new Error(`Product with barcode "${code}" not found.`);
 
         const pData = targetDoc.data();
+        if (pData.isActive === false) {
+          const msg = `"${pData.name || code}" is inactive. Reactivate it in Products before moving stock.`;
+          toast.error(msg);
+          return { success: false, error: msg, code: "PRODUCT_INACTIVE" };
+        }
         const available = Number(pData.stock) || 0;
 
         if (available < qty) {
@@ -488,6 +498,11 @@ export const useStockTransfer = () => {
         if (!targetDoc) throw new Error(`Product with barcode "${code}" not found.`);
 
         const pData = targetDoc.data();
+        if (pData.isActive === false) {
+          const msg = `"${pData.name || code}" is inactive. Reactivate it in Products before moving stock.`;
+          toast.error(msg);
+          return { success: false, error: msg, code: "PRODUCT_INACTIVE" };
+        }
         const currentGodownStock = pData.godownStock || {};
         const availableFrom = Number(currentGodownStock[fromGodownId]) || 0;
 
@@ -1069,6 +1084,7 @@ export const useProducts = () => {
           sku: p.sku || "",
           imageUrl: p.imageUrl || "",
           godownStock: p.godownStock || {},
+          isActive: p.isActive !== false,
           status: stock === 0 ? "OUT_OF_STOCK" : stock <= minLvl && minLvl > 0 ? "LOW_STOCK" : "IN_STOCK",
         };
       });
@@ -1088,15 +1104,16 @@ export const useProducts = () => {
     return { success: true };
   }, [user]);
 
-  const deleteProduct = useCallback(async (productId) => {
+  // Products are deactivated, not deleted, so old bills and movements keep them.
+  const setProductActive = useCallback(async (productId, active) => {
     if (!user) throw new Error("Not logged in");
     const effectiveUid = await getEffectiveUid(user.uid);
     const productRef = doc(db, "users", effectiveUid, "products", productId);
-    await deleteDoc(productRef);
+    await updateDoc(productRef, { isActive: Boolean(active), updatedAt: serverTimestamp() });
     return { success: true };
   }, [user]);
 
-  return { products, loading, refetch: fetchProducts, updateProduct, deleteProduct };
+  return { products, loading, refetch: fetchProducts, updateProduct, setProductActive };
 };
 
 // ────────────────────────────────────────────────────────────────────────────

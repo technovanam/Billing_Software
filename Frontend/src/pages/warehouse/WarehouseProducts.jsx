@@ -199,9 +199,10 @@ EditProductModal.propTypes = {
   loading: PropTypes.bool,
 };
 
-// ─── Delete Product Confirmation Modal ────────────────────────────────────────
+// ─── Deactivate / Reactivate Product Confirmation Modal ───────────────────────
 const DeleteProductModal = ({ product, onClose, onConfirm, loading }) => {
   if (!product) return null;
+  const deactivating = product.isActive !== false;
 
   return (
     <Modal onClose={loading ? undefined : onClose} maxWidth="max-w-md">
@@ -209,10 +210,13 @@ const DeleteProductModal = ({ product, onClose, onConfirm, loading }) => {
         <div className="w-12 h-12 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-3">
           <Trash2 size={22} />
         </div>
-        <h3 className="text-lg font-bold text-gray-900 mb-1">Delete Product</h3>
+        <h3 className="text-lg font-bold text-gray-900 mb-1">{deactivating ? "Deactivate Product" : "Reactivate Product"}</h3>
         <p className="text-sm text-gray-600 mb-5">
-          Are you sure you want to delete <strong className="text-gray-900">{product.name}</strong>
-          {product.barcode ? ` (${product.barcode})` : ""}? This will remove the item from your catalog.
+          <strong className="text-gray-900">{product.name}</strong>
+          {product.barcode ? ` (${product.barcode})` : ""}{" "}
+          {deactivating
+            ? "will be hidden from billing, POS and stock movements. Old bills keep it, and you can reactivate it later."
+            : "will be available for billing and stock movements again."}
         </p>
         <div className="flex flex-col-reverse sm:flex-row gap-2">
           <button type="button" onClick={onClose} disabled={loading} className={`${btnSecondary} flex-1`}>
@@ -220,7 +224,7 @@ const DeleteProductModal = ({ product, onClose, onConfirm, loading }) => {
           </button>
           <button type="button" onClick={onConfirm} disabled={loading} className={`${btnDanger} flex-1`}>
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            {loading ? "Deleting…" : "Delete Product"}
+            {loading ? "Saving…" : deactivating ? "Deactivate" : "Reactivate"}
           </button>
         </div>
       </div>
@@ -244,7 +248,7 @@ export default function WarehouseProducts() {
     loading: productsLoading,
     refetch: refetchProducts,
     updateProduct,
-    deleteProduct,
+    setProductActive,
   } = useProducts();
   const { refetch: refetchStats } = useWarehouseStats();
   const toast = useToast();
@@ -292,12 +296,13 @@ export default function WarehouseProducts() {
     if (!deletingProduct) return;
     setActionLoading(true);
     try {
-      await deleteProduct(deletingProduct.id);
-      toast.success(`"${deletingProduct.name}" deleted successfully!`);
+      const deactivating = deletingProduct.isActive !== false;
+      await setProductActive(deletingProduct.id, !deactivating);
+      toast.success(`"${deletingProduct.name}" ${deactivating ? "deactivated" : "reactivated"}.`);
       setDeletingProduct(null);
       refetchStats();
     } catch (err) {
-      toast.error(err.message || "Failed to delete product");
+      toast.error(err.message || "Failed to update product");
     } finally {
       setActionLoading(false);
     }
@@ -360,6 +365,7 @@ export default function WarehouseProducts() {
             <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${ss.cls}`}>
               {ss.label}
             </span>
+            {p.isActive === false && <span className="ml-1 inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-600">Inactive</span>}
           </td>
           <td className="px-4 sm:px-6 py-4">
             <div className="flex items-center justify-center gap-1">
@@ -369,8 +375,14 @@ export default function WarehouseProducts() {
               <button type="button" onClick={() => setEditingProduct(p)} className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Edit Product" aria-label="Edit">
                 <Edit2 size={16} />
               </button>
-              <button type="button" onClick={() => setDeletingProduct(p)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Product" aria-label="Delete">
-                <Trash2 size={16} />
+              <button
+                type="button"
+                onClick={() => setDeletingProduct(p)}
+                className={`p-1.5 text-gray-500 rounded-lg transition-colors ${p.isActive === false ? "hover:text-emerald-600 hover:bg-emerald-50" : "hover:text-red-600 hover:bg-red-50"}`}
+                title={p.isActive === false ? "Reactivate Product" : "Deactivate Product"}
+                aria-label={p.isActive === false ? "Reactivate" : "Deactivate"}
+              >
+                {p.isActive === false ? <RefreshCw size={16} /> : <Trash2 size={16} />}
               </button>
             </div>
           </td>

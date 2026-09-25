@@ -2,7 +2,8 @@
 const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { createCatalogCache } = require('../../ai/catalogCache');
-const { resolveRole, canUseContext, canRunIntent, canManageAliases } = require('../../ai/permissions');
+const { canUseContext, canRunIntent, canManageAliases } = require('../../ai/permissions');
+const { roleOf } = require('../../auth/verifyToken');
 const { createUserRateLimiter } = require('../../ai/rateLimit');
 const { rawCatalog } = require('./helpers');
 
@@ -95,10 +96,11 @@ describe('catalogue cache', () => {
 });
 
 describe('permissions', () => {
-  test('role resolution', () => {
-    assert.equal(resolveRole({ email: 'wh.demo@x.in', context: 'invoice' }), 'warehouse');
-    assert.equal(resolveRole({ email: 'owner@x.in', context: 'pos' }), 'cashier');
-    assert.equal(resolveRole({ email: 'owner@x.in', context: 'invoice' }), 'owner');
+  test('role comes from the token, not the screen', () => {
+    assert.equal(roleOf({ email: 'wh.demo@x.in' }), 'warehouse');
+    assert.equal(roleOf({ email: 'owner@x.in' }), 'owner', 'an owner on the POS screen is still the owner');
+    assert.equal(roleOf({ role: 'cashier', businessUid: 'b1', cashierId: 'CSH-001' }), 'cashier');
+    assert.equal(roleOf({ email: 'owner@x.in', role: 'cashier' }), 'owner', 'a cashier claim without business and id is ignored');
   });
   test('cashier can bill on POS but not open invoices or ask business questions', () => {
     assert.equal(canUseContext('cashier', 'pos'), true);

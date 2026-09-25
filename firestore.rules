@@ -48,10 +48,35 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------------------
+    // POS cashiers: signed in with a backend-issued custom token carrying
+    // role, businessUid and cashierId claims. A session is valid only while the
+    // cashier is active and was signed in after the last revocation
+    // (PIN change, deactivation, device removal set validAfterSec).
+    // -------------------------------------------------------------------------
+    function isCashierOf(userId) {
+      return isAuthenticated()
+        && request.auth.token.get('role', '') == 'cashier'
+        && request.auth.token.get('businessUid', '') == userId
+        && cashierSessionValid(userId);
+    }
+    function cashierSessionValid(userId) {
+      let secret = get(/databases/$(database)/documents/users/$(userId)/cashierSecrets/$(request.auth.token.cashierId)).data;
+      return secret.get('active', true) != false
+        && request.auth.token.auth_time > secret.get('validAfterSec', 0);
+    }
+    function isOwnCashierId() {
+      return request.auth.token.get('cashierId', '');
+    }
+    function isPosBill(data) {
+      return data.get('source', '') == 'POS Counter Terminal';
+    }
+
+    // -------------------------------------------------------------------------
     // Tenant Businesses and Subcollections
     // -------------------------------------------------------------------------
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      // Cashiers read the business profile (name, logo) for receipts.
+      allow read: if isOwner(userId) || isAdmin() || isCashierOf(userId);
       
       // Profile write only with validated fields (no arbitrary client data)
       allow create: if isOwner(userId)
@@ -79,16 +104,20 @@ service cloud.firestore {
 
       // Subcollections: tenant owner or platform admin
       match /customers/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow read: if isOwner(userId) || isAdmin() || isCashierOf(userId);
+        allow create: if isOwner(userId) || isCashierOf(userId);
+        allow update, delete: if isOwner(userId);
       }
       match /products/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId) || isAdmin() || isCashierOf(userId);
         allow write: if isOwner(userId);
       }
       match /invoices/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        // Cashiers see only POS bills and create them in their own name.
+        allow read: if isOwner(userId) || isAdmin() || (isCashierOf(userId) && isPosBill(resource.data));
+        allow create: if isOwner(userId)
+          || (isCashierOf(userId) && isPosBill(request.resource.data) && request.resource.data.get('cashier', '') == isOwnCashierId());
+        allow update, delete: if isOwner(userId);
       }
       match /payments/{docId} {
         allow read: if isOwner(userId) || isAdmin();
@@ -102,8 +131,9 @@ service cloud.firestore {
         allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
+      // Was readable by anyone (including plain-text cashier PINs); owner/admin only now.
       match /settings/{docId} {
-        allow read: if true;
+        allow read: if isOwner(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
       match /deliveryChallans/{docId} {
@@ -156,6 +186,27 @@ service cloud.firestore {
       }
       // AI learning statistics: built only by the backend (Admin SDK).
       match /aiStats/{docId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if false;
+      }
+
+      // POS shifts: written only by the backend (one open shift per cashier
+      // and per counter is enforced there). Cashiers read their own.
+      match /posShifts/{shiftId} {
+        allow read: if isOwner(userId) || isAdmin()
+          || (isCashierOf(userId) && resource.data.cashierId == isOwnCashierId());
+        allow write: if false;
+      }
+      match /posShiftLocks/{lockId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if false;
+      }
+      // PIN hashes and lockout state: backend only, never readable by clients.
+      match /cashierSecrets/{cashierId} {
+        allow read, write: if false;
+      }
+      // Login attempts and session revocations.
+      match /securityLogs/{logId} {
         allow read: if isOwner(userId) || isAdmin();
         allow write: if false;
       }

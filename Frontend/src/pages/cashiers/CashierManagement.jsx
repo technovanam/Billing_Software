@@ -22,6 +22,7 @@ import {
   Lock,
 } from "lucide-react";
 import { useCashiers } from "../../hooks/useFirestore";
+import PosDevicesPanel from "../../components/pos/PosDevicesPanel";
 import { useToast } from "../../context/ToastContext";
 import Pagination from "../../components/Pagination";
 
@@ -67,7 +68,7 @@ const CashierFormModal = ({
   const [counter, setCounter] = useState(cashierToEdit?.counter || "");
   const [isCustomCounter, setIsCustomCounter] = useState(false);
   const [customCounterName, setCustomCounterName] = useState("");
-  const [pin, setPin] = useState(cashierToEdit?.pin || "");
+  const [pin, setPin] = useState("");
   const [status, setStatus] = useState(cashierToEdit?.status || "Active");
   const [showPin, setShowPin] = useState(false);
   const [formError, setFormError] = useState("");
@@ -82,8 +83,8 @@ const CashierFormModal = ({
       return;
     }
 
-    // 2. 4-digit PIN validation
-    if (!/^\d{4}$/.test(pin.trim())) {
+    // 2. 4-digit PIN validation (new cashiers need one; blank on edit keeps the current PIN)
+    if ((pin.trim() || !cashierToEdit) && !/^\d{4}$/.test(pin.trim())) {
       setFormError("PIN / Passcode must be exactly 4 numeric digits (e.g. 1234).");
       return;
     }
@@ -105,7 +106,7 @@ const CashierFormModal = ({
       phone: phone ? `+91 ${phone}` : "",
       email: email.trim(),
       counter: assignedCounter,
-      pin: pin.trim(),
+      ...(pin.trim() ? { pin: pin.trim() } : {}),
       status,
     });
   };
@@ -280,14 +281,14 @@ const CashierFormModal = ({
           {/* 4-Digit Terminal PIN */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-              4-Digit PIN / Passcode *
+              {cashierToEdit ? "New 4-Digit PIN (leave blank to keep the current one)" : "4-Digit PIN / Passcode *"}
             </label>
             <div className="relative">
               <input
                 type={showPin ? "text" : "password"}
                 name="cashier_pin_field"
                 autoComplete="new-password"
-                required
+                required={!cashierToEdit}
                 inputMode="numeric"
                 pattern="[0-9]{4}"
                 maxLength={4}
@@ -381,6 +382,7 @@ export default function CashierManagement() {
     editCashier,
     removeCashier,
     toggleStatus,
+    pinStatus,
   } = useCashiers();
 
   const { success: toastSuccess, error: toastError } = useToast();
@@ -390,7 +392,6 @@ export default function CashierManagement() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [cashierToEdit, setCashierToEdit] = useState(null);
   const [cashierToDelete, setCashierToDelete] = useState(null);
-  const [revealedPins, setRevealedPins] = useState({});
 
   // Stats calculation
   const stats = useMemo(() => {
@@ -465,10 +466,6 @@ export default function CashierManagement() {
     }
   };
 
-  // Toggle PIN visibility
-  const togglePin = (id) => {
-    setRevealedPins((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
 
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
@@ -478,7 +475,7 @@ export default function CashierManagement() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Cashier Management</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Configure counter staff credentials, terminal IDs, PINs, and assigned counters
+            Configure counter staff, PINs, assigned counters and the devices they can sign in on
           </p>
         </div>
 
@@ -624,7 +621,7 @@ export default function CashierManagement() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredCashiers.map((cashier) => {
-                  const isPinShown = revealedPins[cashier.id];
+                  const access = pinStatus[(cashier.cashierId || "").toUpperCase()];
 
                   return (
                     <tr key={cashier.id} className="transition-colors hover:bg-gray-50">
@@ -662,18 +659,18 @@ export default function CashierManagement() {
                         {cashier.email && <p className="text-[10px] text-slate-400">{cashier.email}</p>}
                       </td>
 
-                      {/* Terminal PIN */}
-                      <td className="px-6 py-4 tabular-nums font-bold text-slate-800">
-                        <div className="flex items-center gap-2">
-                          <span>{isPinShown ? cashier.pin || "1234" : "••••"}</span>
-                          <button
-                            onClick={() => togglePin(cashier.id)}
-                            className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
-                            title={isPinShown ? "Hide PIN" : "Show PIN"}
-                          >
-                            {isPinShown ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                          </button>
-                        </div>
+                      {/* Terminal PIN: status only; PINs are stored hashed on the server */}
+                      <td className="px-6 py-4 text-xs" data-testid="pin-status">
+                        {!access ? (
+                          <span className="text-slate-400">—</span>
+                        ) : access.lockedUntil ? (
+                          <span className="font-semibold text-red-700">Locked until {new Date(access.lockedUntil).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>
+                        ) : access.pinSet ? (
+                          <span className="font-semibold text-emerald-700">PIN set</span>
+                        ) : (
+                          <span className="font-semibold text-amber-700">PIN not set: cannot sign in</span>
+                        )}
+                        {access?.lastLoginAt && <p className="text-[10px] text-slate-400">Last login {new Date(access.lastLoginAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</p>}
                       </td>
 
                       {/* Status */}
@@ -729,6 +726,7 @@ export default function CashierManagement() {
         </div>
       </div>
 
+      <PosDevicesPanel counters={existingCounters} />
       </main>
       </div>
 

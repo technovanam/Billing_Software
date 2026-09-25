@@ -2,9 +2,9 @@
 const express = require('express');
 const admin = require('firebase-admin');
 const { z } = require('zod');
-const { requireVerifiedUser } = require('./auth');
+const { createRequireVerifiedUser } = require('./auth');
 const { ParseRequestSchema } = require('./schema');
-const { resolveRole, canUseContext, canRunIntent, canManageAliases } = require('./permissions');
+const { canUseContext, canRunIntent, canManageAliases } = require('./permissions');
 const { normalizeText, DEFAULT_THRESHOLD } = require('./matcher');
 const { createCatalogCache } = require('./catalogCache');
 const { createUserRateLimiter } = require('./rateLimit');
@@ -72,6 +72,7 @@ function createAiRouter({
   learning = null,
   rateLimiter = createUserRateLimiter({ limit: Number(process.env.AI_RATE_LIMIT_PER_MIN) || 20 }),
   logger = aiLog,
+  auth = undefined,
 } = {}) {
   const router = express.Router();
   const threshold = Number(process.env.AI_MATCH_THRESHOLD) || DEFAULT_THRESHOLD;
@@ -79,7 +80,7 @@ function createAiRouter({
   const learn = learning || createLearning({ catalogCache });
   router.learning = learn;
 
-  router.use(requireVerifiedUser);
+  router.use(createRequireVerifiedUser(auth));
 
   function limit(req, res, next) {
     const { allowed, retryAfterSec } = rateLimiter.check(req.aiUser.uid);
@@ -94,8 +95,8 @@ function createAiRouter({
     if (!body.success) return res.status(400).json({ error: 'Invalid command request.' });
     const { text, context, currentDraft, sessionId } = body.data;
     const user = req.aiUser;
-    const role = resolveRole({ email: user.email, context });
-    const businessId = user.uid;
+    const { role } = user;
+    const businessId = user.businessUid;
 
     if (!canUseContext(role, context)) {
       return res.status(403).json({ error: 'Your role cannot create bills here.' });
@@ -162,8 +163,8 @@ function createAiRouter({
     const { productId, source, commandLogId, customerId } = body.data;
     const alias = normalizeText(body.data.alias);
     const user = req.aiUser;
-    const role = resolveRole({ email: user.email, context: source });
-    const businessId = user.uid;
+    const { role } = user;
+    const businessId = user.businessUid;
     if (!canUseContext(role, source)) return res.status(403).json({ error: 'Your role cannot save aliases.' });
     if (alias.length < 2) return res.status(400).json({ error: 'Alias is too short.' });
 
@@ -206,9 +207,9 @@ function createAiRouter({
     const body = AliasRemoveSchema.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: 'Invalid alias.' });
     const user = req.aiUser;
-    const role = resolveRole({ email: user.email, context: 'products' });
+    const { role } = user;
     if (!canManageAliases(role)) return res.status(403).json({ error: 'Only the business owner can remove aliases.' });
-    const businessId = user.uid;
+    const businessId = user.businessUid;
     const alias = normalizeText(body.data.alias);
     const productRef = businessCollections.products(businessId).doc(body.data.productId);
     try {
@@ -228,10 +229,10 @@ function createAiRouter({
     const body = LogUpdateSchema.safeParse(req.body);
     if (!body.success) return res.status(400).json({ error: 'Invalid log update.' });
     const user = req.aiUser;
-    const role = resolveRole({ email: user.email, context: body.data.context });
+    const { role } = user;
     if (!canUseContext(role, body.data.context)) return res.status(403).json({ error: 'Not allowed.' });
     try {
-      const updated = await logger.updateCommandLogs({ businessId: user.uid, userId: user.uid, ...body.data });
+      const updated = await logger.updateCommandLogs({ businessId: user.businessUid, userId: user.uid, ...body.data });
       return res.json({ ok: true, updated });
     } catch (err) {
       console.error('AI log update failed:', err);

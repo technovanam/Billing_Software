@@ -12,6 +12,10 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
 import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
+import { cashierLogin } from "../../services/posService";
+
+// Cashier PINs are never cached in the browser.
+const stripPins = (list) => list.map(({ pin, ...c }) => c);
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -61,8 +65,9 @@ export default function SignIn() {
     setLoading(true);
 
     try {
-      // 1. Check if user is logging into Super Admin Portal
-      if (trimmedEmail.toLowerCase() === "admin@technovanam.com" || password === "SuperAdmin@2026!") {
+      // 1. Super Admin Portal — identified by email only; Firebase verifies the password.
+      //    No password literals are compared here.
+      if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
         try {
           const res = await superAdminLogin(trimmedEmail, password, true);
           if (res?.require2FA) {
@@ -73,153 +78,26 @@ export default function SignIn() {
           setLoading(false);
           return;
         } catch (saErr) {
-          if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
-            toastError(saErr.message || "Failed to sign into Super Admin Portal.");
-            setLoading(false);
-            return;
-          }
-          console.warn("Super admin auth attempt error:", saErr);
-        }
-      }
-
-      // 2. Check if the entered identifier matches any registered Cashier
-      let allCashiers = [];
-      try {
-        const rawGlobal = localStorage.getItem("registered_cashiers_list");
-        if (rawGlobal) allCashiers = JSON.parse(rawGlobal);
-        if (!allCashiers.length) {
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith("store_cashiers_")) {
-              const list = JSON.parse(localStorage.getItem(key) || "[]");
-              if (Array.isArray(list)) allCashiers.push(...list);
-            }
-          }
-        }
-      } catch (cacheErr) {
-        console.warn("Cashier cache lookup warning:", cacheErr);
-      }
-
-      const matchedCashier = allCashiers.find(
-        (c) =>
-          (c.email && c.email.trim().toLowerCase() === trimmedEmail.toLowerCase()) ||
-          (c.cashierId && c.cashierId.trim().toUpperCase() === trimmedEmail.toUpperCase()) ||
-          (c.phone && trimmedEmail.length >= 10 && c.phone.replace(/\D/g, "") === trimmedEmail.replace(/\D/g, ""))
-      );
-
-      let matchedOwnerUid = "";
-      if (matchedCashier) {
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key && key.startsWith("store_cashiers_")) {
-            try {
-              const list = JSON.parse(localStorage.getItem(key) || "[]");
-              if (
-                Array.isArray(list) &&
-                list.some(
-                  (c) =>
-                    (c.cashierId && c.cashierId === matchedCashier.cashierId) ||
-                    (c.email && c.email === matchedCashier.email)
-                )
-              ) {
-                matchedOwnerUid = key.replace("store_cashiers_", "");
-                break;
-              }
-            } catch (_) {}
-          }
-        }
-
-        // Verify 4-digit PIN and redirect to POS
-        if (matchedCashier.pin && matchedCashier.pin.trim() !== password.trim()) {
-          toastError(`Incorrect 4-digit PIN for Cashier "${matchedCashier.name || matchedCashier.cashierId}".`);
+          toastError(saErr.message || "Failed to sign into Super Admin Portal.");
           setLoading(false);
           return;
         }
+      }
 
-        if ((matchedCashier.status || "Active") === "Inactive") {
-          toastError(`Cashier account "${matchedCashier.cashierId}" has been deactivated. Please contact Admin.`);
-          setLoading(false);
-          return;
+      // 2. Cashier ID (no "@"): PIN is checked by the backend on a registered POS device.
+      if (!trimmedEmail.includes("@")) {
+        try {
+          const session = await cashierLogin({ cashierId: trimmedEmail, pin: password.trim() });
+          toastSuccess(`Welcome ${session.cashierName} (${session.cashierId})! Opening POS terminal...`);
+          navigate("/pos", { replace: true });
+        } catch (cashierErr) {
+          toastError(cashierErr.message || "Cashier sign in failed.");
         }
-
-        const cashierSession = {
-          cashierId: matchedCashier.cashierId || "CSH-001",
-          cashierName: matchedCashier.name || "Cashier",
-          counterNumber: matchedCashier.counter || "Counter 01",
-          shiftStartTime: new Date().toISOString(),
-          ownerUid: matchedOwnerUid || matchedCashier.ownerUid || "",
-        };
-        localStorage.setItem("pos_cashier_session", JSON.stringify(cashierSession));
-
-        toastSuccess(`Welcome ${cashierSession.cashierName} (${cashierSession.cashierId})! Opening POS terminal...`);
-        navigate("/pos", { replace: true });
         setLoading(false);
         return;
       }
 
-      // 3. Check for Default Admin Credentials
-      const isDefaultAdmin =
-        (trimmedEmail.toLowerCase() === "admin@technovanam.com" ||
-          trimmedEmail.toLowerCase() === "admin@gmail.com" ||
-          trimmedEmail.toLowerCase() === "admin") &&
-        (password === "admin123" || password === "admin" || password === "password");
-
-      if (isDefaultAdmin) {
-        await setPersistence(auth, browserSessionPersistence);
-        let fbUser = null;
-        try {
-          const res = await signInWithEmailAndPassword(auth, "admin@technovanam.com", "admin123");
-          fbUser = res.user;
-        } catch (adminFbErr) {
-          try {
-            const res2 = await signInWithEmailAndPassword(auth, "admin@gmail.com", "admin123");
-            fbUser = res2.user;
-          } catch (_) {
-            try {
-              const { createUserWithEmailAndPassword } = await import("firebase/auth");
-              const res3 = await createUserWithEmailAndPassword(auth, "admin@technovanam.com", "admin123");
-              fbUser = res3.user;
-            } catch (createErr) {
-              console.warn("Firebase default admin creation note:", createErr);
-            }
-          }
-        }
-
-        const effectiveUid = fbUser?.uid || "admin_default_master";
-        const defaultAdminUser = {
-          uid: effectiveUid,
-          email: "admin@technovanam.com",
-          displayName: "Admin Master",
-          emailVerified: true,
-        };
-
-        localStorage.setItem("admin_auth_user", JSON.stringify(defaultAdminUser));
-        localStorage.removeItem("pos_cashier_session");
-
-        // Sync registered cashiers from Firestore or cache
-        try {
-          const appSnap = await getDoc(doc(db, "users", effectiveUid, "settings", "app"));
-          if (appSnap.exists()) {
-            const raw = appSnap.data()?.cashiers?.value || appSnap.data()?.cashiers;
-            if (Array.isArray(raw)) {
-              localStorage.setItem("registered_cashiers_list", JSON.stringify(raw));
-              localStorage.setItem(`store_cashiers_${effectiveUid}`, JSON.stringify(raw));
-            }
-          }
-        } catch (syncErr) {
-          console.warn("Default admin cashier sync warning:", syncErr);
-        }
-
-        if (typeof setUser === "function") {
-          setUser(fbUser || defaultAdminUser);
-        }
-        toastSuccess("Welcome Admin! Signed in successfully.");
-        navigate("/dashboard", { replace: true });
-        setLoading(false);
-        return;
-      }
-
-      // 4. Authenticate with Firebase for other custom admin / warehouse accounts
+      // 3. Standard Firebase login for owner / warehouse accounts.
       try {
         await setPersistence(auth, browserSessionPersistence);
         const userCred = await signInWithEmailAndPassword(auth, trimmedEmail, password);
@@ -234,8 +112,8 @@ export default function SignIn() {
             if (appSnap.exists()) {
               const raw = appSnap.data()?.cashiers?.value || appSnap.data()?.cashiers;
               if (Array.isArray(raw)) {
-                localStorage.setItem("registered_cashiers_list", JSON.stringify(raw));
-                localStorage.setItem(`store_cashiers_${loggedUser.uid}`, JSON.stringify(raw));
+                localStorage.setItem("registered_cashiers_list", JSON.stringify(stripPins(raw)));
+                localStorage.setItem(`store_cashiers_${loggedUser.uid}`, JSON.stringify(stripPins(raw)));
               }
             }
           } catch (syncErr) {
@@ -243,12 +121,8 @@ export default function SignIn() {
           }
         }
 
-        const adminObj = {
-          uid: loggedUser.uid,
-          email: loggedUser.email,
-          displayName: loggedUser.displayName || (isWarehouseUser ? "Warehouse User" : "Admin"),
-        };
-        localStorage.setItem("admin_auth_user", JSON.stringify(adminObj));
+        // AuthContext onAuthStateChanged picks up the real Firebase user automatically.
+        // No localStorage auth writes — Firebase SDK manages session persistence.
         localStorage.removeItem("pos_cashier_session");
         if (typeof setUser === "function") {
           setUser(loggedUser);

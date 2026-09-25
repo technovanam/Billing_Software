@@ -119,11 +119,11 @@ export function CompanyProfileProvider({ children }) {
       localStorage.removeItem(COMPANY_PROFILE_KEY);
       return;
     }
-    loadProfile(user.uid, user.email || "");
+    loadProfile(user.businessUid || user.uid, user.email || "");
   }, [user?.uid, user?.email, loadProfile]);
 
   const refetch = useCallback(() => {
-    if (user) loadProfile(user.uid, user.email || "");
+    if (user) loadProfile(user.businessUid || user.uid, user.email || "");
   }, [user, loadProfile]);
 
   const value = React.useMemo(

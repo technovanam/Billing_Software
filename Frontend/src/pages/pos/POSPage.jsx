@@ -33,11 +33,13 @@ import {
   PauseCircle,
   PlayCircle,
   Bookmark,
+  WifiOff,
 } from "lucide-react";
 import { useProducts, useInvoices, useCustomers } from "../../hooks/useFirestore";
 import { calculatePosCartSummary, buildPosCartItem } from "../../utils/invoiceTotals";
 import AICommandBar from "../../components/ai-command/AICommandBar";
 import useAICommand from "../../components/ai-command/useAICommand";
+import { enqueueBill, getPendingBills, logSyncError } from "../../services/posBillQueue";
 
 // F2 already focuses POS search, so the AI bar uses Ctrl+K (Cmd+K on Mac).
 const isCtrlK = (e) => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k";
@@ -50,7 +52,7 @@ import ThermalReceipt from "./ThermalReceipt";
 
 export default function POSPage() {
   const navigate = useNavigate();
-  const { user } = useContext(AuthContext);
+  const { user, signOut } = useContext(AuthContext);
   const { companyProfile } = useCompanyProfile();
   const { products, loading: productsLoading, addProduct } = useProducts();
   const { addInvoice, allInvoices } = useInvoices();
@@ -84,6 +86,9 @@ export default function POSPage() {
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [isInvoiceSaved, setIsInvoiceSaved] = useState(false);
   const [isSavingInvoice, setIsSavingInvoice] = useState(false);
+  // "idle" | "saving" | "saved" | "pending" | "failed"
+  const [billSyncStatus, setBillSyncStatus] = useState("idle");
+  const [pendingBillLocalId, setPendingBillLocalId] = useState(null);
   const [isProcessingRazorpay, setIsProcessingRazorpay] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [showCatalogDrawer, setShowCatalogDrawer] = useState(false);
@@ -242,7 +247,7 @@ export default function POSPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [cart.length]);
 
-  // Generate Unique Bill Number
+  // Generate Unique Bill Number (pending bills get a temporary PENDING- prefix)
   const billNumber = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear();
@@ -251,6 +256,20 @@ export default function POSPage() {
     const count = String((allInvoices?.length || 0) + 1).padStart(4, "0");
     return `${year}${month}${day}-${count}`;
   }, [allInvoices?.length]);
+
+  // Live pending bill count from queue (refreshes on event, online, or every 5 s)
+  const [pendingCount, setPendingCount] = useState(() => getPendingBills().length);
+  useEffect(() => {
+    const update = () => setPendingCount(getPendingBills().length);
+    const id = setInterval(update, 5000);
+    window.addEventListener("pos_queue_updated", update);
+    window.addEventListener("online", update);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("pos_queue_updated", update);
+      window.removeEventListener("online", update);
+    };
+  }, []);
 
   // Read cashier shift session from localStorage
   const cashierSession = useMemo(() => {
@@ -262,12 +281,18 @@ export default function POSPage() {
     }
   }, []);
 
-  const cashierId = cashierSession?.cashierId || "CSH-001";
+  // A signed-in cashier bills under the ID in their token (Firestore rules check it).
+  const cashierId = (user?.role === "cashier" ? user.cashierId : cashierSession?.cashierId) || "CSH-001";
 
-  const handleEndShift = () => {
+  const handleEndShift = async () => {
     localStorage.removeItem("pos_cashier_session");
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
+    }
+    if (user?.role === "cashier") {
+      await signOut();
+      navigate("/pos/login", { replace: true });
+      return;
     }
     navigate("/signin", { replace: true });
   };
@@ -684,14 +709,19 @@ export default function POSPage() {
   const handleSaveInvoice = async () => {
     if (cart.length === 0) return;
     setIsSavingInvoice(true);
+    setBillSyncStatus("saving");
     try {
       const isOnline = paymentMode === "Online";
       const finalAmount = isOnline ? cartSummary.exactTotalAmount : cartSummary.roundedTotalAmount;
       const finalCustomerName = customerName.trim() || "Walk-in Counter Customer";
       const finalCustomerPhone = customerPhone.trim() || "-";
 
+      const localId = `inv_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
+
       const payload = {
-        invoiceNumber: billNumber,
+        localId,
+        // Invoice number is PENDING until Firestore assigns the real sequential one.
+        invoiceNumber: `PENDING-${localId.slice(-8)}`,
         invoiceDate: new Date().toISOString().split("T")[0],
         client: {
           name: finalCustomerName,
@@ -701,7 +731,6 @@ export default function POSPage() {
         customerName: finalCustomerName,
         customerPhone: finalCustomerPhone,
         items: cart.map((item) => ({
-          // Generated "prod_" ids belong to custom lines, not catalogue products.
           productId: item.id && !String(item.id).startsWith("prod_") ? item.id : null,
           name: item.name,
           description: item.name,
@@ -725,10 +754,30 @@ export default function POSPage() {
         source: "POS Counter Terminal",
       };
 
-      const res = await addInvoice(payload);
-      if (res?.success) ai.markSaved(res.id);
+      let saveResult = null;
+      try {
+        saveResult = await addInvoice(payload);
+        if (!saveResult?.success) throw new Error("Firestore did not confirm the save.");
+        if (saveResult.id) ai.markSaved(saveResult.id);
+        setBillSyncStatus("saved");
+        toastSuccess("Bill saved to cloud ✓");
+        setPendingCount(getPendingBills().length);
+      } catch (firestoreErr) {
+        // Firestore unavailable — queue locally and inform the cashier clearly.
+        const queuedLocalId = enqueueBill(payload);
+        setPendingBillLocalId(queuedLocalId);
+        setBillSyncStatus("pending");
+        setPendingCount(getPendingBills().length);
+        // Log for owner visibility.
+        logSyncError(user?.uid || user?.businessUid, { localId: queuedLocalId, payload, retries: 0, queuedAt: new Date().toISOString() }, firestoreErr);
+        // Do NOT show a success toast — show inline status only.
+        console.warn("POS bill queued locally (Firestore unavailable):", firestoreErr);
+      }
 
-      // Auto-register new customer in customer directory if name/phone provided and not already registered
+      // Allow printing regardless of sync status (customer is waiting).
+      setIsInvoiceSaved(true);
+
+      // Auto-register new customer
       if (customerName.trim() && !selectedCustomerId && addCustomer) {
         try {
           await addCustomer({
@@ -742,14 +791,10 @@ export default function POSPage() {
           console.warn("Auto customer registry info:", custErr);
         }
       }
-
-      setIsInvoiceSaved(true);
-      toastSuccess("Bill saved successfully!");
     } catch (err) {
-      console.error("Error saving POS invoice:", err);
-      // Fallback save in state so cashier process is never blocked
-      setIsInvoiceSaved(true);
-      toastSuccess("Bill recorded successfully!");
+      console.error("Unexpected error saving POS invoice:", err);
+      setBillSyncStatus("failed");
+      toastError("Could not save bill. Please try again.");
     } finally {
       setIsSavingInvoice(false);
     }
@@ -768,6 +813,8 @@ export default function POSPage() {
     setIsInvoiceSaved(false);
     setIsReceiptOpen(false);
     setSearchTerm("");
+    setBillSyncStatus("idle");
+    setPendingBillLocalId(null);
     toastSuccess("POS workstation ready for next customer!");
     setTimeout(() => {
       searchInputRef.current?.focus();
@@ -869,6 +916,17 @@ export default function POSPage() {
               Cashier: <strong className="font-semibold text-gray-900">{cashierId}</strong>
             </span>
           </div>
+
+          {/* Pending Unsynced Bills Warning */}
+          {pendingCount > 0 && (
+            <div
+              className="flex items-center gap-1.5 rounded-lg border border-orange-400 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-800 shadow-sm animate-pulse"
+              title="These bills are saved on this device but not yet synced to the cloud. They will sync automatically when connection is restored."
+            >
+              <WifiOff className="h-4 w-4 text-orange-600" />
+              <span>{pendingCount} unsynced</span>
+            </div>
+          )}
 
           {/* Resume Bills (Held Bills) Counter Button */}
           <button
@@ -1442,6 +1500,29 @@ export default function POSPage() {
             )}
           </div>
 
+          {/* Sync Status Banner */}
+          {billSyncStatus === "pending" && (
+            <div className="mx-4 mb-2 rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 flex items-center justify-between shadow-xs">
+              <span className="flex items-center gap-1.5">
+                <WifiOff className="h-4 w-4 text-amber-600 animate-pulse" />
+                Saved on this device, not yet synced
+              </span>
+              <span className="text-[10px] text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded">Queued</span>
+            </div>
+          )}
+          {billSyncStatus === "saved" && (
+            <div className="mx-4 mb-2 rounded-lg border border-emerald-300 bg-emerald-50 p-2.5 text-xs font-semibold text-emerald-800 flex items-center gap-1.5 shadow-xs">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              <span>Saved to cloud ✓</span>
+            </div>
+          )}
+          {billSyncStatus === "failed" && (
+            <div className="mx-4 mb-2 rounded-lg border border-red-300 bg-red-50 p-2.5 text-xs font-semibold text-red-800 flex items-center gap-1.5 shadow-xs">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+              <span>Save failed — check connection and retry</span>
+            </div>
+          )}
+
           {/* 6. Footer: Pause Bill & Generate / Print Bill */}
           <div className="p-4 border-t border-slate-200 bg-white shrink-0 flex items-center gap-3">
             {/* Pause / Hold Bill Button */}
@@ -1629,6 +1710,7 @@ export default function POSPage() {
           onResetForNextCustomer={resetForNextCustomer}
           isSaved={isInvoiceSaved}
           saving={isSavingInvoice}
+          syncStatus={billSyncStatus}
         />
       )}
 

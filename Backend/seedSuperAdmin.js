@@ -9,7 +9,10 @@ const auth = admin.auth();
 
 async function seedSuperAdmin() {
   const email = "admin@technovanam.com";
-  const password = "SuperAdmin@2026!";
+  const password = process.env.SUPER_ADMIN_SEED_PASSWORD;
+  if (!password) {
+    throw new Error("Set SUPER_ADMIN_SEED_PASSWORD environment variable before running this seed script.");
+  }
   let uid = "";
 
   try {

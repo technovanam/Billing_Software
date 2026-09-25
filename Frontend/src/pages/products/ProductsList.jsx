@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, memo, useCallback } from "react";
 import PropTypes from 'prop-types';
-import { Plus, Search, Eye, Edit, Trash2, X, History, ArrowLeft, ArrowRight } from "lucide-react";
+import { Plus, Search, Eye, Edit, X, History, ArrowLeft, ArrowRight, Archive, RotateCcw } from "lucide-react";
 import Pagination from "../../components/Pagination";
 import { useProducts } from "../../hooks/useFirestore";
 import { AuthContext } from "../../context/AuthContext";
@@ -529,16 +529,24 @@ ProductViewModal.propTypes = {
   onClose: PropTypes.func.isRequired,
 };
 
-const DeleteConfirmationModal = ({ onClose, onConfirm, productName }) => {
+// Products are deactivated, not deleted: old bills keep showing them.
+const DeleteConfirmationModal = ({ onClose, onConfirm, productName, isActive = true }) => {
   return (
     <ModalWrapper onClose={onClose}>
       <div className="p-6 text-center">
         <h2 className="text-lg font-bold text-gray-900 mb-2">
-          Confirm Deletion
+          {isActive ? "Deactivate product?" : "Reactivate product?"}
         </h2>
         <p className="text-sm text-gray-600 mb-6">
-          Are you sure you want to delete <strong>{productName}</strong>? This
-          action cannot be undone.
+          {isActive ? (
+            <>
+              <strong>{productName}</strong> will be hidden from invoices, POS, the scanner and other pickers. Existing bills keep it. You can reactivate it at any time.
+            </>
+          ) : (
+            <>
+              <strong>{productName}</strong> will be available for billing again.
+            </>
+          )}
         </p>
         <div className="flex justify-center gap-4">
           <button
@@ -551,9 +559,9 @@ const DeleteConfirmationModal = ({ onClose, onConfirm, productName }) => {
           <button
             type="button"
             onClick={onConfirm}
-            className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+            className={`flex-1 px-4 py-2 text-white rounded-lg text-sm font-medium transition-colors ${isActive ? "bg-red-600 hover:bg-red-700" : "bg-emerald-600 hover:bg-emerald-700"}`}
           >
-            Delete
+            {isActive ? "Deactivate" : "Reactivate"}
           </button>
         </div>
       </div>
@@ -565,6 +573,7 @@ DeleteConfirmationModal.propTypes = {
   onClose: PropTypes.func.isRequired,
   onConfirm: PropTypes.func.isRequired,
   productName: PropTypes.string,
+  isActive: PropTypes.bool,
 };
 
 // PERFORMANCE: Memoized ProductRow to prevent unnecessary re-renders
@@ -575,10 +584,15 @@ const ProductRow = memo(({
   onEdit,
   onDelete,
 }) => (
-  <tr className="text-sm transition-colors hover:bg-gray-50">
+  <tr className={`text-sm transition-colors hover:bg-gray-50 ${product.isActive === false ? "opacity-60" : ""}`} data-testid="product-row" data-active={product.isActive === false ? "false" : "true"}>
     <td className="px-6 py-4 font-medium text-gray-900">{serialNumber}</td>
     <td className="px-6 py-4">
-      <div className="font-medium text-gray-900">{product.name}</div>
+      <div className="font-medium text-gray-900">
+        {product.name}
+        {product.isActive === false && (
+          <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-600">Inactive</span>
+        )}
+      </div>
       <div className="mt-1">
         {product.barcode ? (
           <span className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
@@ -611,10 +625,10 @@ const ProductRow = memo(({
         </button>
         <button
           onClick={() => onDelete(product)}
-          className="p-1 text-gray-600 transition-colors hover:text-red-600"
-          title="Delete Product"
+          className={`p-1 text-gray-600 transition-colors ${product.isActive === false ? "hover:text-emerald-600" : "hover:text-red-600"}`}
+          title={product.isActive === false ? "Reactivate Product" : "Deactivate Product"}
         >
-          <Trash2 className="w-4 h-4" />
+          {product.isActive === false ? <RotateCcw className="w-4 h-4" /> : <Archive className="w-4 h-4" />}
         </button>
       </div>
     </td>
@@ -646,6 +660,7 @@ export default function ProductManagement() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
+  const [showInactive, setShowInactive] = useState(false);
 
   // Use products hook
   const {
@@ -656,8 +671,10 @@ export default function ProductManagement() {
     pagination,
     addProduct,
     editProduct,
-    removeProduct
+    deactivateProduct,
+    reactivateProduct
   } = useProducts({
+    includeInactive: showInactive,
     search: searchTerm,
     page: currentPage,
     limit: itemsPerPage,
@@ -819,22 +836,20 @@ export default function ProductManagement() {
     }
   };
 
+  // Deactivate (or reactivate) instead of deleting.
   const confirmDelete = async () => {
     if (modal.data?.id) {
       const productName = modal.data.name;
       const productId = modal.data.id;
-
-      // Optimistic UI: Close modal and show notification immediately
+      const wasActive = modal.data.isActive !== false;
       closeModal();
-
-      // Delete = Red (Error style)
-      showError(`Product "${productName}" deleted successfully!`, "Deleted");
-
-      const result = await removeProduct(productId);
-
-      // Handle failure
+      const result = wasActive ? await deactivateProduct(productId) : await reactivateProduct(productId);
       if (!result.success) {
-        showError(`Failed to delete product: ${result.error}`, "Error");
+        showError(`Failed to ${wasActive ? "deactivate" : "reactivate"} product.`, "Error");
+      } else if (wasActive) {
+        warning(`Product "${productName}" deactivated. It is hidden from billing; old bills keep it.`, "Deactivated");
+      } else {
+        success(`Product "${productName}" is active again.`, "Reactivated");
       }
     }
   };
@@ -929,6 +944,10 @@ export default function ProductManagement() {
               </p>
             </div>
             <div className="flex items-center gap-2 mt-3 sm:mt-0">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} data-testid="show-inactive" />
+                Show inactive
+              </label>
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
@@ -1006,6 +1025,7 @@ export default function ProductManagement() {
               onClose={closeModal}
               onConfirm={confirmDelete}
               productName={modal.data?.name}
+              isActive={modal.data?.isActive !== false}
             />
           )}
         </>

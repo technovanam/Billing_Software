@@ -209,7 +209,9 @@ function applyRanking(result, bonusOf) {
   return { ...result, candidates: ranked };
 }
 
-function matchProduct(spokenName, spokenUnit, products, { threshold = DEFAULT_THRESHOLD, rank = null } = {}) {
+function matchProduct(spokenName, spokenUnit, allProducts, { threshold = DEFAULT_THRESHOLD, rank = null } = {}) {
+  // Deactivated products are never offered (old drafts/bills keep theirs by id).
+  const products = allProducts.filter((p) => !p.inactive);
   const query = normalizeText(spokenName);
   const unit = normalizeUnit(spokenUnit);
   if (!query) return { status: 'unmatched', source: 'none', best: null, candidates: [] };

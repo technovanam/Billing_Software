@@ -1,4 +1,4 @@
-﻿/**
+/**
  * seedDemoUser.js
  * Seeds warehouse demo user using Firebase REST APIs only.
  * NO serviceAccountKey.json required.
@@ -9,8 +9,11 @@ const https = require('https');
 
 const API_KEY    = process.env.VITE_FIREBASE_API_KEY  || 'AIzaSyCPBe8NvcAKWW9vvCvcdiWtmyQ2e0zkyiw';
 const PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || 'billing-software-19d79';
-const DEMO_EMAIL    = 'warehouse@demo.com';
-const DEMO_PASSWORD = 'Warehouse@123';
+const DEMO_EMAIL    = process.env.DEMO_WAREHOUSE_EMAIL || 'wh.demo@technovanam.in';
+const DEMO_PASSWORD = process.env.DEMO_WAREHOUSE_PASSWORD;
+if (!DEMO_PASSWORD) {
+  console.warn("DEMO_WAREHOUSE_PASSWORD not set in environment.");
+}
 
 function httpsPost(hostname, path, body, token) {
   return new Promise((resolve, reject) => {

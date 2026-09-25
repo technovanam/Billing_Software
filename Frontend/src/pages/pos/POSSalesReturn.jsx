@@ -22,6 +22,7 @@ import {
 import { useInvoices } from "../../hooks/useFirestore";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import { useToast } from "../../context/ToastContext";
+import { addShiftRefund } from "../../services/posService";
 
 export default function POSSalesReturn() {
   const { allInvoices, addInvoice } = useInvoices();
@@ -187,11 +188,11 @@ export default function POSSalesReturn() {
       setReturnsHistory(updatedHistory);
       localStorage.setItem("pos_sales_returns_history", JSON.stringify(updatedHistory));
 
-      // Record Credit Note / Return as a negative adjustment transaction in localStorage
-      const activeShifts = JSON.parse(localStorage.getItem("pos_cashier_shifts") || "[]");
-      if (activeShifts.length > 0) {
-        activeShifts[0].refunds = (Number(activeShifts[0].refunds) || 0) + returnSummary.totalRefund;
-        localStorage.setItem("pos_cashier_shifts", JSON.stringify(activeShifts));
+      // Add the refund to the cashier's open shift (Firestore, via the backend).
+      try {
+        await addShiftRefund(returnSummary.totalRefund);
+      } catch (shiftErr) {
+        console.warn("Shift refund not recorded:", shiftErr.message);
       }
 
       setReturnSuccessData(returnRecord);

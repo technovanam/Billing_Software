@@ -313,7 +313,7 @@ src/pages/pos/ThermalReceipt.jsx     -> 80mm thermal receipt layout
 
 **Authentication:** Separate Firebase Auth scope (SuperAdminAuthContext). Only users in the adminUsers Firestore collection with role Super Admin can access. Supports 2FA/MFA via TOTP. Separate 15-minute idle timeout.
 
-**Master Credentials:** admin@technovanam.com / SuperAdmin@2026!
+**Master Credentials:** See `DEMO_LOGINS.md` (or configure via Firebase Console)
 
 **Ghost Mode (Impersonation):** Super Admins can impersonate any business to view their data as if they were the owner. An always-visible ImpersonationBanner warns when a ghost session is active.
 
@@ -831,9 +831,9 @@ cd Backend
 node seedSuperAdmin.js
 ```
 
-This creates the Super Admin account:
+This creates the Super Admin account (configured via SUPER_ADMIN_SEED_PASSWORD environment variable):
 - Email: admin@technovanam.com
-- Password: SuperAdmin@2026!
+- Password: (Defined via environment variable / see DEMO_LOGINS.md)
 - Portal URL: http://localhost:5173/super-admin/login
 
 ---
