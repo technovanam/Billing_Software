@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import PropTypes from "prop-types";
 import { UserCheck, Shield, ChevronDown, Plus, X, Users, RefreshCw } from "lucide-react";
 import axios from "axios";
-import { getAuth } from "firebase/auth";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
 
 const BACKEND = "http://localhost:5000";
 const STORAGE_KEY_OPERATOR = "wh_operatorName";
@@ -70,8 +70,13 @@ export const OperatorProvider = ({ children }) => {
     }
   }, [getAuthHeader]);
 
+  // Staff endpoint requires a Firebase token, so wait until a user is signed in
   useEffect(() => {
-    fetchStaff();
+    const unsubscribe = onAuthStateChanged(getAuth(), (user) => {
+      if (user) fetchStaff();
+      else setStaffList([]);
+    });
+    return unsubscribe;
   }, [fetchStaff]);
 
   const setOperatorName = useCallback((name) => {

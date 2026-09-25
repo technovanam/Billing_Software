@@ -356,7 +356,7 @@ export const useStockIn = () => {
           productBarcode: code,
           productName: pData.name,
           quantity: qty,
-          newQuantity: newGodownQty,
+          newQuantity: newTotalStock,
           godownId: targetGodownId,
         };
       } catch (err) {
@@ -441,7 +441,7 @@ export const useStockOut = () => {
           productBarcode: code,
           productName: pData.name,
           quantity: qty,
-          newQuantity: newGodownQty,
+          newQuantity: newTotalStock,
           godownId: targetGodownId,
         };
       } catch (err) {

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
-import { Eye, EyeOff, ShieldCheck, KeyRound, AlertCircle } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, AlertCircle } from "lucide-react";
 import AuthCollage from "../../../components/AuthCollage";
 
 export default function SuperAdminLogin() {
@@ -63,12 +63,6 @@ export default function SuperAdminLogin() {
     }
   };
 
-  const handleQuickFill = () => {
-    setEmail("admin@technovanam.com");
-    setPassword("SuperAdmin@2026!");
-    setErrorMessage("");
-  };
-
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white">
       {/* Left — Collage (Exact same as Billing Login) */}
@@ -102,21 +96,6 @@ export default function SuperAdminLogin() {
             <p className="text-sm text-gray-500">
               Welcome back, please enter your login details below to access the app.
             </p>
-          </div>
-
-          {/* Quick Demo Fill Pill */}
-          <div className="mb-5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
-            <div className="flex items-center gap-2 text-slate-700 font-medium">
-              <KeyRound className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
-              <span className="font-mono text-[11px] truncate">admin@technovanam.com</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleQuickFill}
-              className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors flex-shrink-0"
-            >
-              Fill Demo
-            </button>
           </div>
 
           {/* Error Alert */}

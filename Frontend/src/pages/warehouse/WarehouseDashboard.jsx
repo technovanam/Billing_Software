@@ -1,5 +1,4 @@
 import React from "react";
-import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import {
   Warehouse, ScanBarcode,
@@ -8,6 +7,9 @@ import {
 } from "lucide-react";
 import { useWarehouseStats, useProducts } from "../../hooks/useWarehouse";
 import { useOperator } from "../../context/OperatorContext";
+import {
+  PageContainer, PageHeader, StatCard, Card, Spinner, btnPrimary, btnSecondary, btnIcon,
+} from "../../components/warehouse/WarehouseUI";
 
 const TYPE_DOT_COLORS = {
   IN:           "bg-green-500",
@@ -40,93 +42,6 @@ function getTimeAgo(date) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short" });
 }
 
-// ─── Stat Card Component (Exact Admin Portal Design) ────────────────────────
-const StatCard = ({
-  title,
-  value,
-  valueLabel,
-  secondaryValue,
-  secondaryValueLabel,
-  subtext,
-  subtextColor = "green",
-  icon,
-  footer,
-  isSecondaryValueRed,
-  onClick,
-}) => (
-  <div
-    onClick={onClick}
-    className={`bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200 ${
-      onClick ? "cursor-pointer" : ""
-    }`}
-  >
-    <div className="flex justify-between items-start mb-2">
-      <h3 className="text-sm font-medium text-gray-600">{title}</h3>
-      <div className="p-1.5 bg-gray-50 rounded-md">{icon}</div>
-    </div>
-    <div className="mt-1">
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <p className="text-xl font-bold text-gray-900">{value}</p>
-          {valueLabel && (
-            <p
-              className={`text-xs mt-0.5 ${
-                valueLabel.includes("In Stock") || valueLabel.includes("Paid") || valueLabel.includes("Healthy")
-                  ? "text-green-600"
-                  : "text-gray-500"
-              }`}
-            >
-              {valueLabel}
-            </p>
-          )}
-        </div>
-        {secondaryValue !== undefined && secondaryValue !== null && (
-          <div className="text-right">
-            <p className={`text-xl font-bold ${isSecondaryValueRed ? "text-red-600" : "text-gray-900"}`}>
-              {secondaryValue}
-            </p>
-            {secondaryValueLabel && (
-              <p className="text-xs mt-0.5 text-gray-500">{secondaryValueLabel}</p>
-            )}
-          </div>
-        )}
-      </div>
-
-      {subtext && (
-        <div className="flex items-center gap-2 mt-2">
-          <span
-            className={`${
-              subtextColor === "blue"
-                ? "bg-blue-600"
-                : subtextColor === "green"
-                ? "bg-green-600"
-                : "bg-orange-600"
-            } text-white px-2 py-0.5 rounded-full font-medium text-xs`}
-          >
-            {subtext}
-          </span>
-        </div>
-      )}
-
-      {footer && <div className="mt-2">{footer}</div>}
-    </div>
-  </div>
-);
-
-StatCard.propTypes = {
-  title: PropTypes.string.isRequired,
-  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-  valueLabel: PropTypes.string,
-  secondaryValue: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-  secondaryValueLabel: PropTypes.string,
-  subtext: PropTypes.string,
-  subtextColor: PropTypes.string,
-  icon: PropTypes.node,
-  footer: PropTypes.node,
-  isSecondaryValueRed: PropTypes.bool,
-  onClick: PropTypes.func,
-};
-
 // ─── Main Warehouse Dashboard ────────────────────────────────────────────────
 export default function WarehouseDashboard() {
   const { stats, loading, refetch } = useWarehouseStats();
@@ -138,61 +53,47 @@ export default function WarehouseDashboard() {
   const totalProds = products.length || stats?.totalProducts || 0;
 
   return (
-    <div className="space-y-6">
-
-
-      {/* ── Admin-Portal-Style Header ── */}
-      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">
-            Welcome back, {operatorName || "Admin"}!
-          </h1>
-          <p className="text-sm text-gray-600 mt-1">
-            Here's what's happening with your inventory today.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => navigate("/warehouse/damaged")}
-            className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors shadow-xs"
-          >
-            <Trash2 className="w-4 h-4 text-red-600" />
-            Damaged Stock
-          </button>
-          <button
-            onClick={() => navigate("/warehouse/products")}
-            className="bg-white border border-gray-300 text-gray-700 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors shadow-xs"
-          >
-            <Package className="w-4 h-4 text-blue-600" />
-            Manage Products
-          </button>
-          <button
-            onClick={() => navigate("/warehouse/scan")}
-            className="bg-blue-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-xs"
-          >
-            <ScanBarcode className="w-4 h-4" />
-            Scan &amp; Stock In
-          </button>
-          <button
-            onClick={() => {
-              refetch();
-              refetchProducts();
-            }}
-            className="p-2 border border-gray-200 bg-white rounded-lg hover:bg-gray-50 text-gray-500 transition-colors shadow-xs"
-            title="Refresh Dashboard"
-          >
-            <RefreshCw className="w-4 h-4" />
-          </button>
-        </div>
-      </header>
+    <PageContainer>
+      <PageHeader
+        title={`Welcome back, ${operatorName || "Admin"}!`}
+        subtitle="Here's what's happening with your inventory today."
+        actions={
+          <>
+            <button
+              onClick={() => navigate("/warehouse/damaged")}
+              className="inline-flex items-center justify-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              <Trash2 className="w-4 h-4 text-red-600" />
+              Damaged Stock
+            </button>
+            <button onClick={() => navigate("/warehouse/products")} className={btnSecondary}>
+              <Package className="w-4 h-4 text-blue-600" />
+              Manage Products
+            </button>
+            <button onClick={() => navigate("/warehouse/scan")} className={btnPrimary}>
+              <ScanBarcode className="w-4 h-4" />
+              Scan &amp; Stock In
+            </button>
+            <button
+              onClick={() => {
+                refetch();
+                refetchProducts();
+              }}
+              className={btnIcon}
+              title="Refresh Dashboard"
+              aria-label="Refresh Dashboard"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </>
+        }
+      />
 
       {/* ── Stats Grid (5-Card Layout) ── */}
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        </div>
+        <Spinner />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-6">
           <StatCard
             title="Total Products"
             value={totalProds}
@@ -256,10 +157,10 @@ export default function WarehouseDashboard() {
       )}
 
       {/* ── Quick Navigation & Operations Shortcuts ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 min-[420px]:grid-cols-2 lg:grid-cols-4 gap-4">
         <button
           onClick={() => navigate("/warehouse/products")}
-          className="p-4 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:shadow-xs transition-all text-left group"
+          className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all text-left group"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="w-9 h-9 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
@@ -273,7 +174,7 @@ export default function WarehouseDashboard() {
 
         <button
           onClick={() => navigate("/warehouse/scan")}
-          className="p-4 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:shadow-xs transition-all text-left group"
+          className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all text-left group"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
@@ -287,7 +188,7 @@ export default function WarehouseDashboard() {
 
         <button
           onClick={() => navigate("/warehouse/reports")}
-          className="p-4 rounded-xl border border-gray-200 bg-white hover:border-blue-300 hover:shadow-xs transition-all text-left group"
+          className="p-4 rounded-lg border border-gray-200 bg-white shadow-sm hover:shadow-md hover:border-blue-300 transition-all text-left group"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
@@ -301,7 +202,7 @@ export default function WarehouseDashboard() {
 
         <button
           onClick={() => navigate("/warehouse/damaged")}
-          className="p-4 rounded-xl border border-red-200 bg-red-50/40 hover:border-red-400 hover:bg-red-50 hover:shadow-xs transition-all text-left group"
+          className="p-4 rounded-lg border border-red-200 bg-red-50/40 shadow-sm hover:shadow-md hover:border-red-400 transition-all text-left group"
         >
           <div className="flex items-center justify-between mb-2">
             <div className="w-9 h-9 rounded-lg bg-red-100 text-red-600 flex items-center justify-center font-bold">
@@ -315,18 +216,18 @@ export default function WarehouseDashboard() {
       </div>
 
       {/* ── Recent Activity ── */}
-      <div className="bg-white p-4 lg:p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+      <Card
+        title="Recent Activity"
+        subtitle="Latest updates and notifications"
+        actions={
           <button
             onClick={() => navigate("/warehouse/movements")}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-800"
+            className="text-sm font-medium text-blue-600 hover:text-blue-800"
           >
             View All Movements →
           </button>
-        </div>
-        <p className="text-sm text-gray-500 mb-4">Latest updates and notifications</p>
-
+        }
+      >
         <ul className="space-y-2">
           {!stats?.recentMovements?.length ? (
             <li className="flex items-start gap-3 p-3 rounded-lg">
@@ -365,7 +266,7 @@ export default function WarehouseDashboard() {
             })
           )}
         </ul>
-      </div>
-    </div>
+      </Card>
+    </PageContainer>
   );
 }

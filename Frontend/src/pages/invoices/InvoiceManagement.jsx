@@ -507,6 +507,12 @@ const InvoicePreview = ({
       };
     })();
 
+  const isPaid =
+    (previewData?.status || "").toLowerCase() === "paid" ||
+    (previewData?.paymentStatus || "").toUpperCase() === "PAID";
+  const paidAmount = Number(previewData?.paidAmount || 0);
+  const balanceDue = Math.max(0, Number(previewCalcs?.total || 0) - paidAmount);
+
   const convertToWords = (amount) => {
     const ones = [
       "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",

@@ -6,6 +6,7 @@ import { useProducts } from "../../hooks/useFirestore";
 import { AuthContext } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useGodowns, useCreateWarehouseProduct } from "../../hooks/useWarehouse";
+import ProductAliasesSection from "../../components/ai-command/ProductAliasesSection";
 
 const ModalWrapper = ({ children, onClose, maxWidth = "max-w-md" }) => (
   <div
@@ -368,6 +369,7 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
             </div>
           </div>
           {/* ──────────────────────────────────────────────────────────────── */}
+          {productToEdit?.id && <ProductAliasesSection product={productToEdit} />}
           <div className="flex gap-4 pt-2">
             <button
               type="button"

@@ -258,10 +258,13 @@ export default function CreateInvoiceComponent({
                               updateItem(item.id, "description", product.name);
                               updateItem(item.id, "hsnCode", product.hsn);
                               updateItem(item.id, "rate", product.price);
+                              updateItem(item.id, "productId", product.id || null);
                             }}
-                            onChange={(val) =>
-                              updateItem(item.id, "description", val)
-                            }
+                            onChange={(val) => {
+                              updateItem(item.id, "description", val);
+                              // Typed text no longer refers to a picked product.
+                              updateItem(item.id, "productId", null);
+                            }}
                             onAddNewProduct={handleAddNewProduct}
                             clientId={invoiceData.clientId}
                           />

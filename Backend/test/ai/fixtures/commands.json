@@ -1,0 +1,233 @@
+{
+  "_note": "Each case: the command, the LLM reply we expect for it (fields left out default to null / []), and the draft our code must build. 'after' runs the case on top of another case's resulting draft. Used offline by commands.test.js and live by scripts/ai-live-eval.js.",
+  "cases": [
+    {
+      "id": "en-ravi-cement-nails", "lang": "tanglish", "context": "invoice",
+      "text": "Ravi Traders ku 10 bag cement, 5 kg nails",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Ravi Traders", "phone": null }, "items": [{ "spoken_name": "cement", "qty": 10, "unit": "bag" }, { "spoken_name": "nails", "qty": 5, "unit": "kg" }] },
+      "expect": { "intent": "create_invoice", "customer": { "status": "matched", "id": "c_ravi" }, "items": [{ "id": "p_cement", "status": "matched", "qty": 10, "lineTotalPaise": 420000 }, { "id": "p_nails", "status": "matched", "qty": 5, "lineTotalPaise": 55250 }], "clarification": null }
+    },
+    {
+      "id": "ta-ravi-credit", "lang": "tanglish", "context": "invoice",
+      "text": "Ravi Traders ku 10 bag cement, 5 kg nails, 15 days credit",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Ravi Traders", "phone": null }, "items": [{ "spoken_name": "cement", "qty": 10, "unit": "bag" }, { "spoken_name": "nails", "qty": 5, "unit": "kg" }], "due_in_days": 15 },
+      "expect": { "customer": { "status": "matched", "id": "c_ravi" }, "items": [{ "id": "p_cement", "qty": 10 }, { "id": "p_nails", "qty": 5 }], "dueInDays": 15 }
+    },
+    {
+      "id": "en-pos-parle-milk-cash", "lang": "english", "context": "pos",
+      "text": "2 Parle-G, 1 litre Aavin milk, cash",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "Parle-G", "qty": 2, "unit": null }, { "spoken_name": "Aavin milk", "qty": 1, "unit": "litre" }], "payment": { "mode": "cash", "amount": null } },
+      "expect": { "intent": "create_pos_bill", "items": [{ "id": "p_parle", "status": "matched", "qty": 2, "lineTotalPaise": 2000 }, { "id": "p_milk", "status": "matched", "qty": 1 }], "paymentMode": "cash" }
+    },
+    {
+      "id": "hi-kumar-eggs-sugar-upi", "lang": "hinglish", "context": "pos",
+      "text": "Kumar ki 3 dozen eggs aur 2 kg sugar, UPI se payment",
+      "llm": { "intent": "create_pos_bill", "customer": { "name": "Kumar", "phone": null }, "items": [{ "spoken_name": "eggs", "qty": 3, "unit": "dozen" }, { "spoken_name": "sugar", "qty": 2, "unit": "kg" }], "payment": { "mode": "upi", "amount": null } },
+      "expect": { "customer": { "status": "ambiguous", "candidateIds": ["c_kumar_s", "c_kumar_r"] }, "items": [{ "id": "p_eggs", "qty": 36 }, { "id": "p_sugar", "qty": 2 }], "paymentMode": "upi" }
+    },
+    {
+      "id": "ta-remove-nails", "lang": "english", "context": "invoice", "after": "en-ravi-cement-nails",
+      "text": "remove nails",
+      "llm": { "intent": "remove_item", "items": [{ "spoken_name": "nails", "qty": null, "unit": null }] },
+      "expect": { "items": [{ "id": "p_cement", "qty": 10 }], "customer": { "status": "matched", "id": "c_ravi" } }
+    },
+    {
+      "id": "ta-cement-12-pannunga", "lang": "tanglish", "context": "invoice", "after": "en-ravi-cement-nails",
+      "text": "cement 12 bags pannunga",
+      "llm": { "intent": "update_qty", "items": [{ "spoken_name": "cement", "qty": 12, "unit": "bag" }] },
+      "expect": { "items": [{ "id": "p_cement", "qty": 12, "lineTotalPaise": 504000 }, { "id": "p_nails", "qty": 5 }] }
+    },
+    {
+      "id": "en-discount-unsupported", "lang": "english", "context": "invoice", "after": "en-ravi-cement-nails",
+      "text": "add 10 percent discount",
+      "llm": { "intent": "apply_discount", "discount": { "type": "percent", "value": 10 } },
+      "expect": { "items": [{ "id": "p_cement", "qty": 10 }, { "id": "p_nails", "qty": 5 }], "messages": "Discounts are not supported" }
+    },
+    {
+      "id": "en-same-as-last-bill", "lang": "english", "context": "invoice",
+      "text": "same as last bill for Selvam Stores",
+      "llm": { "intent": "unknown", "customer": { "name": "Selvam Stores", "phone": null } },
+      "expect": { "items": [], "clarification": "did not understand" }
+    },
+    {
+      "id": "en-unknown-product", "lang": "english", "context": "invoice",
+      "text": "5 kg saffron",
+      "llm": { "intent": "create_invoice", "items": [{ "spoken_name": "saffron", "qty": 5, "unit": "kg" }] },
+      "expect": { "items": [{ "id": null, "status": "unmatched", "qty": 5 }] }
+    },
+    {
+      "id": "ta-missing-qty", "lang": "tanglish", "context": "invoice",
+      "text": "Ravi Traders ku cement",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Ravi Traders", "phone": null }, "items": [{ "spoken_name": "cement", "qty": null, "unit": null }] },
+      "expect": { "customer": { "status": "matched", "id": "c_ravi" }, "items": [], "clarification": "How many cement\\?" }
+    },
+    {
+      "id": "en-partial-missing-qty", "lang": "english", "context": "pos",
+      "text": "2 kg sugar and some rice",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "sugar", "qty": 2, "unit": "kg" }, { "spoken_name": "rice", "qty": null, "unit": null }] },
+      "expect": { "items": [{ "id": "p_sugar", "qty": 2 }], "clarification": "How many rice\\?" }
+    },
+    {
+      "id": "en-ambiguous-rice", "lang": "english", "context": "pos",
+      "text": "3 kg rice",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "rice", "qty": 3, "unit": "kg" }] },
+      "expect": { "items": [{ "id": null, "status": "ambiguous", "qty": 3, "candidateIds": ["p_rice_ponni", "p_rice_basmati"] }] }
+    },
+    {
+      "id": "ta-alias-thuvaram", "lang": "tamil", "context": "pos",
+      "text": "rendu kilo thuvaram paruppu",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "thuvaram paruppu", "qty": 2, "unit": "kg" }] },
+      "expect": { "items": [{ "id": "p_dal", "status": "matched", "source": "alias", "qty": 2 }] }
+    },
+    {
+      "id": "hi-alias-arhar", "lang": "hindi", "context": "pos",
+      "text": "ek kilo arhar dal dena",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "arhar dal", "qty": 1, "unit": "kg" }] },
+      "expect": { "items": [{ "id": "p_dal", "status": "matched", "source": "alias", "qty": 1 }] }
+    },
+    {
+      "id": "ta-number-pathu", "lang": "tamil", "context": "invoice",
+      "text": "pathu bag cement podunga",
+      "llm": { "intent": "create_invoice", "items": [{ "spoken_name": "cement", "qty": 10, "unit": "bag" }] },
+      "expect": { "items": [{ "id": "p_cement", "qty": 10 }] }
+    },
+    {
+      "id": "hi-number-das", "lang": "hindi", "context": "pos",
+      "text": "das packet Parle-G",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "Parle-G", "qty": 10, "unit": "packet" }] },
+      "expect": { "items": [{ "id": "p_parle", "qty": 10, "lineTotalPaise": 10000 }] }
+    },
+    {
+      "id": "en-gram-to-kg", "lang": "english", "context": "pos",
+      "text": "500 gram sugar",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "sugar", "qty": 500, "unit": "gram" }] },
+      "expect": { "items": [{ "id": "p_sugar", "qty": 0.5, "lineTotalPaise": 2200 }] }
+    },
+    {
+      "id": "en-ml-to-litre", "lang": "english", "context": "pos",
+      "text": "500 ml Aavin milk",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "Aavin milk", "qty": 500, "unit": "ml" }] },
+      "expect": { "items": [{ "id": "p_milk", "qty": 0.5, "lineTotalPaise": 2700 }] }
+    },
+    {
+      "id": "en-brand-oil", "lang": "english", "context": "pos",
+      "text": "2 litre Gold Winner oil",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "Gold Winner oil", "qty": 2, "unit": "litre" }] },
+      "expect": { "items": [{ "id": "p_oil", "status": "matched", "qty": 2, "lineTotalPaise": 33000 }] }
+    },
+    {
+      "id": "en-typo-suger", "lang": "english", "context": "pos",
+      "text": "3 kg suger",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "suger", "qty": 3, "unit": "kg" }] },
+      "expect": { "items": [{ "id": "p_sugar", "status": "matched", "source": "fuzzy", "qty": 3 }] }
+    },
+    {
+      "id": "ta-customer-typo", "lang": "tanglish", "context": "invoice",
+      "text": "Ravi Trader ku 1 bag cement",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Ravi Trader", "phone": null }, "items": [{ "spoken_name": "cement", "qty": 1, "unit": "bag" }] },
+      "expect": { "customer": { "status": "matched", "id": "c_ravi" }, "items": [{ "id": "p_cement", "qty": 1 }] }
+    },
+    {
+      "id": "en-set-customer", "lang": "english", "context": "pos", "after": "en-pos-parle-milk-cash",
+      "text": "customer name Meena Textiles",
+      "llm": { "intent": "set_customer", "customer": { "name": "Meena Textiles", "phone": null } },
+      "expect": { "customer": { "status": "matched", "id": "c_meena" }, "items": [{ "id": "p_parle", "qty": 2 }, { "id": "p_milk", "qty": 1 }] }
+    },
+    {
+      "id": "en-pos-walkin-customer", "lang": "english", "context": "pos",
+      "text": "customer name Arun",
+      "llm": { "intent": "set_customer", "customer": { "name": "Arun", "phone": null } },
+      "expect": { "customer": { "status": "new", "name": "Arun" }, "items": [] }
+    },
+    {
+      "id": "ta-invoice-unknown-customer", "lang": "tanglish", "context": "invoice",
+      "text": "Arun ku 2 bag cement",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Arun", "phone": null }, "items": [{ "spoken_name": "cement", "qty": 2, "unit": "bag" }] },
+      "expect": { "customer": { "status": "unmatched", "name": "Arun" }, "items": [{ "id": "p_cement", "qty": 2 }] }
+    },
+    {
+      "id": "en-add-more-merges", "lang": "english", "context": "invoice", "after": "en-ravi-cement-nails",
+      "text": "add 2 more bags of cement",
+      "llm": { "intent": "add_item", "items": [{ "spoken_name": "cement", "qty": 2, "unit": "bag" }] },
+      "expect": { "items": [{ "id": "p_cement", "qty": 12 }, { "id": "p_nails", "qty": 5 }] }
+    },
+    {
+      "id": "en-remove-missing", "lang": "english", "context": "invoice", "after": "en-ravi-cement-nails",
+      "text": "remove sugar",
+      "llm": { "intent": "remove_item", "items": [{ "spoken_name": "sugar", "qty": null, "unit": null }] },
+      "expect": { "items": [{ "id": "p_cement", "qty": 10 }, { "id": "p_nails", "qty": 5 }], "messages": "sugar is not on the bill" }
+    },
+    {
+      "id": "en-query-todays-sales", "lang": "english", "context": "invoice",
+      "text": "today's sales",
+      "llm": { "intent": "query" },
+      "expect": { "items": [], "messages": "AI Assistant" }
+    },
+    {
+      "id": "en-record-payment-invoice", "lang": "english", "context": "invoice",
+      "text": "Ravi Traders paid 5000 by UPI",
+      "llm": { "intent": "record_payment", "customer": { "name": "Ravi Traders", "phone": null }, "payment": { "mode": "upi", "amount": 5000 } },
+      "expect": { "items": [], "messages": "Payments page" }
+    },
+    {
+      "id": "en-pos-payment-mode", "lang": "english", "context": "pos", "after": "en-pos-parle-milk-cash",
+      "text": "UPI",
+      "llm": { "intent": "record_payment", "payment": { "mode": "upi", "amount": null } },
+      "expect": { "paymentMode": "upi", "items": [{ "id": "p_parle", "qty": 2 }, { "id": "p_milk", "qty": 1 }] }
+    },
+    {
+      "id": "ta-selvam-oil-dal", "lang": "tanglish", "context": "invoice",
+      "text": "Selvam Stores ku 2 litre sunflower oil um 1 kg toor dal um",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Selvam Stores", "phone": null }, "items": [{ "spoken_name": "sunflower oil", "qty": 2, "unit": "litre" }, { "spoken_name": "toor dal", "qty": 1, "unit": "kg" }] },
+      "expect": { "customer": { "status": "matched", "id": "c_selvam" }, "items": [{ "id": "p_oil", "qty": 2 }, { "id": "p_dal", "qty": 1, "source": "exact" }] }
+    },
+    {
+      "id": "hi-meena-soap-parle", "lang": "hinglish", "context": "invoice",
+      "text": "Meena Textiles ke liye 5 Lux soap aur 2 packet Parle-G",
+      "llm": { "intent": "create_invoice", "customer": { "name": "Meena Textiles", "phone": null }, "items": [{ "spoken_name": "Lux soap", "qty": 5, "unit": null }, { "spoken_name": "Parle-G", "qty": 2, "unit": "packet" }] },
+      "expect": { "customer": { "status": "matched", "id": "c_meena" }, "items": [{ "id": "p_soap", "qty": 5, "lineTotalPaise": 19000 }, { "id": "p_parle", "qty": 2 }] }
+    },
+    {
+      "id": "en-llm-clarification", "lang": "english", "context": "invoice",
+      "text": "the usual",
+      "llm": { "intent": "unknown", "clarification_needed": "Which items should I add to the bill?" },
+      "expect": { "items": [], "clarification": "Which items should I add" }
+    },
+    {
+      "id": "en-dozen-to-pieces", "lang": "english", "context": "pos",
+      "text": "1 dozen Lux soap",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "Lux soap", "qty": 1, "unit": "dozen" }] },
+      "expect": { "items": [{ "id": "p_soap", "qty": 12 }] }
+    },
+    {
+      "id": "en-update-grams", "lang": "english", "context": "pos", "after": "hi-kumar-eggs-sugar-upi",
+      "text": "make sugar 750 gram",
+      "llm": { "intent": "update_qty", "items": [{ "spoken_name": "sugar", "qty": 750, "unit": "gram" }] },
+      "expect": { "items": [{ "id": "p_eggs", "qty": 36 }, { "id": "p_sugar", "qty": 0.75, "lineTotalPaise": 3300 }] }
+    },
+    {
+      "id": "en-string-price", "lang": "english", "context": "pos",
+      "text": "1 litre sunflower oil",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "sunflower oil", "qty": 1, "unit": "litre" }] },
+      "expect": { "items": [{ "id": "p_oil", "qty": 1, "lineTotalPaise": 16500 }] }
+    },
+    {
+      "id": "en-same-item-twice", "lang": "english", "context": "pos",
+      "text": "2 kg sugar, 1 kg sugar",
+      "llm": { "intent": "create_pos_bill", "items": [{ "spoken_name": "sugar", "qty": 2, "unit": "kg" }, { "spoken_name": "sugar", "qty": 1, "unit": "kg" }] },
+      "expect": { "items": [{ "id": "p_sugar", "qty": 3 }] }
+    },
+    {
+      "id": "en-pos-invoice-intent-coerced", "lang": "english", "context": "pos",
+      "text": "bill 2 Lux soap",
+      "llm": { "intent": "create_invoice", "items": [{ "spoken_name": "Lux soap", "qty": 2, "unit": null }] },
+      "expect": { "intent": "create_pos_bill", "items": [{ "id": "p_soap", "qty": 2 }] }
+    },
+    {
+      "id": "hi-kumar-choose-later", "lang": "hindi", "context": "pos",
+      "text": "Kumar ko do Lux soap",
+      "llm": { "intent": "create_pos_bill", "customer": { "name": "Kumar", "phone": null }, "items": [{ "spoken_name": "Lux soap", "qty": 2, "unit": null }] },
+      "expect": { "customer": { "status": "ambiguous", "candidateIds": ["c_kumar_s", "c_kumar_r"] }, "items": [{ "id": "p_soap", "qty": 2 }] }
+    }
+  ]
+}

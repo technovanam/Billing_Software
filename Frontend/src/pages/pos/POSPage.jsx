@@ -35,6 +35,13 @@ import {
   Bookmark,
 } from "lucide-react";
 import { useProducts, useInvoices, useCustomers } from "../../hooks/useFirestore";
+import { calculatePosCartSummary, buildPosCartItem } from "../../utils/invoiceTotals";
+import AICommandBar from "../../components/ai-command/AICommandBar";
+import useAICommand from "../../components/ai-command/useAICommand";
+
+// F2 already focuses POS search, so the AI bar uses Ctrl+K (Cmd+K on Mac).
+const isCtrlK = (e) => (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k";
+const AI_PAYMENT_MODE = { cash: "Cash", upi: "Online", card: "Online", bank: "Online" };
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import { AuthContext } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -45,7 +52,7 @@ export default function POSPage() {
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const { companyProfile } = useCompanyProfile();
-  const { products, loading: productsLoading } = useProducts();
+  const { products, loading: productsLoading, addProduct } = useProducts();
   const { addInvoice, allInvoices } = useInvoices();
   const { customers, addCustomer } = useCustomers();
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -307,52 +314,16 @@ export default function POSPage() {
   }, [products, searchTerm]);
 
   // Real-Time Cart Calculations (Subtotal, CGST, SGST, Total, Round-Off, Balance)
-  const cartSummary = useMemo(() => {
-    const totalItems = cart.length;
-    const totalQty = cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
-    const subtotal = cart.reduce((sum, item) => sum + Number(item.total || 0), 0);
-    const cgstAmount = (subtotal * cgstRate) / 100;
-    const sgstAmount = (subtotal * sgstRate) / 100;
-    const gstTotal = cgstAmount + sgstAmount;
-    const exactTotalAmount = Math.max(0, subtotal + gstTotal);
-
-    // Cash payments round off (>= .50 round up, < .50 round down: Math.round)
-    // Online payments pay the exact full decimal amount (e.g. 142.50 or 142.47)
-    const roundedTotalAmount = Math.round(exactTotalAmount);
-    const roundOffDiff = roundedTotalAmount - exactTotalAmount;
-
-    const payableTotal = paymentMode === "Cash" ? roundedTotalAmount : exactTotalAmount;
-
-    const cashNum = parseFloat(cashReceived) || 0;
-    const balancePaid = paymentMode === "Cash" ? Math.max(0, cashNum - payableTotal) : 0;
-    const amountDue = paymentMode === "Cash" ? Math.max(0, payableTotal - cashNum) : 0;
-
-    return {
-      totalItems,
-      totalQty,
-      subtotal,
-      cgstAmount,
-      sgstAmount,
-      gstTotal,
-      exactTotalAmount,
-      roundedTotalAmount,
-      roundOffDiff,
-      payableTotal,
-      balancePaid,
-      amountDue,
-    };
-  }, [cart, cgstRate, sgstRate, cashReceived, paymentMode]);
+  const cartSummary = useMemo(
+    () => calculatePosCartSummary({ cart, cgstRate, sgstRate, cashReceived, paymentMode }),
+    [cart, cgstRate, sgstRate, cashReceived, paymentMode]
+  );
 
   // Add or increment item in cart
   const addToCart = useCallback(
     (product) => {
-      const priceNum =
-        typeof product.price === "number"
-          ? product.price
-          : parseFloat(String(product.price || product.rate || "0").replace(/[^0-9.-]+/g, "")) || 0;
-
-      const productIdentifier =
-        product.productNo || product.hsn || product.barcode || product.id || `PRD-${Date.now().toString().slice(-4)}`;
+      const newItem = buildPosCartItem(product, 1);
+      const productIdentifier = newItem.productNo;
 
       setCart((prev) => {
         const existingIdx = prev.findIndex(
@@ -369,16 +340,6 @@ export default function POSPage() {
           };
           return updated;
         } else {
-          const newItem = {
-            id: product.id || `prod_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            productNo: productIdentifier,
-            name: product.name || "Custom Item",
-            hsn: product.hsn || product.productNo || "151800",
-            rate: priceNum,
-            qty: 1,
-            total: priceNum,
-            unit: product.unit || "Nos",
-          };
           return [newItem, ...prev];
         }
       });
@@ -570,17 +531,7 @@ export default function POSPage() {
       addToCart(targetProduct);
       toastSuccess(`Scanned & Added: ${targetProduct.name}`);
     } else {
-      // Auto-create item from scanned barcode
-      const fallbackItem = {
-        id: `scanned_${Date.now()}`,
-        productNo: decodedText,
-        name: `Scanned Item (${decodedText})`,
-        hsn: decodedText.length <= 8 ? decodedText : "151800",
-        price: 99.0,
-        unit: "Nos",
-      };
-      addToCart(fallbackItem);
-      toastInfo(`Added scanned item: "${fallbackItem.name}"`);
+      toastError(`No product found for barcode "${decodedText}"`);
     }
   };
 
@@ -750,6 +701,8 @@ export default function POSPage() {
         customerName: finalCustomerName,
         customerPhone: finalCustomerPhone,
         items: cart.map((item) => ({
+          // Generated "prod_" ids belong to custom lines, not catalogue products.
+          productId: item.id && !String(item.id).startsWith("prod_") ? item.id : null,
           name: item.name,
           description: item.name,
           hsn: item.hsn,
@@ -773,6 +726,7 @@ export default function POSPage() {
       };
 
       const res = await addInvoice(payload);
+      if (res?.success) ai.markSaved(res.id);
 
       // Auto-register new customer in customer directory if name/phone provided and not already registered
       if (customerName.trim() && !selectedCustomerId && addCustomer) {
@@ -819,6 +773,63 @@ export default function POSPage() {
       searchInputRef.current?.focus();
     }, 100);
   }, [toastSuccess]);
+
+
+  // AI command bar: builds a draft that is merged into the cart on Confirm.
+  const ai = useAICommand({ context: "pos", addProduct });
+
+  const draftToCartItems = (draft) =>
+    draft.items
+      .filter((it) => it.status === "matched" && it.qty > 0)
+      .map((it) =>
+        buildPosCartItem(
+          { id: it.product.id, name: it.product.name, hsn: it.product.hsn, price: it.product.pricePaise / 100, unit: it.product.unitLabel || undefined },
+          it.qty
+        )
+      );
+
+  const aiDraftTotals = (() => {
+    const draftCart = draftToCartItems(ai.draft);
+    if (!draftCart.length) return null;
+    const mode = AI_PAYMENT_MODE[ai.draft.payment?.mode] || paymentMode;
+    const t = calculatePosCartSummary({ cart: draftCart, cgstRate, sgstRate, cashReceived: "", paymentMode: mode });
+    const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
+    const rows = [
+      { label: "Subtotal", value: money(t.subtotal) },
+      { label: `CGST (${cgstRate}%)`, value: money(t.cgstAmount) },
+      { label: `SGST (${sgstRate}%)`, value: money(t.sgstAmount) },
+    ];
+    if (mode === "Cash") rows.push({ label: "Round off", value: money(t.roundOffDiff) });
+    rows.push({ label: `Draft total (${mode})`, value: money(t.payableTotal), strong: true });
+    return rows;
+  })();
+
+  const applyAiDraft = (draft) => {
+    const incoming = draftToCartItems(draft);
+    setCart((prev) => {
+      const next = [...prev];
+      for (const item of incoming) {
+        const idx = next.findIndex((c) => c.id === item.id);
+        if (idx >= 0) {
+          const qty = Number(next[idx].qty || 0) + item.qty;
+          next[idx] = { ...next[idx], qty, total: qty * next[idx].rate };
+        } else {
+          next.unshift(item);
+        }
+      }
+      return next;
+    });
+    if (draft.customer?.status === "matched") {
+      const known = (customers || []).find((c) => c.id === draft.customer.id);
+      handleSelectCustomer({ id: draft.customer.id, name: draft.customer.name, phone: known?.phone || "" });
+    } else if (draft.customer?.status === "new" && draft.customer.name) {
+      setCustomerName(draft.customer.name);
+      setSelectedCustomerId(null);
+    }
+    if (draft.payment?.mode && AI_PAYMENT_MODE[draft.payment.mode]) setPaymentMode(AI_PAYMENT_MODE[draft.payment.mode]);
+    ai.markConfirmed();
+    toastSuccess(`Added ${incoming.length} item${incoming.length === 1 ? "" : "s"} from the AI draft.`);
+  };
 
   return (
     <div className="flex flex-1 h-full min-h-0 flex-col bg-slate-100 text-slate-800 overflow-hidden font-mazzard">
@@ -1110,23 +1121,6 @@ export default function POSPage() {
                         <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                           Scan product barcode with a barcode scanner gun, use Barcode Scanner, or type in the search bar above to add items to this bill.
                         </p>
-                        <div className="flex gap-2 mt-4">
-                          <button
-                            onClick={() => {
-                              addToCart({
-                                id: `sample_${Date.now()}`,
-                                productNo: "PRD-001",
-                                name: "Sample Product (1 Kg)",
-                                hsn: "151800",
-                                price: 150.0,
-                                unit: "1 Kg",
-                              });
-                            }}
-                            className="px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-bold transition"
-                          >
-                            + Quick Demo Item (₹150)
-                          </button>
-                        </div>
                       </div>
                     </td>
                   </tr>
@@ -1727,6 +1721,14 @@ export default function POSPage() {
           </div>
         </div>
       )}
+      <AICommandBar
+        ai={ai}
+        shortcut={isCtrlK}
+        shortcutLabel="Ctrl+K"
+        customers={customers || []}
+        totals={aiDraftTotals}
+        onConfirm={applyAiDraft}
+      />
     </div>
   );
 }

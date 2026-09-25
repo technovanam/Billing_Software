@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useRef } from "react";
-import { useNavigate, NavLink, Outlet } from "react-router-dom";
+import { useNavigate, NavLink, Outlet, useLocation } from "react-router-dom";
 import PropTypes from "prop-types";
 import { AuthContext } from "../context/AuthContext";
 import { useCompanyProfile } from "../context/CompanyProfileContext";
@@ -16,6 +16,8 @@ import {
   Building2,
   Clock,
   Settings,
+  Menu,
+  X,
 } from "lucide-react";
 
 const warehouseNavItems = [
@@ -32,12 +34,25 @@ const warehouseNavItems = [
   { name: "Warehouse Setup", path: "/warehouse/setup", icon: Settings },
 ];
 
+function getFYLabel() {
+  const now = new Date();
+  const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-${year + 1} FY`;
+}
+
 export default function WarehouseLayout({ children }) {
   const { user, signOut } = useContext(AuthContext);
   const { companyProfile } = useCompanyProfile();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const navigate = useNavigate();
   const profileRef = useRef(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  // Close the mobile sidebar whenever the route changes
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -70,9 +85,22 @@ export default function WarehouseLayout({ children }) {
   const headerCompanyName = companyProfile?.companyName || "Techno Vanam";
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-100 flex">
+      {/* ── Mobile backdrop ── */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* ── Admin-Portal-Style White Sidebar ── */}
-      <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col">
+      <aside
+        className={`fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col transition-transform duration-200 lg:translate-x-0 ${
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
         {/* Brand Header */}
         <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
           <img
@@ -84,12 +112,17 @@ export default function WarehouseLayout({ children }) {
             <p className="text-lg font-bold text-slate-900 truncate">{headerCompanyName}</p>
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600">Warehouse Portal</p>
           </div>
+          <button
+            onClick={() => setIsSidebarOpen(false)}
+            className="ml-auto rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 lg:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-
-
         {/* Navigation List */}
-        <nav className="flex-1 px-3 py-3 space-y-1.5 overflow-y-auto">
+        <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto scrollbar-thin">
           {warehouseNavItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -122,7 +155,7 @@ export default function WarehouseLayout({ children }) {
         {/* Bottom Section: FY and Profile */}
         <div className="px-3 pb-4">
           <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
-            2026-2027 FY
+            {getFYLabel()}
           </div>
 
           {user && (
@@ -148,9 +181,25 @@ export default function WarehouseLayout({ children }) {
       </aside>
 
       {/* ── Main Content Area ── */}
-      <div className="ml-64 flex-1 flex flex-col min-w-0 bg-slate-50 min-h-screen">
+      <div className="lg:ml-64 flex-1 flex flex-col min-w-0 bg-slate-100 min-h-screen">
+        {/* Mobile top bar */}
+        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-slate-200 bg-white px-4 py-3 lg:hidden">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="rounded-lg p-1.5 text-slate-600 hover:bg-slate-100"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <img src={headerLogo} alt="" className="h-7 w-7 object-contain rounded" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-900 truncate">{headerCompanyName}</p>
+            <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-blue-600">Warehouse Portal</p>
+          </div>
+        </div>
+
         {/* Page Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 sm:p-6">
           {children || <Outlet />}
         </main>
       </div>

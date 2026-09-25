@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import { superAdminService } from "../../../services/superAdminDataService";
 import { usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
 import { db } from "../../../lib/firebase/config";
 import { doc, updateDoc } from "firebase/firestore";

@@ -3,6 +3,12 @@ import { useNavigate } from "react-router-dom";
 import { useInvoices, useCustomers, useProducts, useSettings } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
 import CreateInvoiceComponent from "./CreateInvoiceComponent";
+import { calculateInvoiceTotals } from "../../utils/invoiceTotals";
+import AICommandBar from "../../components/ai-command/AICommandBar";
+import useAICommand from "../../components/ai-command/useAICommand";
+
+const isF2 = (e) => e.key === "F2";
+const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 import { InvoicePreview } from "./InvoiceManagement.jsx";
 
 export default function CreateInvoicePage() {
@@ -113,31 +119,16 @@ export default function CreateInvoicePage() {
 
   // Calculations Effect
   useEffect(() => {
-    const itemsArray = invoiceData.items || invoiceData.products || [];
-    const subtotal = itemsArray.reduce(
-      (sum, item) => sum + (item.quantity || 0) * (item.rate || item.price || 0),
-      0
+    setCalculations(
+      calculateInvoiceTotals({
+        items: invoiceData.items || invoiceData.products || [],
+        cgst: invoiceData.cgst,
+        sgst: invoiceData.sgst,
+        igst: invoiceData.igst,
+        isGstEnabled: invoiceData.isGstEnabled,
+        isRoundOff: invoiceData.isRoundOff,
+      })
     );
-
-    const cgstAmount = invoiceData.isGstEnabled ? (subtotal * invoiceData.cgst) / 100 : 0;
-    const sgstAmount = invoiceData.isGstEnabled ? (subtotal * invoiceData.sgst) / 100 : 0;
-    const igstAmount = invoiceData.isGstEnabled ? (subtotal * invoiceData.igst) / 100 : 0;
-
-    let total = subtotal + cgstAmount + sgstAmount + igstAmount;
-    let roundOffAmount = 0;
-    if (invoiceData.isRoundOff) {
-      const roundedTotal = Math.round(total);
-      roundOffAmount = roundedTotal - total;
-      total = roundedTotal;
-    }
-    setCalculations({
-      subtotal,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
-      roundOffAmount,
-      total,
-    });
   }, [
     invoiceData.items,
     invoiceData.products,
@@ -298,6 +289,7 @@ export default function CreateInvoicePage() {
       };
       const result = await addInvoice(draftInvoice);
       if (result.success) {
+        ai.markSaved(result.id);
         toastSuccess("Invoice saved as draft!");
         navigate("/invoices");
       } else {
@@ -319,6 +311,7 @@ export default function CreateInvoicePage() {
       };
       const result = await addInvoice(newInvoice);
       if (result.success) {
+        ai.markSaved(result.id);
         toastSuccess("Invoice created successfully!");
         navigate("/invoices");
       } else {
@@ -330,6 +323,69 @@ export default function CreateInvoicePage() {
   };
 
   const [showPreview, setShowPreview] = useState(false);
+
+  // AI command bar: builds a draft that is copied into this form on Confirm.
+  const ai = useAICommand({ context: "invoice", addProduct });
+
+  // Same line shape the form uses when a product is picked manually.
+  const draftToInvoiceItems = (draft) =>
+    draft.items
+      .filter((it) => it.status === "matched" && it.qty > 0)
+      .map((it, idx) => {
+        const rate = it.product.pricePaise / 100;
+        return {
+          id: Date.now() + idx,
+          productId: it.product.id,
+          description: it.product.name,
+          hsnCode: it.product.hsn,
+          quantity: it.qty,
+          rate,
+          amount: it.qty * rate,
+        };
+      });
+
+  const draftTotals = (() => {
+    const items = draftToInvoiceItems(ai.draft);
+    if (!items.length) return null;
+    const t = calculateInvoiceTotals({
+      items,
+      cgst: invoiceData.cgst,
+      sgst: invoiceData.sgst,
+      igst: invoiceData.igst,
+      isGstEnabled: invoiceData.isGstEnabled,
+      isRoundOff: invoiceData.isRoundOff,
+    });
+    const rows = [{ label: "Subtotal", value: money(t.subtotal) }];
+    if (invoiceData.isGstEnabled) {
+      if (invoiceData.cgst) rows.push({ label: `CGST (${invoiceData.cgst}%)`, value: money(t.cgstAmount) });
+      if (invoiceData.sgst) rows.push({ label: `SGST (${invoiceData.sgst}%)`, value: money(t.sgstAmount) });
+      if (invoiceData.igst) rows.push({ label: `IGST (${invoiceData.igst}%)`, value: money(t.igstAmount) });
+    }
+    if (invoiceData.isRoundOff) rows.push({ label: "Round off", value: money(t.roundOffAmount) });
+    rows.push({ label: "Draft total", value: money(t.total), strong: true });
+    return rows;
+  })();
+
+  const applyAiDraft = (draft) => {
+    const newItems = draftToInvoiceItems(draft);
+    setInvoiceData((prev) => {
+      const next = {
+        ...prev,
+        // Drop empty placeholder rows, keep anything the user already entered.
+        items: [...(prev.items || []).filter((it) => it.description || Number(it.rate) > 0), ...newItems],
+      };
+      if (draft.dueInDays !== null && draft.dueInDays !== undefined) {
+        const due = new Date(prev.invoiceDate || new Date());
+        due.setDate(due.getDate() + draft.dueInDays);
+        next.dueDate = due.toISOString().split("T")[0];
+      }
+      if (draft.notes) next.invoiceNotes = [prev.invoiceNotes, draft.notes].filter(Boolean).join("\n");
+      return next;
+    });
+    if (draft.customer?.status === "matched" && draft.customer.id) handleClientSelect(draft.customer.id);
+    ai.markConfirmed();
+    toastSuccess(`Added ${newItems.length} item${newItems.length === 1 ? "" : "s"} from the AI draft. Review and save.`);
+  };
 
   return (
     <>
@@ -359,6 +415,14 @@ export default function CreateInvoicePage() {
           setShowPreview={setShowPreview}
         />
       )}
+      <AICommandBar
+        ai={ai}
+        shortcut={isF2}
+        shortcutLabel="F2"
+        customers={customers || []}
+        totals={draftTotals}
+        onConfirm={applyAiDraft}
+      />
     </>
   );
 }

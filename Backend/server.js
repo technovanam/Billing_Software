@@ -325,6 +325,8 @@ const razorpay = new Razorpay({
 // Middleware
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(cors());
+const aiRouter = require('./ai/router').createAiRouter();
+app.use('/api/ai', aiRouter);
 
 // Recurring invoice processing endpoints
 app.post('/recurring-invoices/process', authenticateRequest, async (req, res) => {
@@ -1924,6 +1926,7 @@ app.post('/warehouse/link-admin', authenticateRequest, async (req, res) => {
 // ────────────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
+    aiRouter.learning.startJobs(); // nightly aiStats rebuild, 02:30 Asia/Kolkata
     console.log(`PDF Server running on http://localhost:${PORT}`);
     if (admin.apps.length) {
         cron.schedule('*/5 * * * *', () => {

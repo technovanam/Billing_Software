@@ -1,17 +1,82 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { TrendingUp, CreditCard, ArrowUpRight, DollarSign, RotateCcw, AlertTriangle, BarChart2 } from "lucide-react";
+import { usePlatformAnalytics, usePlatformPayments, usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const PERIOD_MONTHS = { "1m": 1, "3m": 3, "6m": 6, "1y": 12 };
+const PLAN_COLORS = ["bg-blue-600", "bg-indigo-600", "bg-purple-600", "bg-cyan-600", "bg-emerald-600", "bg-amber-500"];
+
+const toDate = (v) => (v?.toDate ? v.toDate() : v ? new Date(v) : null);
+const formatINR = (n) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
 export default function RevenueAnalytics() {
   const [period, setPeriod] = useState("6m");
+  const { analytics } = usePlatformAnalytics();
+  const { payments } = usePlatformPayments();
+  const { businesses } = usePlatformBusinesses();
+
+  const revenue = analytics?.revenue || {};
+  const metric = (m) => (m ? { value: m.value, sub: m.sub } : { value: "—", sub: "No data yet" });
+
+  const successful = useMemo(
+    () => payments.filter((p) => p.status === "Successful" || p.status === "Completed"),
+    [payments]
+  );
+  const refunded = useMemo(() => payments.filter((p) => p.status === "Refunded"), [payments]);
 
   const revenueKPIs = [
-    { label: "Monthly Recurring Revenue (MRR)", value: "₹18.42 Lakhs", sub: "+14.2% MoM growth", positive: true },
-    { label: "Annual Run Rate (ARR)", value: "₹2.21 Crores", sub: "Annualized subscription base", positive: true },
-    { label: "Total Net Revenue (YTD)", value: "₹1.18 Crores", sub: "FY 2026-27 Collections", positive: true },
-    { label: "Average Revenue Per Business (ARPU)", value: "₹1,476", sub: "+5.1% expansion", positive: true },
-    { label: "Refund Volume", value: "₹24,990", sub: "0.18% platform refund rate", positive: true },
-    { label: "Payment Gateway Success Rate", value: "98.8%", sub: "Nominal gateway SLA", positive: true },
+    { label: "Monthly Recurring Revenue (MRR)", ...metric(revenue.mrr) },
+    { label: "Total Platform Revenue", ...metric(revenue.arr) },
+    { label: "Average Revenue Per Business (ARPU)", ...metric(revenue.arpu) },
+    {
+      label: "Refund Volume",
+      value: formatINR(refunded.reduce((sum, p) => sum + (Number(p.amount) || 0), 0)),
+      sub: `${refunded.length} refunded payment${refunded.length === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Payment Success Rate",
+      value: payments.length ? `${((successful.length / payments.length) * 100).toFixed(1)}%` : "—",
+      sub: `${successful.length} of ${payments.length} payments`,
+    },
   ];
+
+  // Successful payment totals per month for the selected period
+  const monthlyRevenue = useMemo(() => {
+    const now = new Date();
+    const count = PERIOD_MONTHS[period];
+    const buckets = [];
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({ m: MONTHS[d.getMonth()], year: d.getFullYear(), month: d.getMonth(), total: 0 });
+    }
+    successful.forEach((p) => {
+      const d = toDate(p.date || p.createdAt);
+      if (!d || isNaN(d)) return;
+      const b = buckets.find((x) => x.year === d.getFullYear() && x.month === d.getMonth());
+      if (b) b.total += Number(p.amount) || 0;
+    });
+    const max = Math.max(1, ...buckets.map((b) => b.total));
+    return buckets.map((b) => ({ ...b, pct: (b.total / max) * 100 }));
+  }, [successful, period]);
+
+  // Successful payment totals grouped by the paying business's plan
+  const planBreakdown = useMemo(() => {
+    const planByBusiness = Object.fromEntries(businesses.map((b) => [b.id, b.planName || b.plan]));
+    const totals = {};
+    successful.forEach((p) => {
+      const plan = p.planName || planByBusiness[p.businessId] || "Unassigned";
+      totals[plan] = (totals[plan] || 0) + (Number(p.amount) || 0);
+    });
+    const grand = Object.values(totals).reduce((a, b) => a + b, 0);
+    return Object.entries(totals)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, amount], i) => ({
+        name,
+        amount: formatINR(amount),
+        share: grand ? Math.round((amount / grand) * 100) : 0,
+        color: PLAN_COLORS[i % PLAN_COLORS.length],
+      }));
+  }, [successful, businesses]);
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -57,26 +122,19 @@ export default function RevenueAnalytics() {
         {/* Monthly Revenue Chart */}
         <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
           <h3 className="text-sm font-bold text-gray-900 mb-1">Monthly Recurring Revenue Trajectory</h3>
-          <p className="text-xs text-gray-500 mb-6">Historical subscription inflow in Lakhs (₹)</p>
+          <p className="text-xs text-gray-500 mb-6">Successful payments per month (₹)</p>
 
           <div className="h-56 flex items-end justify-between gap-3 px-2 border-b border-gray-100 pb-2">
-            {[
-              { m: "Apr", val: 12.4, newR: 2.1 },
-              { m: "May", val: 13.8, newR: 2.4 },
-              { m: "Jun", val: 14.9, newR: 2.8 },
-              { m: "Jul", val: 16.1, newR: 3.2 },
-              { m: "Aug", val: 17.2, newR: 3.5 },
-              { m: "Sep", val: 18.4, newR: 4.1 },
-            ].map((col, idx) => (
+            {monthlyRevenue.map((col, idx) => (
               <div key={idx} className="flex-1 flex flex-col items-center gap-2 h-full justify-end group">
                 <div className="w-full flex flex-col items-center justify-end h-full">
                   <div
-                    style={{ height: `${col.val * 4.5}%` }}
+                    style={{ height: `${col.pct}%` }}
                     className="w-8 bg-blue-600 rounded-t group-hover:bg-blue-700 transition"
                   />
                 </div>
                 <div className="text-center">
-                  <span className="text-xs font-bold text-gray-900 block">₹{col.val}L</span>
+                  <span className="text-xs font-bold text-gray-900 block">{formatINR(col.total)}</span>
                   <span className="text-[10px] text-gray-400">{col.m}</span>
                 </div>
               </div>
@@ -90,12 +148,10 @@ export default function RevenueAnalytics() {
           <p className="text-xs text-gray-500 mb-6">Commercial tier weightage</p>
 
           <div className="space-y-4">
-            {[
-              { name: "Professional Plan (₹2,499/mo)", amount: "₹8.85 Lakhs", share: 48, color: "bg-blue-600" },
-              { name: "Business Plan (₹4,999/mo)", amount: "₹5.44 Lakhs", share: 30, color: "bg-indigo-600" },
-              { name: "Enterprise Plan (₹12,999/mo)", amount: "₹2.70 Lakhs", share: 15, color: "bg-purple-600" },
-              { name: "Starter Plan (₹999/mo)", amount: "₹1.43 Lakhs", share: 7, color: "bg-cyan-600" },
-            ].map((tier, i) => (
+            {planBreakdown.length === 0 && (
+              <p className="text-xs text-gray-400">No successful payments yet.</p>
+            )}
+            {planBreakdown.map((tier, i) => (
               <div key={i} className="space-y-1 text-xs">
                 <div className="flex items-center justify-between font-semibold">
                   <span className="text-gray-700">{tier.name}</span>

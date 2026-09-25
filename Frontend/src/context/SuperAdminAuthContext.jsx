@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import { signInWithEmailAndPassword, signOut as firebaseSignOut, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, collection, addDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "../lib/firebase/config";
 
 // Removed superAdminService import as we write logs directly to Firestore

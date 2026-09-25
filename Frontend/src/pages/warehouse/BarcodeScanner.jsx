@@ -10,6 +10,7 @@ import {
 import { useToast } from "../../context/ToastContext";
 import ProductReview from "./ProductReview";
 import ProductManualAdd from "./ProductManualAdd";
+import { PageContainer, PageHeader, btnSecondary, btnIcon } from "../../components/warehouse/WarehouseUI";
 
 const DEBOUNCE_MS = 500;
 
@@ -34,16 +35,16 @@ const playBeep = () => {
 const SessionHistory = ({ items }) => {
   if (!items.length) return null;
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
-        <p className="text-xs font-bold uppercase tracking-wider text-slate-500">This Session</p>
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+      <div className="px-4 lg:px-5 py-3 border-b border-gray-200 bg-gray-50">
+        <p className="text-xs font-semibold uppercase text-gray-500">This Session</p>
       </div>
-      <div className="divide-y divide-slate-50">
+      <div className="divide-y divide-gray-200">
         {items.slice(0, 10).map((h, i) => (
-          <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+          <div key={i} className="flex items-center gap-3 px-4 lg:px-5 py-3">
             <Package size={13} className="text-slate-400 shrink-0" />
             <span className="text-sm text-slate-700 flex-1 truncate">{h.name}</span>
-            <span className="text-xs font-bold text-emerald-600">+{h.qty}</span>
+            <span className="text-sm font-semibold text-green-600">+{h.qty}</span>
             <span className="text-xs text-slate-400">{h.newQty} total</span>
           </div>
         ))}
@@ -60,62 +61,62 @@ const StockForm = ({ product, currentStock, onConfirm, onCancel, loading }) => {
   const [remarks, setRemarks] = useState("");
 
   return (
-    <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-5 space-y-4 animate-fade-in-up">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 lg:p-5 space-y-4 animate-fade-in-up">
       {/* Product info */}
-      <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold bg-emerald-50 text-emerald-600">
+      <div className="flex flex-wrap items-center gap-3 pb-3 border-b border-gray-200">
+        <div className="w-10 h-10 rounded-lg flex items-center justify-center font-bold bg-blue-50 text-blue-600">
           <Package size={20} />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-slate-900 truncate">{product.name}</h3>
+          <h3 className="text-lg font-semibold text-gray-900 truncate">{product.name}</h3>
           <p className="text-xs text-slate-400 font-mono">Barcode: {product.barcode}</p>
         </div>
         <div className="text-right shrink-0">
-          <p className="text-xs text-slate-400">Current Stock</p>
-          <p className="text-xl font-extrabold text-slate-800">{currentStock}</p>
+          <p className="text-xs text-gray-500">Current Stock</p>
+          <p className="text-xl font-bold text-gray-900">{currentStock}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Quantity *</label>
+          <label className="block text-sm text-gray-700 mb-1">Quantity *</label>
           <input
             type="number"
             min="1"
             value={quantity}
             onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-emerald-500"
+            className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-center font-bold text-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             autoFocus
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Reference / PO No.</label>
+          <label className="block text-sm text-gray-700 mb-1">Reference / PO No.</label>
           <input
             type="text"
             value={referenceNo}
             onChange={(e) => setReferenceNo(e.target.value)}
             placeholder="e.g. PO-8921"
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-700 mb-1">Remarks</label>
+          <label className="block text-sm text-gray-700 mb-1">Remarks</label>
           <input
             type="text"
             value={remarks}
             onChange={(e) => setRemarks(e.target.value)}
             placeholder="Optional notes"
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-col sm:flex-row gap-2">
         <button
           type="button"
           onClick={() => onConfirm({ quantity, referenceNo, remarks })}
           disabled={loading || quantity <= 0}
-          className="flex-1 py-3 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-sm transition-colors disabled:opacity-50 bg-emerald-600 hover:bg-emerald-700"
+          className="flex-1 py-2.5 text-white font-medium rounded-lg text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50 bg-blue-600 hover:bg-blue-700"
         >
           {loading ? (
             <><Loader2 size={16} className="animate-spin" /> Processing…</>
@@ -130,7 +131,7 @@ const StockForm = ({ product, currentStock, onConfirm, onCancel, loading }) => {
           type="button"
           onClick={onCancel}
           disabled={loading}
-          className="px-4 py-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-sm font-semibold transition-colors"
+          className={btnSecondary}
         >
           Cancel
         </button>
@@ -335,41 +336,33 @@ export default function BarcodeScanner() {
   const showForm = !!resolvedProduct || !!reviewData || !!manualAddData;
 
   return (
-    <div className="w-full space-y-6">
-
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Scan &amp; Stock In</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Instant Stock In · Scan or enter barcode to automatically add stock</p>
-        </div>
-        <button
-          onClick={resetAll}
-          className="p-2 rounded-xl hover:bg-slate-100 text-slate-400"
-          title="Reset"
-        >
-          <RefreshCw size={18} />
-        </button>
-      </div>
-
-      {/* Camera Bar */}
-      <div className="flex justify-end">
-        <button
-          onClick={() => setCameraMode((v) => !v)}
-          className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-            cameraMode ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-          }`}
-        >
-          {cameraMode ? <Camera size={14} /> : <CameraOff size={14} />}
-          {cameraMode ? "Camera Active" : "Scan via Camera"}
-        </button>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Scan &amp; Stock In"
+        subtitle="Scan or enter a barcode to add stock instantly"
+        actions={
+          <>
+            <button
+              onClick={() => setCameraMode((v) => !v)}
+              className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                cameraMode ? "bg-blue-600 text-white hover:bg-blue-700" : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              {cameraMode ? <Camera size={16} /> : <CameraOff size={16} />}
+              {cameraMode ? "Camera Active" : "Scan via Camera"}
+            </button>
+            <button onClick={resetAll} className={btnIcon} title="Reset" aria-label="Reset">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </>
+        }
+      />
 
       {/* Camera preview */}
       {cameraMode && (
-        <div className="bg-black rounded-2xl overflow-hidden aspect-video relative">
+        <div className="bg-black rounded-lg overflow-hidden aspect-video relative">
           <video ref={videoRef} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 border-4 border-blue-400/40 rounded-2xl pointer-events-none" />
+          <div className="absolute inset-0 border-4 border-blue-400/40 rounded-lg pointer-events-none" />
           <p className="absolute bottom-3 left-0 right-0 text-center text-white text-sm font-medium drop-shadow">
             Point camera at barcode
           </p>
@@ -378,21 +371,21 @@ export default function BarcodeScanner() {
 
       {/* Barcode input */}
       {!cameraMode && !showForm && (
-        <div className="bg-white rounded-2xl border-2 border-emerald-400 shadow-sm p-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
-            <label className="text-xs font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
-              <ScanBarcode size={15} />
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 lg:p-5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-200">
+            <label className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <ScanBarcode size={18} className="text-blue-600" />
               Scan Barcode to Stock In
             </label>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => setAutoAdd((v) => !v)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                   autoAdd
-                    ? "bg-emerald-600 text-white ring-2 ring-emerald-300"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "bg-green-600 text-white hover:bg-green-700"
+                    : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-50"
                 }`}
                 title="When ON, entering or scanning barcode immediately adds stock"
               >
@@ -401,14 +394,14 @@ export default function BarcodeScanner() {
               </button>
 
               {autoAdd && (
-                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-xl text-xs">
-                  <span className="text-slate-500 font-medium">Qty:</span>
+                <div className="flex items-center gap-1 bg-gray-100 px-2.5 py-1.5 rounded-lg text-sm">
+                  <span className="text-gray-600">Qty:</span>
                   <input
                     type="number"
                     min="1"
                     value={scanQty}
                     onChange={(e) => setScanQty(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-10 bg-transparent text-center font-bold text-slate-800 outline-none"
+                    className="w-12 bg-transparent text-center font-bold text-gray-900 outline-none"
                     title="Units to add per scan"
                   />
                 </div>
@@ -426,19 +419,19 @@ export default function BarcodeScanner() {
               placeholder={autoAdd ? "Scan barcode or enter number and press Enter (auto-adds)…" : "Scan barcode or type and press Enter…"}
               disabled={processing || committing}
               autoFocus
-              className="w-full px-4 py-3 text-lg font-mono bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+              className="w-full px-4 py-3 text-base sm:text-lg font-mono bg-gray-100 border-0 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
             />
             {(processing || committing) && (
-              <div className="absolute right-3 top-3 flex items-center gap-1.5 text-xs font-semibold text-emerald-600 bg-white/95 px-2.5 py-1.5 rounded-lg shadow-sm border border-emerald-100">
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-xs font-medium text-blue-600 bg-white px-2.5 py-1.5 rounded-lg shadow-sm border border-gray-200">
                 <Loader2 size={13} className="animate-spin" /> {committing ? "Adding stock…" : "Resolving barcode…"}
               </div>
             )}
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-500">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm text-gray-500">
             <p>
               {autoAdd ? (
-                <span className="text-emerald-700 font-medium flex items-center gap-1">
+                <span className="text-green-700 flex items-center gap-1">
                   ⚡ Auto-Add active: scanning or pressing Enter adds <strong>+{scanQty}</strong> immediately.
                 </span>
               ) : (
@@ -448,32 +441,32 @@ export default function BarcodeScanner() {
             <button
               type="button"
               onClick={() => setShowAdvanced((v) => !v)}
-              className="text-slate-500 hover:text-slate-800 underline text-xs"
+              className="self-start sm:self-auto text-sm font-medium text-blue-600 hover:text-blue-800"
             >
               {showAdvanced ? "Hide Batch Info" : "Optional Batch Info (PO / Remarks)"}
             </button>
           </div>
 
           {showAdvanced && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-100 animate-fade-in-up">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-gray-200 animate-fade-in-up">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Reference / PO No.</label>
+                <label className="block text-sm text-gray-700 mb-1">Reference / PO No.</label>
                 <input
                   type="text"
                   value={autoReference}
                   onChange={(e) => setAutoReference(e.target.value)}
                   placeholder="e.g. PO-8921"
-                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Remarks</label>
+                <label className="block text-sm text-gray-700 mb-1">Remarks</label>
                 <input
                   type="text"
                   value={autoRemarks}
                   onChange={(e) => setAutoRemarks(e.target.value)}
                   placeholder="Optional notes"
-                  className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+                  className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -514,15 +507,15 @@ export default function BarcodeScanner() {
 
       {/* Last result */}
       {lastResult && !showForm && (
-        <div className="rounded-2xl border bg-emerald-50 border-emerald-200 p-5 flex items-center gap-4 animate-fade-in-up">
-          <CheckCircle2 size={24} className="text-emerald-600 shrink-0" />
+        <div className="rounded-lg border bg-green-50 border-green-200 p-4 lg:p-5 flex items-center gap-4 animate-fade-in-up">
+          <CheckCircle2 size={24} className="text-green-600 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="font-bold text-emerald-900 truncate">{lastResult.product.name}</p>
-            <p className="text-sm text-emerald-700">
+            <p className="font-semibold text-green-900 truncate">{lastResult.product.name}</p>
+            <p className="text-sm text-green-700">
               +{lastResult.qty} units received · New stock: <strong>{lastResult.newQuantity}</strong>
             </p>
           </div>
-          <button onClick={() => setLastResult(null)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600">
+          <button onClick={() => setLastResult(null)} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600" aria-label="Dismiss">
             <XCircle size={18} />
           </button>
         </div>
@@ -530,6 +523,6 @@ export default function BarcodeScanner() {
 
       {/* Session history */}
       <SessionHistory items={sessionHistory} />
-    </div>
+    </PageContainer>
   );
 }

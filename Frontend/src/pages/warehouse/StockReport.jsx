@@ -6,6 +6,10 @@ import {
 import { useStockReport } from "../../hooks/useWarehouse";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import {
+  PageContainer, PageHeader, StatCard, StatGrid, Card, TableCard, EmptyRow, SkeletonRows,
+  btnPrimary, btnSecondary, inputClass, labelClass, theadClass, thClass, tbodyClass,
+} from "../../components/warehouse/WarehouseUI";
 
 // ─── Excel Export ────────────────────────────────────────────────────────────
 async function exportToExcel(rows, totals) {
@@ -162,190 +166,164 @@ export default function StockReport() {
     return { totalStock, totalStockValue, lowCount };
   }, [filtered]);
 
+  const COLS = 10;
+
+  const renderTableBody = () => {
+    if (loading) return <SkeletonRows cols={COLS} />;
+    if (filtered.length === 0) return <EmptyRow colSpan={COLS} message="No products match your filters." />;
+    return filtered.map((row, idx) => (
+      <tr
+        key={row.id}
+        className={`hover:bg-gray-50 transition-colors ${
+          row.totalStock === 0 ? "bg-red-50/30" : row.isLow ? "bg-amber-50/30" : ""
+        }`}
+      >
+        <td className="px-4 sm:px-6 py-4 text-sm text-gray-500">{idx + 1}</td>
+        <td className="px-4 sm:px-6 py-4 text-sm font-medium text-gray-900">{row.name}</td>
+        <td className="px-4 sm:px-6 py-4">
+          <span className="font-mono text-xs text-gray-700 bg-gray-100 px-2 py-0.5 rounded">{row.barcode || "—"}</span>
+        </td>
+        <td className="px-4 sm:px-6 py-4 text-sm text-gray-600">{row.category || "—"}</td>
+        <td className="px-4 sm:px-6 py-4 text-right">
+          <span
+            className={`text-sm font-bold ${
+              row.totalStock === 0 ? "text-red-600" : row.isLow ? "text-amber-600" : "text-gray-900"
+            }`}
+          >
+            {row.totalStock}
+          </span>
+        </td>
+        <td className="px-4 sm:px-6 py-4 text-sm text-gray-500">{row.unit || "Piece"}</td>
+        <td className="px-4 sm:px-6 py-4 text-right text-sm text-gray-700">
+          {row.purchasePrice > 0 ? `₹${row.purchasePrice.toLocaleString("en-IN")}` : "—"}
+        </td>
+        <td className="px-4 sm:px-6 py-4 text-right text-sm font-medium text-gray-900">
+          {row.stockValue > 0 ? `₹${row.stockValue.toLocaleString("en-IN")}` : "—"}
+        </td>
+        <td className="px-4 sm:px-6 py-4 text-right text-sm text-gray-500">{row.minStockLevel || "—"}</td>
+        <td className="px-4 sm:px-6 py-4 text-center">
+          {row.totalStock === 0 ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-red-100 text-red-800 rounded-full text-xs font-medium whitespace-nowrap">
+              <AlertCircle size={11} /> Out of Stock
+            </span>
+          ) : row.isLow ? (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium whitespace-nowrap">
+              <AlertTriangle size={11} /> Low Stock
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium whitespace-nowrap">
+              <CheckCircle2 size={11} /> In Stock
+            </span>
+          )}
+        </td>
+      </tr>
+    ));
+  };
+
   return (
-    <div className="w-full space-y-6">
-      {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-700">
-            <FileBarChart2 size={22} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Stock Report</h1>
-            <p className="text-sm text-slate-500">Current inventory valuation and stock levels</p>
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeader
+        title="Stock Report"
+        subtitle="Current inventory valuation and stock levels"
+        actions={
+          <>
+            <button onClick={() => refetch && refetch()} disabled={loading} className={btnSecondary} title="Refresh Stock Data">
+              <RefreshCw size={16} className={loading ? "animate-spin text-blue-600" : "text-gray-500"} />
+              Refresh
+            </button>
+            <button onClick={() => exportToPdf(filtered, totals)} disabled={loading || filtered.length === 0} className={btnSecondary}>
+              <Download size={16} className="text-red-600" />
+              Export PDF
+            </button>
+            <button onClick={() => exportToExcel(filtered, totals)} disabled={loading || filtered.length === 0} className={btnPrimary}>
+              <Download size={16} />
+              Export Excel
+            </button>
+          </>
+        }
+      />
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refetch && refetch()}
-            disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl text-sm font-semibold hover:bg-slate-50 transition-colors shadow-sm disabled:opacity-50"
-            title="Refresh Stock Data"
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin text-blue-600" : "text-slate-500"} />
-            <span>Refresh</span>
-          </button>
-          <button
-            onClick={() => exportToPdf(filtered, totals)}
-            disabled={loading || filtered.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 disabled:opacity-40 transition-colors shadow-sm"
-          >
-            <Download size={15} />
-            Export PDF
-          </button>
-          <button
-            onClick={() => exportToExcel(filtered, totals)}
-            disabled={loading || filtered.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 disabled:opacity-40 transition-colors shadow-sm"
-          >
-            <Download size={15} />
-            Export Excel
-          </button>
-        </div>
-      </div>
+      <StatGrid cols={3}>
+        <StatCard
+          title="Products in Report"
+          value={filtered.length}
+          valueLabel={filterStatus === "ALL" && !search ? "All products" : "Matching filters"}
+          icon={<Package className="w-5 h-5 text-purple-600" />}
+        />
+        <StatCard
+          title="Total Stock Units"
+          value={totals.totalStock.toLocaleString("en-IN")}
+          secondaryValue={`₹${totals.totalStockValue.toLocaleString("en-IN")}`}
+          secondaryValueLabel="Stock value"
+          icon={<FileBarChart2 className="w-5 h-5 text-blue-500" />}
+        />
+        <StatCard
+          title="Needs Attention"
+          value={totals.lowCount}
+          valueLabel="Low or out of stock"
+          icon={<AlertTriangle className="w-5 h-5 text-orange-500" />}
+        />
+      </StatGrid>
 
-      {/* ── Clean Filter Bar ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Status</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <label htmlFor="sr-status" className={labelClass}>Status</label>
+            <select id="sr-status" value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={inputClass}>
               <option value="ALL">All Items</option>
               <option value="OK">In Stock (Healthy)</option>
               <option value="LOW">Low Stock</option>
               <option value="OUT">Out of Stock</option>
             </select>
           </div>
-
           <div>
-            <label className="block text-xs font-semibold text-slate-500 mb-1">Search</label>
+            <label htmlFor="sr-search" className={labelClass}>Search</label>
             <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
+                id="sr-search"
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Product name, barcode or SKU…"
-                className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                className={`${inputClass} pl-9`}
               />
-              <Search size={15} className="absolute left-3 top-2.5 text-slate-400" />
             </div>
           </div>
         </div>
-      </div>
+      </Card>
 
-      {/* ── Proper Stock Report Table ── */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        {loading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
-            <Package size={40} className="mb-3 text-slate-300" />
-            <p className="font-medium text-slate-600">No products match your filters</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead>
-                <tr className="bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider border-b border-slate-200">
-                  <th className="px-4 py-3">#</th>
-                  <th className="px-4 py-3">Product Name</th>
-                  <th className="px-4 py-3">Barcode</th>
-                  <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3 text-right">Stock</th>
-                  <th className="px-4 py-3">Unit</th>
-                  <th className="px-4 py-3 text-right">Purchase Price (₹)</th>
-                  <th className="px-4 py-3 text-right">Stock Value (₹)</th>
-                  <th className="px-4 py-3 text-right">Min Level</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filtered.map((row, idx) => (
-                  <tr
-                    key={row.id}
-                    className={`hover:bg-slate-50 transition-colors ${
-                      row.totalStock === 0
-                        ? "bg-rose-50/25"
-                        : row.isLow
-                        ? "bg-amber-50/25"
-                        : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3 text-xs text-slate-400 font-mono">{idx + 1}</td>
-                    <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
-                    <td className="px-4 py-3">
-                      <span className="font-mono text-xs text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                        {row.barcode || "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-600 text-xs">{row.category || "—"}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`text-sm font-bold ${
-                        row.totalStock === 0
-                          ? "text-rose-600"
-                          : row.isLow
-                          ? "text-amber-600"
-                          : "text-slate-900"
-                      }`}>
-                        {row.totalStock}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500 text-xs">{row.unit || "Piece"}</td>
-                    <td className="px-4 py-3 text-right text-slate-700 text-xs">
-                      {row.purchasePrice > 0 ? `₹${row.purchasePrice.toLocaleString("en-IN")}` : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold text-slate-900 text-xs">
-                      {row.stockValue > 0 ? `₹${row.stockValue.toLocaleString("en-IN")}` : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right text-slate-500 text-xs">
-                      {row.minStockLevel || "—"}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {row.totalStock === 0 ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-100 text-rose-700 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                          <AlertCircle size={10} /> OUT OF STOCK
-                        </span>
-                      ) : row.isLow ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                          <AlertTriangle size={10} /> LOW STOCK
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                          <CheckCircle2 size={10} /> IN STOCK
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-900 text-xs">
-                  <td colSpan={5} className="px-4 py-3 uppercase tracking-wider text-slate-700">
-                    Total ({filtered.length} Products)
-                  </td>
-                  <td className="px-4 py-3 text-right text-slate-900 font-extrabold text-sm">
-                    {totals.totalStock.toLocaleString("en-IN")}
-                  </td>
-                  <td className="px-4 py-3" />
-                  <td className="px-4 py-3 text-right text-slate-500">—</td>
-                  <td className="px-4 py-3 text-right text-emerald-700 font-extrabold text-sm">
-                    ₹{totals.totalStockValue.toLocaleString("en-IN")}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+      <TableCard minWidth="min-w-[1000px]">
+        <thead className={theadClass}>
+          <tr>
+            <th scope="col" className={thClass}>#</th>
+            <th scope="col" className={thClass}>Product Name</th>
+            <th scope="col" className={thClass}>Barcode</th>
+            <th scope="col" className={thClass}>Category</th>
+            <th scope="col" className={`${thClass} text-right`}>Stock</th>
+            <th scope="col" className={thClass}>Unit</th>
+            <th scope="col" className={`${thClass} text-right`}>Purchase Price (₹)</th>
+            <th scope="col" className={`${thClass} text-right`}>Stock Value (₹)</th>
+            <th scope="col" className={`${thClass} text-right`}>Min Level</th>
+            <th scope="col" className={`${thClass} text-center`}>Status</th>
+          </tr>
+        </thead>
+        <tbody className={tbodyClass}>{renderTableBody()}</tbody>
+        {!loading && filtered.length > 0 && (
+          <tfoot>
+            <tr className="bg-gray-50 border-t-2 border-gray-200 text-sm font-semibold text-gray-900">
+              <td colSpan={4} className="px-4 sm:px-6 py-3">Total ({filtered.length} Products)</td>
+              <td className="px-4 sm:px-6 py-3 text-right font-bold">{totals.totalStock.toLocaleString("en-IN")}</td>
+              <td className="px-4 sm:px-6 py-3" />
+              <td className="px-4 sm:px-6 py-3 text-right text-gray-500">—</td>
+              <td className="px-4 sm:px-6 py-3 text-right font-bold text-green-700">
+                ₹{totals.totalStockValue.toLocaleString("en-IN")}
+              </td>
+              <td colSpan={2} />
+            </tr>
+          </tfoot>
         )}
-      </div>
-    </div>
+      </TableCard>
+    </PageContainer>
   );
 }

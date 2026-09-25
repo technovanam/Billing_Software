@@ -253,54 +253,35 @@ export default function SuperAdminDashboard() {
       });
     }
 
-    if (actualBusinesses && actualBusinesses.length > 0) {
-      actualBusinesses.forEach(b => {
-        const createdAt = b?.createdAt ? new Date(b.createdAt) : null;
-        last6Months.forEach(m => {
-          // If business was created in this month
-          if (createdAt && createdAt.getFullYear() === m.year && createdAt.getMonth() === m.monthNum) {
-            m.newBiz += 1;
-          }
-          
-          // If business was created before or during this month, it contributes to active/suspended
-          if (createdAt && (createdAt.getFullYear() < m.year || (createdAt.getFullYear() === m.year && createdAt.getMonth() <= m.monthNum))) {
-            if (b?.status === "Suspended") {
+    actualBusinesses.forEach(b => {
+      const createdAt = b?.createdAt?.toDate ? b.createdAt.toDate() : b?.createdAt ? new Date(b.createdAt) : null;
+      last6Months.forEach(m => {
+        // If business was created in this month
+        if (createdAt && createdAt.getFullYear() === m.year && createdAt.getMonth() === m.monthNum) {
+          m.newBiz += 1;
+        }
+        
+        // If business was created before or during this month, it contributes to active/suspended
+        if (createdAt && (createdAt.getFullYear() < m.year || (createdAt.getFullYear() === m.year && createdAt.getMonth() <= m.monthNum))) {
+           if (b?.status === "Suspended") {
               m.suspended += 1;
-            } else {
+           } else {
               m.active += 1;
-            }
-          }
-        });
+           }
+        }
       });
-    }
+    });
 
-    // Provide clean realistic fallback if array is empty
-    const hasData = last6Months.some(m => m.active > 0 || m.newBiz > 0 || m.suspended > 0);
-    const rawList = hasData ? last6Months.map(m => ({
+    // Bar heights are percentages of the busiest month
+    const maxCount = Math.max(1, ...last6Months.flatMap(m => [m.active, m.newBiz, m.suspended]));
+    const pct = (n) => (n / maxCount) * 100;
+
+    return last6Months.map(m => ({
       month: m.monthStr,
-      active: m.active,
-      newBiz: m.newBiz,
-      suspended: m.suspended
-    })) : [
-      { month: "Apr", active: 82, newBiz: 18, suspended: 4 },
-      { month: "May", active: 94, newBiz: 24, suspended: 5 },
-      { month: "Jun", active: 110, newBiz: 30, suspended: 4 },
-      { month: "Jul", active: 126, newBiz: 36, suspended: 7 },
-      { month: "Aug", active: 144, newBiz: 44, suspended: 6 },
-      { month: "Sep", active: 168, newBiz: 52, suspended: 8 },
-    ];
-
-    // Calculate maximum to scale properly with safe headroom (never exceed 80% container height)
-    const maxActive = Math.max(...rawList.map(r => r.active || 0), 10);
-    const maxNew = Math.max(...rawList.map(r => r.newBiz || 0), 5);
-    const maxSuspended = Math.max(...rawList.map(r => r.suspended || 0), 2);
-    const scaleMax = Math.max(maxActive, 100) * 1.25; // 25% headroom so bars stay comfortably below top
-
-    return rawList.map(d => ({
-      ...d,
-      activePct: Math.min(80, Math.max(8, Math.round((d.active / scaleMax) * 100))),
-      newBizPct: Math.min(65, Math.max(6, Math.round((d.newBiz / (scaleMax * 0.55)) * 100))),
-      suspendedPct: Math.min(50, Math.max(4, Math.round((d.suspended / (scaleMax * 0.28)) * 100))),
+      active: pct(m.active),
+      newBiz: pct(m.newBiz),
+      suspended: pct(m.suspended),
+      counts: { active: m.active, newBiz: m.newBiz, suspended: m.suspended }
     }));
   }, [actualBusinesses]);
 
@@ -494,27 +475,27 @@ export default function SuperAdminDashboard() {
                   {/* Floating Tooltip on Hover */}
                   <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-30 bg-gray-900 text-white text-[11px] rounded-lg py-1 px-2.5 shadow-xl whitespace-nowrap flex items-center gap-2">
                     <span className="font-semibold text-gray-200">{bar.month}:</span>
-                    <span className="text-emerald-400 font-bold">{bar.active} Active</span>
-                    <span className="text-blue-400 font-bold">{bar.newBiz} New</span>
-                    <span className="text-rose-400 font-bold">{bar.suspended} Churn</span>
+                    <span className="text-emerald-400 font-bold">{bar.counts.active} Active</span>
+                    <span className="text-blue-400 font-bold">{bar.counts.newBiz} New</span>
+                    <span className="text-rose-400 font-bold">{bar.counts.suspended} Suspended</span>
                   </div>
 
                   {/* Tri-Bar Cluster */}
                   <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-full">
                     <div
-                      style={{ height: `${bar.activePct}%` }}
+                      style={{ height: `${bar.active}%` }}
                       className="w-3 sm:w-4 bg-emerald-500 group-hover:bg-emerald-600 rounded-t-md shadow-sm transition-all duration-300"
-                      title={`Active: ${bar.active}`}
+                      title={`Active: ${bar.counts.active}`}
                     />
                     <div
-                      style={{ height: `${bar.newBizPct}%` }}
+                      style={{ height: `${bar.newBiz}%` }}
                       className="w-3 sm:w-4 bg-blue-600 group-hover:bg-blue-700 rounded-t-md shadow-sm transition-all duration-300"
-                      title={`New: ${bar.newBiz}`}
+                      title={`New: ${bar.counts.newBiz}`}
                     />
                     <div
-                      style={{ height: `${bar.suspendedPct}%` }}
+                      style={{ height: `${bar.suspended}%` }}
                       className="w-3 sm:w-4 bg-rose-400 group-hover:bg-rose-500 rounded-t-md shadow-sm transition-all duration-300"
-                      title={`Churn: ${bar.suspended}`}
+                      title={`Suspended: ${bar.counts.suspended}`}
                     />
                   </div>
 

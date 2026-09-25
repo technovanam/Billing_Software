@@ -2,36 +2,38 @@ import React, { useState, useEffect } from "react";
 import { usePlatformAnalytics } from "../../../hooks/useSuperAdminFirestore";
 import { BarChart3, Building2, Users, CreditCard, TrendingUp, Calendar, ArrowUpRight, ArrowDownRight, Loader2 } from "lucide-react";
 
+const EMPTY_METRIC = { value: "—", sub: "No data yet", subColor: "gray-400" };
+
 export default function PlatformAnalytics() {
   const { analytics: dbAnalytics, loading } = usePlatformAnalytics();
   const [activeTab, setActiveTab] = useState("business"); // business | user | transaction | revenue
   const [dateFilter, setDateFilter] = useState("30d");
 
-  // Fallback defaults so UI looks good if backend hasn't populated data yet
+  // Empty placeholders until the analytics/platform document is populated
   const [analytics, setAnalytics] = useState({
     business: {
-      registered: { value: "1,248", sub: "+12.4% MoM", subColor: "emerald-600" },
-      activeRetained: { value: "1,086", sub: "87.0% Retention", subColor: "emerald-600" },
-      trialConversions: { value: "68.2%", sub: "Free to Paid", subColor: "blue-600" },
-      churnRate: { value: "1.8%", sub: "Industry Benchmark <3%", subColor: "emerald-600" },
+      registered: EMPTY_METRIC,
+      activeRetained: EMPTY_METRIC,
+      trialConversions: EMPTY_METRIC,
+      churnRate: EMPTY_METRIC,
     },
     user: {
-      total: { value: "6,482", sub: "+412 this month", subColor: "emerald-600" },
-      dau: { value: "4,120", sub: "Cashiers & Billing Staff", subColor: "cyan-600" },
-      mau: { value: "5,890", sub: "90.8% Active Ratio", subColor: "blue-600" },
-      sessions: { value: "8.4 / day", sub: "Multi-counter shifts", subColor: "gray-400" },
+      total: EMPTY_METRIC,
+      dau: EMPTY_METRIC,
+      mau: EMPTY_METRIC,
+      sessions: EMPTY_METRIC,
     },
     transaction: {
-      invoices: { value: "2.84 Million", sub: "+18.2% throughput", subColor: "emerald-600" },
-      grossSales: { value: "₹48.90 Cr", sub: "Across all merchants", subColor: "emerald-600" },
-      purchase: { value: "₹34.12 Cr", sub: "Vendor bills entered", subColor: "gray-400" },
-      refunds: { value: "0.62%", sub: "Ultra low return volume", subColor: "emerald-600" },
+      invoices: EMPTY_METRIC,
+      grossSales: EMPTY_METRIC,
+      purchase: EMPTY_METRIC,
+      refunds: EMPTY_METRIC,
     },
     revenue: {
-      mrr: { value: "₹18.42 Lakhs", sub: "+14.2% MoM", subColor: "emerald-600" },
-      arr: { value: "₹2.21 Crores", sub: "Extrapolated base", subColor: "emerald-600" },
-      arpu: { value: "₹1,476", sub: "Plan blended ARPU", subColor: "blue-600" },
-      refundIncidence: { value: "0.18%", sub: "Exceptional billing stability", subColor: "emerald-600" },
+      mrr: EMPTY_METRIC,
+      arr: EMPTY_METRIC,
+      arpu: EMPTY_METRIC,
+      refundIncidence: EMPTY_METRIC,
     }
   });
 

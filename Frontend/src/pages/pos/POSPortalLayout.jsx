@@ -8,6 +8,7 @@ import {
   Clock,
   LogOut,
   Store,
+  Zap,
 } from "lucide-react";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
 

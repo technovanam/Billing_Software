@@ -1,11 +1,11 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
-  ArrowDown, ScanBarcode, Package, CheckCircle2, Loader2,
-  Warehouse, Plus, X, AlertTriangle,
+  ScanBarcode, Package, CheckCircle2, Loader2, Warehouse, Plus, X, AlertTriangle,
 } from "lucide-react";
 import { useBarcodeIndex, useStockIn } from "../../hooks/useWarehouse";
 import { useToast } from "../../context/ToastContext";
 import { useOperator, ROLES } from "../../context/OperatorContext";
+import { PageContainer, PageHeader } from "../../components/warehouse/WarehouseUI";
 
 export default function StockIn() {
   const { resolveBarcode } = useBarcodeIndex();
@@ -79,31 +79,20 @@ export default function StockIn() {
   }, [product, quantity, referenceNo, remarks, stockIn, barcodeInput, toast]);
 
   return (
-    <div className="w-full space-y-6">
-
-
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-700">
-          <ArrowDown size={22} />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Stock In</h1>
-          <p className="text-sm text-slate-500">Add inventory units with movement logging</p>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader title="Stock In" subtitle="Add inventory units with movement logging" />
 
       {/* Role notice if Manager (view-only) */}
       {!canStockIn && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3.5 flex items-center gap-3 text-amber-800 text-sm">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center gap-3 text-amber-800 text-sm">
           <AlertTriangle size={18} className="shrink-0 text-amber-600" />
           <span>You are in <strong>{role}</strong> role. Stock In is view-only for this session.</span>
         </div>
       )}
 
       {/* Barcode Search Box */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-3">
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+      <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 lg:p-5 space-y-3">
+        <label className="block text-sm font-medium text-gray-700 mb-1">
           Product Barcode
         </label>
         <div className="flex gap-2">
@@ -115,7 +104,7 @@ export default function StockIn() {
               onChange={(e) => setBarcodeInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Scan or type barcode, press Enter…"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-base outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full px-4 py-3 font-mono text-base bg-gray-100 border-0 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               autoFocus
             />
             {resolving && (
@@ -126,14 +115,14 @@ export default function StockIn() {
             type="button"
             onClick={handleResolve}
             disabled={resolving || !barcodeInput.trim()}
-            className="px-5 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl text-sm transition-colors disabled:opacity-50"
+            className="px-5 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm transition-colors disabled:opacity-50"
           >
             Find
           </button>
         </div>
 
         {notFound && (
-          <p className="text-xs text-rose-600 font-medium">
+          <p className="text-sm text-red-600">
             Product not found for this barcode. Go to Barcode Scanner to register it.
           </p>
         )}
@@ -141,53 +130,53 @@ export default function StockIn() {
 
       {/* Product Details & Quantity Input */}
       {product && (
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5 space-y-4 animate-fade-in-up">
-          <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+        <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 lg:p-5 space-y-4 animate-fade-in-up">
+          <div className="flex flex-wrap items-center gap-3 pb-3 border-b border-gray-200">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
               <Package size={20} />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-bold text-slate-900 truncate">{product.name}</h3>
-              <p className="text-xs text-slate-400 font-mono">Barcode: {product.barcode}</p>
+              <h3 className="text-lg font-semibold text-gray-900 truncate">{product.name}</h3>
+              <p className="text-xs text-gray-500 font-mono">Barcode: {product.barcode}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-slate-400 font-medium">Current Stock</p>
-              <p className="text-lg font-extrabold text-slate-800">{currentStock}</p>
+              <p className="text-xs text-gray-500">Current Stock</p>
+              <p className="text-xl font-bold text-gray-900">{currentStock}</p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Quantity *</label>
+              <label className="block text-sm text-gray-700 mb-1">Quantity *</label>
               <input
                 type="number"
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
                 disabled={!canStockIn}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                className="w-full px-3 py-2 text-center font-bold text-lg disabled:opacity-50 bg-gray-100 border-0 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Reference / PO No.</label>
+              <label className="block text-sm text-gray-700 mb-1">Reference / PO No.</label>
               <input
                 type="text"
                 value={referenceNo}
                 onChange={(e) => setReferenceNo(e.target.value)}
                 placeholder="e.g. PO-8921"
                 disabled={!canStockIn}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                className="w-full px-3 py-2 text-sm disabled:opacity-50 bg-gray-100 border-0 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Remarks</label>
+              <label className="block text-sm text-gray-700 mb-1">Remarks</label>
               <input
                 type="text"
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 placeholder="Optional notes"
                 disabled={!canStockIn}
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
+                className="w-full px-3 py-2 text-sm disabled:opacity-50 bg-gray-100 border-0 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -196,7 +185,7 @@ export default function StockIn() {
             type="button"
             onClick={handleStockIn}
             disabled={adding || !canStockIn || quantity <= 0}
-            className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-sm transition-colors disabled:opacity-50"
+            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
           >
             {adding ? (
               <>
@@ -215,16 +204,16 @@ export default function StockIn() {
 
       {/* Success Feedback */}
       {lastResult && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex items-center gap-4 animate-fade-in-up">
-          <CheckCircle2 size={24} className="text-emerald-600 shrink-0" />
-          <div className="flex-1">
-            <p className="font-bold text-emerald-900">{lastResult.product.name}</p>
-            <p className="text-sm text-emerald-700">
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 lg:p-5 flex items-center gap-4 animate-fade-in-up">
+          <CheckCircle2 size={24} className="text-green-600 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-green-900 truncate">{lastResult.product.name}</p>
+            <p className="text-sm text-green-700">
               +{lastResult.added} units added · New stock: <strong>{lastResult.newQuantity}</strong>
             </p>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

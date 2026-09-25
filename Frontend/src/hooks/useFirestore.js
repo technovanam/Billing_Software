@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   Timestamp,
 } from "firebase/firestore";
-import { db } from "../lib/firebase/config";
+import { auth, db } from "../lib/firebase/config";
 import { AuthContext } from "../context/AuthContext";
 
 // Get store owner UID: from Firebase Auth user, or from cashier session if logged in via Cashier PIN
@@ -185,6 +185,8 @@ export const useDashboard = () => {
 // Customers — stored in users/{uid}/customers (separate "db" per user)
 export const useCustomers = (options = {}) => {
   const uid = useUserId();
+  // Live listeners need a real Firebase login; Firestore rules reject cached/fallback uids
+  const isSignedIn = Boolean(useContext(AuthContext).user?.uid);
   const [all, setAll] = useState(() => {
     try {
       const cached = localStorage.getItem("store_customers_cache");
@@ -236,7 +238,7 @@ export const useCustomers = (options = {}) => {
     window.addEventListener("store_customer_added", handleLocalUpdate);
     window.addEventListener("storage", handleLocalUpdate);
 
-    if (!uid) {
+    if (!uid || !isSignedIn) {
       setLoading(false);
       return () => {
         window.removeEventListener("store_customer_added", handleLocalUpdate);
@@ -266,7 +268,7 @@ export const useCustomers = (options = {}) => {
       window.removeEventListener("store_customer_added", handleLocalUpdate);
       window.removeEventListener("storage", handleLocalUpdate);
     };
-  }, [uid]);
+  }, [uid, isSignedIn]);
 
   const { data, pagination } = applyListView(all, options);
   const [view, setView] = useState(data);
@@ -360,6 +362,8 @@ export const useCustomers = (options = {}) => {
 // Invoices — users/{uid}/invoices
 export const useInvoices = (options = {}) => {
   const uid = useUserId();
+  // Live listeners need a real Firebase login; Firestore rules reject cached/fallback uids
+  const isSignedIn = Boolean(useContext(AuthContext).user?.uid);
   const [all, setAll] = useState(() => {
     try {
       const cached = localStorage.getItem("store_invoices_cache");
@@ -410,7 +414,7 @@ export const useInvoices = (options = {}) => {
     window.addEventListener("store_invoice_added", handleLocalInvUpdate);
     window.addEventListener("storage", handleLocalInvUpdate);
 
-    if (!uid) {
+    if (!uid || !isSignedIn) {
       setLoading(false);
       return () => {
         window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
@@ -440,7 +444,7 @@ export const useInvoices = (options = {}) => {
       window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
       window.removeEventListener("storage", handleLocalInvUpdate);
     };
-  }, [uid]);
+  }, [uid, isSignedIn]);
 
   const fyInvoices = useMemo(() => {
     return all.filter((inv) => isInCurrentFY(inv.invoiceDate || inv.createdAt));

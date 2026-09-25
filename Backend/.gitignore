@@ -11,6 +11,7 @@ node_modules/
 # Environment files (keep them out of version control)
 .env
 .env.*
+!.env.example
 
 # Log files
 npm-debug.log*
@@ -36,3 +37,6 @@ coverage/
 *.log
 *.tmp
 serviceAccountKey.json
+
+# AI training exports (contain real command text)
+exports/

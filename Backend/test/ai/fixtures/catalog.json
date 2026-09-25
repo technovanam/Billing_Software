@@ -1,0 +1,22 @@
+{
+  "products": [
+    { "id": "p_cement", "name": "Cement", "brand": "UltraTech", "unit": "Bag", "price": 420, "hsn": "2523" },
+    { "id": "p_nails", "name": "Nails 2 inch", "brand": "Tata", "unit": "Kg", "price": 110.5, "hsn": "7317" },
+    { "id": "p_parle", "name": "Parle-G Biscuit", "brand": "Parle", "unit": "Packet", "price": 10, "hsn": "1905" },
+    { "id": "p_milk", "name": "Aavin Milk", "brand": "Aavin", "unit": "Litre", "price": 54, "hsn": "0401" },
+    { "id": "p_eggs", "name": "Eggs", "brand": "", "unit": "Piece", "price": 6, "hsn": "0407" },
+    { "id": "p_sugar", "name": "Sugar", "brand": "", "unit": "Kilogram", "price": 44, "hsn": "1701" },
+    { "id": "p_rice_ponni", "name": "Ponni Rice", "brand": "Lalitha", "unit": "Kg", "price": 62, "hsn": "1006" },
+    { "id": "p_rice_basmati", "name": "Basmati Rice", "brand": "India Gate", "unit": "Kg", "price": 145, "hsn": "1006" },
+    { "id": "p_oil", "name": "Sunflower Oil", "brand": "Gold Winner", "unit": "Litre", "price": "165.00", "hsn": "1512" },
+    { "id": "p_dal", "name": "Toor Dal", "brand": "", "unit": "Kg", "price": 150, "hsn": "0713", "aliases": ["thuvaram paruppu", "arhar dal"] },
+    { "id": "p_soap", "name": "Lux Soap", "brand": "Lux", "unit": "Piece", "price": 38, "hsn": "3401" }
+  ],
+  "customers": [
+    { "id": "c_ravi", "name": "Ravi Traders", "phone": "9000000011" },
+    { "id": "c_kumar_s", "firstName": "Kumar", "lastName": "", "phone": "9000000012" },
+    { "id": "c_kumar_r", "name": "Kumar", "phone": "9000000013" },
+    { "id": "c_selvam", "companyName": "Selvam Stores", "phone": "9000000014" },
+    { "id": "c_meena", "name": "Meena Textiles", "phone": "9000000015" }
+  ]
+}

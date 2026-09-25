@@ -21,8 +21,6 @@ import Clients from "./pages/clients/ClientManagement";
 import Report from "./pages/reports/RevenueLineChart";
 import Settings from "./pages/settings/SettingsPage";
 import InactivityDetector from "./components/InactivityDetector";
-import DataSeeder from "./pages/admin/DataSeeder";
-import ClearAndReseed from "./pages/admin/ClearAndReseed";
 import FYArchives from "./pages/admin/FYArchives";
 import CashierManagement from "./pages/cashiers/CashierManagement";
 import AIAssistant from "./pages/ai/AIAssistant";
@@ -344,8 +342,6 @@ export default function App() {
                               <Route path="/expenses" element={<Expenses />} />
                               <Route path="/cashiers" element={<CashierManagement />} />
                               <Route path="/settings" element={<Settings />} />
-                              <Route path="/seed-data" element={<DataSeeder />} />
-                              <Route path="/clear-and-reseed" element={<ClearAndReseed />} />
                               <Route path="/fy-archives" element={<FYArchives />} />
                             </Routes>
                           </main>

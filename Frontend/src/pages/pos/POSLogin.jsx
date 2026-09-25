@@ -176,49 +176,36 @@ export default function POSLogin() {
               </select>
             </div>
 
-            {/* Quick Demo Cashier Pills */}
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
-                Quick Select Cashier:
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {allCashiers && allCashiers.length > 0
-                  ? allCashiers
-                      .filter((c) => (c.status || "Active") === "Active")
-                      .slice(0, 4)
-                      .map((c) => (
-                        <button
-                          key={c.id || c.cashierId}
-                          type="button"
-                          onClick={() => {
-                            setCashierId(c.cashierId || "BAL/086430");
-                            if (c.counter) setCounterNumber(c.counter);
-                          }}
-                          className={`flex-1 min-w-[90px] py-1.5 px-2 rounded-lg text-xs font-bold transition border ${
-                            cashierId === (c.cashierId || "BAL/086430")
-                              ? "bg-blue-50 border-blue-300 text-blue-700 shadow-2xs"
-                              : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
-                          }`}
-                        >
-                          <span>{c.cashierId}</span>
-                        </button>
-                      ))
-                  : ["BAL/086430", "CSH-102", "CSH-103"].map((id) => (
+            {/* Quick Select Cashier Pills (real cashiers only) */}
+            {allCashiers && allCashiers.length > 0 && (
+              <div>
+                <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wide mb-1.5">
+                  Quick Select Cashier:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {allCashiers
+                    .filter((c) => (c.status || "Active") === "Active")
+                    .slice(0, 4)
+                    .map((c) => (
                       <button
-                        key={id}
+                        key={c.id || c.cashierId}
                         type="button"
-                        onClick={() => setCashierId(id)}
-                        className={`flex-1 py-1.5 px-2 rounded-lg text-xs font-bold transition border ${
-                          cashierId === id
+                        onClick={() => {
+                          setCashierId(c.cashierId || "");
+                          if (c.counter) setCounterNumber(c.counter);
+                        }}
+                        className={`flex-1 min-w-[90px] py-1.5 px-2 rounded-lg text-xs font-bold transition border ${
+                          cashierId === c.cashierId
                             ? "bg-blue-50 border-blue-300 text-blue-700 shadow-2xs"
                             : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
                         }`}
                       >
-                        {id}
+                        <span>{c.cashierId}</span>
                       </button>
                     ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Submit Button */}
             <div className="pt-2">
