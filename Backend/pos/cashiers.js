@@ -33,9 +33,19 @@ async function readCashierList(db, businessUid) {
   return Array.isArray(raw) ? raw : [];
 }
 
-function findCashier(list, cashierId) {
-  const id = normalizeCashierId(cashierId);
-  return list.find((c) => normalizeCashierId(c.cashierId) === id) || null;
+function findCashier(list, identifier) {
+  if (!list || !Array.isArray(list)) return null;
+  const raw = String(identifier || '').trim().toLowerCase();
+  const id = normalizeCashierId(identifier);
+  const digits = raw.replace(/\D/g, '');
+  return (
+    list.find((c) => {
+      if (normalizeCashierId(c.cashierId) === id) return true;
+      if (c.email && String(c.email).trim().toLowerCase() === raw) return true;
+      if (digits.length >= 10 && c.phone && String(c.phone).replace(/\D/g, '').endsWith(digits.slice(-10))) return true;
+      return false;
+    }) || null
+  );
 }
 
 async function logSecurity(db, businessUid, entry, now) {
@@ -114,16 +124,18 @@ async function loginCashier({ db, auth, deviceId, deviceSecret, cashierId, pin, 
     throw new PosError(401, 'This device is not registered for POS. Ask the owner to register it in Cashier Management.', 'DEVICE_NOT_REGISTERED');
   }
   const businessUid = device.businessUid;
-  const id = normalizeCashierId(cashierId);
+  let id = normalizeCashierId(cashierId);
   const base = { cashierId: id, deviceId: deviceRef.id, ip, userAgent };
   const fail = async (status, message, code, extra = {}) => {
     await logSecurity(db, businessUid, { type: 'cashier_login_failed', reason: code, ...base, ...extra }, now);
     throw new PosError(status, message, code);
   };
 
-  const cashier = findCashier(await readCashierList(db, businessUid), id);
+  const cashier = findCashier(await readCashierList(db, businessUid), cashierId);
   if (!cashier) return fail(401, 'Wrong cashier ID or PIN.', 'BAD_CREDENTIALS');
 
+  id = normalizeCashierId(cashier.cashierId);
+  base.cashierId = id;
   const secretRef = businessCollections.cashierSecrets(businessUid, db).doc(id);
   const secret = (await secretRef.get()).data() || {};
   if (secret.lockedUntil && Date.parse(secret.lockedUntil) > now()) {

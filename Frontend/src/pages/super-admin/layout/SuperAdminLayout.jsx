@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Outlet, NavLink, useLocation, useNavigate, Link } from "react-router-dom";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
+import AIAssistantWidget from "../../../components/AIAssistantWidget";
 import {
   LayoutDashboard,
   Building2,
@@ -16,7 +17,6 @@ import {
   BarChart3,
   HelpCircle,
   Megaphone,
-  Bell,
   Shield,
   KeyRound,
   FileText,
@@ -28,22 +28,24 @@ import {
   AlertOctagon,
   ChevronLeft,
   ChevronRight,
-  Menu,
   X,
   Search,
-  LogOut,
-  User,
-  ShieldCheck,
   ExternalLink,
+  Store,
 } from "lucide-react";
+import { ArrowRightStartOnRectangleIcon } from "@heroicons/react/24/outline";
+
+function getFYLabel() {
+  const now = new Date();
+  const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-${year + 1} FY`;
+}
 
 export default function SuperAdminLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
   const navRef = useRef(null);
 
@@ -60,8 +62,6 @@ export default function SuperAdminLayout() {
   // Close menus on route change
   useEffect(() => {
     setMobileOpen(false);
-    setProfileMenuOpen(false);
-    setNotificationsOpen(false);
     setSearchOpen(false);
   }, [location.pathname]);
 
@@ -80,11 +80,11 @@ export default function SuperAdminLayout() {
   const navGroups = useMemo(
     () => [
       {
-        title: "DASHBOARD",
+        title: "CORE",
         items: [{ to: "/super-admin/dashboard", label: "Dashboard", icon: LayoutDashboard }],
       },
       {
-        title: "PLATFORM",
+        title: "PLATFORM FLEET",
         items: [
           { to: "/super-admin/businesses", label: "Businesses", icon: Building2 },
           { to: "/super-admin/branches", label: "Branches", icon: GitBranch },
@@ -94,7 +94,7 @@ export default function SuperAdminLayout() {
         ],
       },
       {
-        title: "SUBSCRIPTIONS",
+        title: "SUBSCRIPTIONS & BILLING",
         items: [
           { to: "/super-admin/plans", label: "Plans", icon: Layers },
           { to: "/super-admin/subscriptions", label: "Subscriptions", icon: CreditCard },
@@ -104,18 +104,15 @@ export default function SuperAdminLayout() {
         ],
       },
       {
-        title: "ANALYTICS",
-        items: [{ to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3 }],
-      },
-      {
-        title: "SUPPORT",
+        title: "ANALYTICS & SUPPORT",
         items: [
-          { to: "/super-admin/support", label: "Tickets", icon: HelpCircle },
+          { to: "/super-admin/analytics", label: "Platform Analytics", icon: BarChart3 },
+          { to: "/super-admin/support", label: "Support Tickets", icon: HelpCircle },
           { to: "/super-admin/announcements", label: "Announcements", icon: Megaphone },
         ],
       },
       {
-        title: "SECURITY",
+        title: "SECURITY & ACCESS",
         items: [
           { to: "/super-admin/admin-users", label: "Admin Users", icon: Shield },
           { to: "/super-admin/roles", label: "Roles & Permissions", icon: KeyRound },
@@ -125,7 +122,7 @@ export default function SuperAdminLayout() {
         ],
       },
       {
-        title: "SYSTEM",
+        title: "SYSTEM & BACKUPS",
         items: [
           { to: "/super-admin/system-health", label: "System Health", icon: Activity },
           { to: "/super-admin/settings", label: "Settings", icon: Settings },
@@ -137,6 +134,12 @@ export default function SuperAdminLayout() {
     []
   );
 
+  const portalShortcuts = [
+    { name: "Business Portal", path: "/dashboard", icon: Store, badge: "Admin" },
+    { name: "POS Counter", path: "/pos/billing", icon: Smartphone, badge: "POS" },
+    { name: "Warehouse Hub", path: "/warehouse", icon: Warehouse, badge: "Stock" },
+  ];
+
   // Search items for command palette
   const searchableItems = useMemo(() => {
     const list = [];
@@ -145,14 +148,11 @@ export default function SuperAdminLayout() {
         list.push({ title: item.label, category: g.title, path: item.to, icon: item.icon });
       });
     });
-    list.push(
-      { title: "ABC Traders & Electronics (BUS-00124)", category: "Business", path: "/super-admin/businesses/BUS-00124", icon: Building2 },
-      { title: "Kaveri Supermarket Chain (BUS-00125)", category: "Business", path: "/super-admin/businesses/BUS-00125", icon: Building2 },
-      { title: "Ticket #TCK-4081 (Thermal printer issue)", category: "Support Ticket", path: "/super-admin/support", icon: HelpCircle },
-      { title: "Create Platform Backup", category: "System Action", path: "/super-admin/backups", icon: Database }
-    );
+    portalShortcuts.forEach((p) => {
+      list.push({ title: p.name, category: "Portals", path: p.path, icon: p.icon });
+    });
     return list;
-  }, [navGroups]);
+  }, [navGroups, portalShortcuts]);
 
   const filteredSearchResults = useMemo(() => {
     if (!searchQuery.trim()) return searchableItems.slice(0, 8);
@@ -160,20 +160,8 @@ export default function SuperAdminLayout() {
     return searchableItems.filter((i) => i.title.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
   }, [searchableItems, searchQuery]);
 
-  // Current page title
-  const currentTitle = useMemo(() => {
-    for (const group of navGroups) {
-      for (const item of group.items) {
-        if (location.pathname === item.to || location.pathname.startsWith(item.to + "/")) {
-          return item.label;
-        }
-      }
-    }
-    return "Super Admin Portal";
-  }, [location.pathname, navGroups]);
-
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-mazzard flex antialiased">
+    <div className="min-h-screen bg-slate-100 text-slate-800 font-mazzard flex antialiased">
       {/* Mobile Backdrop */}
       {mobileOpen && (
         <div
@@ -182,29 +170,29 @@ export default function SuperAdminLayout() {
         />
       )}
 
-      {/* Sidebar - Pure White Light Theme Matching Billing Portal */}
+      {/* Sidebar - Matching Business Admin Portal Header UI Pattern */}
       <aside
         data-lenis-prevent="true"
         data-lenis-prevent-wheel="true"
         onWheel={handleSidebarWheel}
-        className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-slate-200/80 shadow-[0_2px_12px_rgba(0,0,0,0.03)] transition-all duration-300 flex flex-col overflow-hidden ${
+        className={`fixed top-0 left-0 z-50 h-screen bg-white border-r border-slate-200 shadow-sm transition-all duration-300 flex flex-col overflow-hidden ${
           collapsed ? "w-20" : "w-64"
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         {/* Sidebar Header */}
-        <div className="h-16 px-4 flex items-center justify-between border-b border-slate-100 flex-shrink-0">
+        <div className="flex items-center justify-between px-5 py-5 border-b border-slate-200 flex-shrink-0">
           <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 p-0.5 flex-shrink-0 shadow-md shadow-blue-500/20">
-              <div className="w-full h-full bg-white rounded-[10px] flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5 text-blue-600" />
-              </div>
-            </div>
+            <img
+              src="/Icon@4x-8.png"
+              alt="Techno Vanam Logo"
+              className="h-10 w-10 object-contain rounded-lg flex-shrink-0"
+            />
             {!collapsed && (
-              <div className="truncate">
-                <div className="text-sm font-black tracking-tight text-gray-900 truncate">Techno Vanam</div>
-                <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600">
+              <div className="min-w-0">
+                <p className="text-lg font-bold text-slate-900 truncate">Techno Vanam</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600">
                   Super Admin
-                </div>
+                </p>
               </div>
             )}
           </div>
@@ -212,7 +200,7 @@ export default function SuperAdminLayout() {
           <button
             type="button"
             onClick={() => setCollapsed(!collapsed)}
-            className="hidden lg:flex p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+            className="hidden lg:flex p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100 transition"
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -221,7 +209,7 @@ export default function SuperAdminLayout() {
           <button
             type="button"
             onClick={() => setMobileOpen(false)}
-            className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100"
+            className="lg:hidden p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-slate-100"
           >
             <X className="w-5 h-5" />
           </button>
@@ -232,66 +220,102 @@ export default function SuperAdminLayout() {
           ref={navRef}
           data-lenis-prevent="true"
           data-lenis-prevent-wheel="true"
-          className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-6 scrollbar-thin"
+          className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-4 scrollbar-thin"
         >
           {navGroups.map((group, gIdx) => (
-            <div key={gIdx}>
+            <div key={gIdx} className="space-y-1">
               {!collapsed && (
-                <div className="px-3 mb-2 text-[10px] font-extrabold tracking-wider text-gray-400 uppercase">
+                <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
                   {group.title}
-                </div>
+                </p>
               )}
-              <div className="space-y-1">
-                {group.items.map((item) => {
-                  const Icon = item.icon;
-                  const isActive =
-                    location.pathname === item.to ||
-                    (item.to !== "/super-admin/dashboard" && location.pathname.startsWith(item.to));
-                  return (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      title={collapsed ? item.label : undefined}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-                        isActive
-                          ? "bg-blue-600 text-white shadow-sm shadow-blue-500/20"
-                          : "text-gray-600 hover:text-gray-900 hover:bg-slate-50"
-                      } ${collapsed ? "justify-center px-0" : ""}`}
-                    >
-                      <Icon className="w-4 h-4 flex-shrink-0" />
-                      {!collapsed && <span className="truncate">{item.label}</span>}
-                    </NavLink>
-                  );
-                })}
-              </div>
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                const isActive =
+                  location.pathname === item.to ||
+                  (item.to !== "/super-admin/dashboard" && location.pathname.startsWith(item.to));
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    title={collapsed ? item.label : undefined}
+                    className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? "bg-blue-600 text-white shadow-sm font-semibold"
+                        : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                    } ${collapsed ? "justify-center px-0" : ""}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                  </NavLink>
+                );
+              })}
             </div>
           ))}
+
+          {/* Switch Portals Section */}
+          {!collapsed && (
+            <div className="pt-3 pb-1 border-t border-slate-100">
+              <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                Other Portals
+              </p>
+              {portalShortcuts.map((portal) => {
+                const Icon = portal.icon;
+                return (
+                  <Link
+                    key={portal.path}
+                    to={portal.path}
+                    className="flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-blue-700 transition-all duration-200"
+                  >
+                    <div className="flex items-center gap-2.5 truncate">
+                      <Icon className="h-3.5 w-3.5 text-slate-500" />
+                      <span className="truncate">{portal.name}</span>
+                    </div>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
+                      {portal.badge}
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </nav>
 
-        {/* Sidebar Footer User Card */}
-        <div className="p-3 border-t border-slate-100 bg-slate-50/60 flex-shrink-0">
+        {/* Sidebar Footer with FY Badge & Profile Card */}
+        <div className="px-3 pb-4 border-t border-slate-100 pt-3 flex-shrink-0 bg-white">
+          {!collapsed && (
+            <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
+              {getFYLabel()}
+            </div>
+          )}
+
           <div
-            className={`flex items-center gap-3 p-2 rounded-xl bg-white border border-slate-200/80 shadow-sm ${
+            className={`flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left ${
               collapsed ? "justify-center p-2" : ""
             }`}
           >
-            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 font-bold text-xs flex items-center justify-center flex-shrink-0">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shrink-0">
               SA
             </div>
             {!collapsed && (
-              <div className="truncate flex-1">
-                <div className="text-xs font-bold text-gray-900 truncate">{adminUser?.name || "Super Admin"}</div>
-                <div className="text-[10px] text-gray-500 truncate">{adminUser?.role || "Chief Admin"}</div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-800">
+                  {adminUser?.name || "Chief Platform Admin"}
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
+                  {adminUser?.email || "admin@technovanam.com"}
+                </p>
               </div>
             )}
             {!collapsed && (
               <button
                 type="button"
                 onClick={logout}
-                title="Log out"
-                className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition"
+                className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-red-50 hover:text-red-600"
+                title="Sign out"
+                aria-label="Sign out"
               >
-                <LogOut className="w-4 h-4" />
+                <ArrowRightStartOnRectangleIcon className="h-5 w-5" />
               </button>
             )}
           </div>
@@ -299,14 +323,18 @@ export default function SuperAdminLayout() {
       </aside>
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${collapsed ? "lg:ml-20" : "lg:ml-64"}`}>
-
-
-        {/* Page Body */}
-        <main className="flex-1 w-full max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6 overflow-y-auto">
+      <div
+        className={`flex-1 flex flex-col min-h-screen transition-all duration-300 ${
+          collapsed ? "lg:ml-20" : "lg:ml-64"
+        }`}
+      >
+        <main className="flex-1 w-full max-w-full p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
       </div>
+
+      {/* AI Assistant Widget in bottom right */}
+      <AIAssistantWidget />
 
       {/* Global Command Palette Modal */}
       {searchOpen && (
@@ -333,7 +361,9 @@ export default function SuperAdminLayout() {
 
             <div className="max-h-80 overflow-y-auto p-2">
               {filteredSearchResults.length === 0 ? (
-                <div className="py-8 text-center text-xs text-gray-400">No matching platform resources found.</div>
+                <div className="py-8 text-center text-xs text-gray-400">
+                  No matching platform resources found.
+                </div>
               ) : (
                 <div className="space-y-1">
                   {filteredSearchResults.map((res, idx) => {

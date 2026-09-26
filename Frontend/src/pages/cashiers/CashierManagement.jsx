@@ -281,7 +281,7 @@ const CashierFormModal = ({
           {/* 4-Digit Terminal PIN */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1">
-              {cashierToEdit ? "New 4-Digit PIN (leave blank to keep the current one)" : "4-Digit PIN / Passcode *"}
+              {cashierToEdit ? "4-Digit PIN (type 4 digits to set or update)" : "4-Digit PIN / Passcode *"}
             </label>
             <div className="relative">
               <input
@@ -297,7 +297,7 @@ const CashierFormModal = ({
                   const digits = e.target.value.replace(/\D/g, "").slice(0, 4);
                   setPin(digits);
                 }}
-                placeholder="e.g. 1234"
+                placeholder={cashierToEdit ? "Type 4 digits (e.g. 1234)" : "e.g. 1234"}
                 className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest tabular-nums"
               />
               <button
@@ -666,9 +666,20 @@ export default function CashierManagement() {
                         ) : access.lockedUntil ? (
                           <span className="font-semibold text-red-700">Locked until {new Date(access.lockedUntil).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}</span>
                         ) : access.pinSet ? (
-                          <span className="font-semibold text-emerald-700">PIN set</span>
+                          <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> PIN Set
+                          </span>
                         ) : (
-                          <span className="font-semibold text-amber-700">PIN not set: cannot sign in</span>
+                          <button
+                            onClick={() => {
+                              setCashierToEdit(cashier);
+                              setIsModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2 py-0.5 rounded transition"
+                            title="Click to set 4-digit PIN"
+                          >
+                            <AlertCircle className="h-3.5 w-3.5" /> PIN Not Set: Click to Set
+                          </button>
                         )}
                         {access?.lastLoginAt && <p className="text-[10px] text-slate-400">Last login {new Date(access.lastLoginAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })}</p>}
                       </td>

@@ -971,11 +971,16 @@ export const useCashiers = (options = {}) => {
   const cashierAuthUser = useContext(AuthContext).user;
   const [pinStatus, setPinStatus] = useState({});
   const refreshPinStatus = useCallback(() => {
-    if (cashierAuthUser?.role !== "owner" || !cashierAuthUser?.uid) return;
+    const currentUid = cashierAuthUser?.uid || uid || auth.currentUser?.uid;
+    if (!currentUid || cashierAuthUser?.role === "cashier") return;
     listCashierStatus()
-      .then((list) => setPinStatus(Object.fromEntries(list.map((c) => [c.cashierId, c]))))
+      .then((list) => {
+        if (Array.isArray(list)) {
+          setPinStatus(Object.fromEntries(list.map((c) => [(c.cashierId || "").toUpperCase(), c])));
+        }
+      })
       .catch((err) => console.warn("Cashier PIN status unavailable:", err.message));
-  }, [cashierAuthUser?.role, cashierAuthUser?.uid]);
+  }, [cashierAuthUser?.uid, cashierAuthUser?.role, uid]);
   useEffect(() => {
     refreshPinStatus();
   }, [refreshPinStatus]);

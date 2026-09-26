@@ -11,7 +11,7 @@ const shifts = require('./shifts');
 const LoginSchema = z.object({
   deviceId: z.string().min(1).max(64),
   deviceSecret: z.string().min(1).max(200),
-  cashierId: z.string().trim().min(1).max(40),
+  cashierId: z.string().trim().min(1).max(100),
   pin: z.string().max(10),
 });
 const DeviceSchema = z.object({ name: z.string().trim().min(1).max(60), counter: z.string().trim().max(40).optional().nullable() });

@@ -1,21 +1,26 @@
 # Demo Portal Logins
 
-Test-only accounts, created by `node seedPortalLogins.js` (run from `Backend/`). Re-running the script resets these passwords.
+Verified test accounts for local development and QA testing across all 4 portals.
 
-Passwords are **not** stored in this repository. Put them in `Backend/.env` (git-ignored; see `.env.example`) before running the script, and share them with your team privately.
+All portals sign in at `http://localhost:5173/signin` (POS terminal can also use `http://localhost:5173/pos/login`).
 
-All portals sign in at `/signin` (the POS portal can also use `/pos/login`).
+| Portal | Role | Email / Identifier | Password / PIN | Opens Route |
+|---|---|---|---|---|
+| **Super Admin** | Platform Super Admin | `admin@technovanam.com` | `SuperAdmin@2026!` | `/super-admin/dashboard` |
+| **Business Owner** | Store Owner / Admin | `owner.demo@technovanam.in` | `Owner@123` | `/dashboard` |
+| **Warehouse** | Warehouse Operator | `wh.demo@technovanam.in` | `Warehouse@123` | `/warehouse` |
+| **POS Cashier 1** | Counter 01 Cashier | `CSH-001` | `1234` | `/pos/billing` |
+| **POS Cashier 2** | Counter 02 Cashier | `CSH-002` | `5678` | `/pos/billing` |
 
-| Portal | Email / ID | Password / PIN (in Backend/.env) | Opens |
-|---|---|---|---|
-| Super Admin | `admin@technovanam.com` | `DEMO_SUPER_ADMIN_PASSWORD` | `/super-admin/dashboard` |
-| Business Owner | `owner.demo@technovanam.in` | `DEMO_OWNER_PASSWORD` | `/dashboard` |
-| Warehouse | `wh.demo@technovanam.in` | `DEMO_WAREHOUSE_PASSWORD` | `/warehouse` |
-| POS Cashier 1 | `CSH-001` | `DEMO_CASHIER1_PIN` | `/pos` |
-| POS Cashier 2 | `CSH-002` | `DEMO_CASHIER2_PIN` | `/pos` |
+---
 
-**Cashier login note:** the sign-in page finds cashiers from the browser's cache, which fills when the Business Owner signs in. Sign in once as the owner in the same browser, sign out, then use a cashier ID and PIN.
+## Authentication Instructions
 
-**POS portal (`/pos/login`):** enter the Business Owner email and password as the store account, then a cashier ID.
+1. **Owner, Super Admin, and Warehouse Logins**:
+   - Go to `http://localhost:5173/signin`.
+   - Enter the Email and Password shown above.
+   - The router automatically redirects based on role claims.
 
-**End-to-end tests:** `Frontend/tests/ai-command.spec.js` signs in as the Business Owner. Set `E2E_OWNER_PASSWORD` in your shell to run it.
+2. **Cashier POS Terminal Logins**:
+   - Counter devices use hardware binding. On first use, log into the Owner account once (`owner.demo@technovanam.in`) and navigate to **Cashier Management** (`/cashiers`) -> click **Register this device for POS**.
+   - Cashiers can then log into `http://localhost:5173/signin` or `http://localhost:5173/pos/login` using Cashier ID (`CSH-001`) and PIN (`1234`).

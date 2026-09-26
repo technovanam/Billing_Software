@@ -17,6 +17,38 @@ import { cashierLogin } from "../../services/posService";
 // Cashier PINs are never cached in the browser.
 const stripPins = (list) => list.map(({ pin, ...c }) => c);
 
+// Find cashier from local cache by Cashier ID, email, or phone
+function findCachedCashier(query) {
+  if (!query) return null;
+  const q = String(query).trim().toLowerCase();
+  const digits = q.replace(/\D/g, "");
+  const searchInList = (list) => {
+    if (!Array.isArray(list)) return null;
+    return list.find((c) => {
+      if ((c.cashierId || "").trim().toLowerCase() === q) return true;
+      if ((c.email || "").trim().toLowerCase() === q) return true;
+      if (digits.length >= 10 && (c.phone || "").replace(/\D/g, "").endsWith(digits.slice(-10))) return true;
+      return false;
+    });
+  };
+
+  try {
+    const primary = JSON.parse(localStorage.getItem("registered_cashiers_list") || "[]");
+    const found = searchInList(primary);
+    if (found) return found;
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("store_cashiers_")) {
+        const list = JSON.parse(localStorage.getItem(key) || "[]");
+        const match = searchInList(list);
+        if (match) return match;
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
 export default function SignIn() {
   const navigate = useNavigate();
   const { setUser } = useContext(AuthContext);
@@ -28,6 +60,9 @@ export default function SignIn() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const trimmedEmail = email.trim();
+  const cachedCashier = findCachedCashier(trimmedEmail);
+  const isCashierCandidate = Boolean(cachedCashier) || (trimmedEmail.length > 0 && !trimmedEmail.includes("@"));
 
   const handlePasswordKeyDown = (e) => {
     if (e.key === "Enter") {
@@ -51,8 +86,6 @@ export default function SignIn() {
     if (e && e.preventDefault) e.preventDefault();
     if (loading) return;
 
-    const trimmedEmail = email.trim();
-
     if (!trimmedEmail) {
       toastError("Please enter your email address or Cashier ID.");
       return;
@@ -66,7 +99,6 @@ export default function SignIn() {
 
     try {
       // 1. Super Admin Portal — identified by email only; Firebase verifies the password.
-      //    No password literals are compared here.
       if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
         try {
           const res = await superAdminLogin(trimmedEmail, password, true);
@@ -84,17 +116,26 @@ export default function SignIn() {
         }
       }
 
-      // 2. Cashier ID (no "@"): PIN is checked by the backend on a registered POS device.
-      if (!trimmedEmail.includes("@")) {
+      const is4DigitPin = /^\d{4}$/.test(password.trim());
+
+      // 2. Recognized Cashier (by Cashier ID, cached email, or phone)
+      if (isCashierCandidate) {
         try {
-          const session = await cashierLogin({ cashierId: trimmedEmail, pin: password.trim() });
+          const cashierIdentifier = cachedCashier?.cashierId || trimmedEmail;
+          const session = await cashierLogin({ cashierId: cashierIdentifier, pin: password.trim() });
           toastSuccess(`Welcome ${session.cashierName} (${session.cashierId})! Opening POS terminal...`);
           navigate("/pos", { replace: true });
+          setLoading(false);
+          return;
         } catch (cashierErr) {
-          toastError(cashierErr.message || "Cashier sign in failed.");
+          if (cashierErr.code === "DEVICE_NOT_REGISTERED") {
+            toastError("This device is not registered for POS. Ask the store owner to register it in Cashier Management first.");
+          } else {
+            toastError(cashierErr.message || "Cashier sign in failed.");
+          }
+          setLoading(false);
+          return;
         }
-        setLoading(false);
-        return;
       }
 
       // 3. Standard Firebase login for owner / warehouse accounts.
@@ -121,8 +162,6 @@ export default function SignIn() {
           }
         }
 
-        // AuthContext onAuthStateChanged picks up the real Firebase user automatically.
-        // No localStorage auth writes — Firebase SDK manages session persistence.
         localStorage.removeItem("pos_cashier_session");
         if (typeof setUser === "function") {
           setUser(loggedUser);
@@ -136,10 +175,31 @@ export default function SignIn() {
           navigate("/dashboard", { replace: true });
         }
       } catch (fbErr) {
+        // Fallback: If Firebase failed and password is a 4-digit PIN, attempt Cashier login via backend
+        if (is4DigitPin) {
+          try {
+            const session = await cashierLogin({ cashierId: trimmedEmail, pin: password.trim() });
+            toastSuccess(`Welcome ${session.cashierName} (${session.cashierId})! Opening POS terminal...`);
+            navigate("/pos", { replace: true });
+            setLoading(false);
+            return;
+          } catch (cashierFallbackErr) {
+            if (cashierFallbackErr.code === "DEVICE_NOT_REGISTERED") {
+              toastError("This device is not registered for POS. Ask the store owner to register it in Cashier Management.");
+              setLoading(false);
+              return;
+            } else if (cashierFallbackErr.code && cashierFallbackErr.code !== "BAD_CREDENTIALS") {
+              toastError(cashierFallbackErr.message || "Cashier sign in failed.");
+              setLoading(false);
+              return;
+            }
+          }
+        }
+
         console.error("Firebase sign in error:", fbErr);
         toastError(
           fbErr.code === "auth/invalid-credential" || fbErr.code === "auth/user-not-found"
-            ? "Invalid email or password. Please check your credentials."
+            ? "Invalid credentials. If you are a cashier, enter your Cashier ID (e.g. CSH-001) and 4-digit PIN on a registered device."
             : fbErr.message || "Sign in failed."
         );
       }
@@ -275,6 +335,8 @@ export default function SignIn() {
                 </>
               ) : email.trim().toLowerCase().startsWith("wh.") ? (
                 "Sign In to Warehouse Portal →"
+              ) : isCashierCandidate ? (
+                `Sign In as ${cachedCashier?.name || "Cashier"} to POS →`
               ) : (
                 "Sign In to Admin Dashboard →"
               )}

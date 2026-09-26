@@ -1,651 +1,675 @@
-import React, { useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { 
-  usePlatformBusinesses, 
-  usePlatformInvoices, 
-  usePlatformPayments,
-  useSubscriptionPlans,
-  useTickets,
-  useAuditLogs
-} from "../../../hooks/useSuperAdminFirestore";
+import React, { useMemo, memo } from "react";
+import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 import {
-  Building2,
-  Users,
+  Plus,
+  Receipt,
   TrendingUp,
   CreditCard,
-  AlertTriangle,
-  Clock,
+  Package,
+  UserCheck,
   ArrowUpRight,
-  ShieldCheck,
-  CheckCircle2,
-  XCircle,
-  FileText,
-  Smartphone,
-  ChevronRight,
-  Layers,
-  ArrowRight,
-  Activity,
-  AlertOctagon,
+  ArrowDownRight,
+  Coins,
   DollarSign,
-  Receipt,
+  BadgePercent,
+  Building2,
+  GitBranch,
+  Warehouse,
+  Smartphone,
 } from "lucide-react";
+import { ResponsivePie } from "@nivo/pie";
+import {
+  usePlatformBusinesses,
+  usePlatformInvoices,
+  usePlatformPayments,
+  useAuditLogs,
+} from "../../../hooks/useSuperAdminFirestore";
 
-export default function SuperAdminDashboard() {
-  const [timeRange, setTimeRange] = useState("30d");
-  const navigate = useNavigate();
+function getFYLabel() {
+  const now = new Date();
+  const year = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-${year + 1} FY`;
+}
 
-  // Dynamic values from live Firestore hooks
-  const { businesses = [], loading: businessesLoading } = usePlatformBusinesses();
-  const { invoices = [], loading: invoicesLoading } = usePlatformInvoices();
-  const { payments = [], loading: paymentsLoading } = usePlatformPayments();
+// Reusable Stat Card Component matching exact Billing Dashboard pattern
+const StatCard = ({
+  title,
+  value,
+  valueLabel,
+  secondaryValue,
+  secondaryValueLabel,
+  change,
+  changeType,
+  period,
+  subtext,
+  subtextColor = "green",
+  icon,
+  footer,
+  isSecondaryValueRed,
+}) => (
+  <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+    <div className="flex justify-between items-start mb-2">
+      <h3 className="text-sm font-medium text-gray-600">{title}</h3>
+      <div className="p-1 bg-gray-50 rounded-md">{icon}</div>
+    </div>
+    <div className="mt-1">
+      <div className="flex items-start justify-between">
+        <div className="flex-1">
+          <p className="text-xl font-bold text-gray-900">{value}</p>
+          {valueLabel && (
+            <p
+              className={`text-xs mt-0.5 ${
+                valueLabel.includes("Paid") || valueLabel.includes("Active")
+                  ? "text-green-600"
+                  : "text-gray-500"
+              }`}
+            >
+              {valueLabel}
+            </p>
+          )}
+        </div>
+        {secondaryValue !== undefined && secondaryValue !== null && (
+          <div className="text-right">
+            <p
+              className={`text-xl font-bold ${
+                isSecondaryValueRed ? "text-red-600" : "text-gray-900"
+              }`}
+            >
+              {secondaryValue}
+            </p>
+            {secondaryValueLabel && (
+              <p className="text-xs mt-0.5 text-gray-500">
+                {secondaryValueLabel}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+      {change && (
+        <div className="flex items-center text-xs mt-2">
+          <span
+            className={`flex items-center font-semibold ${
+              changeType === "increase" ? "text-green-600" : "text-red-600"
+            }`}
+          >
+            {changeType === "increase" ? (
+              <ArrowUpRight className="w-3 h-3" />
+            ) : (
+              <ArrowDownRight className="w-3 h-3" />
+            )}
+            {change}
+          </span>
+          <span className="text-gray-500 ml-1">{period}</span>
+        </div>
+      )}
+      {subtext && (
+        <div className="flex items-center gap-2 body-text-small mt-2">
+          <span
+            className={`${
+              subtextColor === "blue" ? "bg-blue-600" : "bg-green-600"
+            } text-white px-2 py-0.5 rounded-full font-medium text-xs`}
+          >
+            {subtext}
+          </span>
+        </div>
+      )}
+      {footer && <div className="mt-2">{footer}</div>}
+    </div>
+  </div>
+);
 
-  const { tickets = [], loading: ticketsLoading } = useTickets();
-  const { logs = [], auditLogs = [], loading: logsLoading } = useAuditLogs();
-  const { plans = [], loading: plansLoading } = useSubscriptionPlans();
+StatCard.propTypes = {
+  title: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  valueLabel: PropTypes.string,
+  secondaryValue: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  secondaryValueLabel: PropTypes.string,
+  change: PropTypes.string,
+  changeType: PropTypes.string,
+  period: PropTypes.string,
+  subtext: PropTypes.string,
+  subtextColor: PropTypes.string,
+  icon: PropTypes.node,
+  footer: PropTypes.node,
+  isSecondaryValueRed: PropTypes.bool,
+};
 
-  const actualBusinesses = Array.isArray(businesses) ? businesses : [];
-  const actualInvoices = Array.isArray(invoices) ? invoices : [];
-  const actualPayments = Array.isArray(payments) ? payments : [];
-  const actualTickets = Array.isArray(tickets) ? tickets : [];
-  const actualLogs = Array.isArray(logs) && logs.length > 0 ? logs : (Array.isArray(auditLogs) ? auditLogs : []);
-  const actualPlans = Array.isArray(plans) ? plans : [];
+// 9-Card Stats Grid Component
+const StatsGrid = memo(({ stats }) => {
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount || 0);
+  };
 
-  // Compute stats
-  const activeCount = actualBusinesses.filter((b) => b?.status === "Active").length;
-  const trialCount = actualBusinesses.filter((b) => b?.status === "Trial").length;
-  const suspendedCount = actualBusinesses.filter((b) => b?.status === "Suspended").length;
-  
-  // Calculate expiring subscriptions (within next 7 days)
-  const expiringCount = actualBusinesses.filter((b) => {
-    if (!b?.subscriptionExpiry || b?.status === "Suspended") return false;
-    const exp = new Date(b.subscriptionExpiry);
-    const now = new Date();
-    const diff = (exp - now) / (1000 * 60 * 60 * 24);
-    return diff > 0 && diff <= 7;
-  }).length;
-  
-  // Calculate total invoice revenue
-  const totalRevenue = actualInvoices.reduce((sum, inv) => sum + (Number(inv?.amount || inv?.total) || 0), 0);
-  
-  // Platform users count (sum of all tenant users)
-  const totalUsers = actualBusinesses.reduce((sum, bus) => sum + (Number(bus?.usersCount) || 1), 0);
-  
-  const failedPaymentsCount = actualPayments.filter((p) => p?.status === "Failed").length;
+  const formatNumber = (num) => {
+    return new Intl.NumberFormat("en-IN").format(num || 0);
+  };
 
-  const kpis = [
-    {
-      label: "Total Businesses",
-      value: businessesLoading ? "..." : actualBusinesses.length.toString(),
-      sub: "Platform total",
-      pillText: "All Tenants",
-      pillClass: "bg-blue-600 text-white",
-      icon: Building2,
-      iconColor: "text-blue-600",
-      link: "/super-admin/businesses",
-    },
-    {
-      label: "Active Businesses",
-      value: businessesLoading ? "..." : activeCount.toString(),
-      sub: "Healthy tenant fleet",
-      pillText: "Active Fleet",
-      pillClass: "bg-emerald-600 text-white",
-      icon: CheckCircle2,
-      iconColor: "text-emerald-600",
-      link: "/super-admin/businesses?status=Active",
-    },
-    {
-      label: "Trial Businesses",
-      value: businessesLoading ? "..." : trialCount.toString(),
-      sub: "Active 14-day trials",
-      pillText: "14-Day Trials",
-      pillClass: "bg-amber-500 text-white",
-      icon: Clock,
-      iconColor: "text-amber-500",
-      link: "/super-admin/businesses?status=Trial",
-    },
-    {
-      label: "Suspended Businesses",
-      value: businessesLoading ? "..." : suspendedCount.toString(),
-      sub: "Overdue / Action required",
-      pillText: "Suspended",
-      pillClass: "bg-rose-500 text-white",
-      icon: XCircle,
-      iconColor: "text-rose-500",
-      link: "/super-admin/businesses?status=Suspended",
-    },
-    {
-      label: "Total Platform Users",
-      value: businessesLoading ? "..." : totalUsers.toLocaleString(),
-      sub: "Across all tenants",
-      pillText: "Platform Users",
-      pillClass: "bg-purple-600 text-white",
-      icon: Users,
-      iconColor: "text-purple-600",
-      link: "/super-admin/users",
-    },
-    {
-      label: "Total Invoiced (Platform)",
-      value: invoicesLoading ? "..." : `₹${totalRevenue.toLocaleString("en-IN")}`,
-      sub: "All time total",
-      pillText: "Platform Revenue",
-      pillClass: "bg-emerald-600 text-white",
-      icon: TrendingUp,
-      iconColor: "text-emerald-600",
-      link: "/super-admin/revenue",
-    },
-    {
-      label: "Total Invoices Created",
-      value: invoicesLoading ? "..." : actualInvoices.length.toLocaleString(),
-      sub: "Across all counters",
-      pillText: "All Terminals",
-      pillClass: "bg-blue-600 text-white",
-      icon: CreditCard,
-      iconColor: "text-blue-600",
-      link: "/super-admin/payments",
-    },
-    {
-      label: "Failed Payments",
-      value: paymentsLoading ? "..." : failedPaymentsCount.toString(),
-      sub: "Attention needed",
-      pillText: "Failed Invoices",
-      pillClass: "bg-rose-500 text-white",
-      icon: AlertTriangle,
-      iconColor: "text-rose-500",
-      link: "/super-admin/payments",
-    },
-  ];
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4 lg:gap-6">
+      {/* Row 1: Total Bill Amount, Total Amount to Receive, Total Revenue [Received] */}
+      <StatCard
+        title="Total Bill Amount"
+        value={formatCurrency(stats.totalBillAmount)}
+        icon={<DollarSign className="text-blue-500 w-5 h-5" />}
+        subtext={stats.financialYearLabel}
+        subtextColor="blue"
+      />
+      <StatCard
+        title="Total Amount to Receive"
+        value={formatCurrency(stats.totalOutstanding)}
+        icon={<TrendingUp className="text-red-500 w-5 h-5" />}
+        subtext={stats.financialYearLabel}
+        subtextColor="blue"
+      />
+      <StatCard
+        title="Total Revenue [Received]"
+        value={formatCurrency(stats.totalRevenue)}
+        icon={<TrendingUp className="text-green-500 w-5 h-5" />}
+        subtext={stats.financialYearLabel}
+        subtextColor="green"
+      />
 
-  // Subscription Breakdown Data computed from businesses
-  const planDistribution = useMemo(() => {
-    if (!actualBusinesses || !actualBusinesses.length) return [];
-    const counts = {};
-    actualBusinesses.forEach(b => {
-      const p = b?.planName || "Free Trial";
-      counts[p] = (counts[p] || 0) + 1;
-    });
-    
-    const colors = ["bg-blue-600", "bg-indigo-600", "bg-cyan-600", "bg-purple-600", "bg-amber-500"];
-    
-    return Object.keys(counts)
-      .map((key, i) => ({
-        name: key,
-        count: counts[key],
-        percent: Math.round((counts[key] / actualBusinesses.length) * 100),
-        color: colors[i % colors.length]
-      }))
-      .sort((a, b) => b.count - a.count);
-  }, [actualBusinesses]);
-
-  // Recent Activity Feed computed from logs
-  const recentActivities = useMemo(() => {
-    if (!actualLogs || !actualLogs.length) return [];
-    
-    return actualLogs
-      .slice()
-      .sort((a, b) => {
-         const tA = a?.timestamp?.toDate ? a.timestamp.toDate() : new Date(a?.timestamp || 0);
-         const tB = b?.timestamp?.toDate ? b.timestamp.toDate() : new Date(b?.timestamp || 0);
-         return tB - tA;
-      })
-      .slice(0, 6)
-      .map(log => {
-        let tag = "System";
-        let color = "text-slate-700 bg-slate-50 border-slate-200/60";
-        let dot = "bg-slate-500";
-        let path = "/super-admin/dashboard";
-
-        if (log.action?.includes("BUSINESS") || log.action?.includes("IMPERSONATION")) {
-          tag = "Business";
-          color = "text-emerald-700 bg-emerald-50 border-emerald-200/60";
-          dot = "bg-emerald-500";
-          path = `/super-admin/businesses/${log.targetId}`;
-        } else if (log.action?.includes("PAYMENT")) {
-          tag = "Payment";
-          color = "text-cyan-700 bg-cyan-50 border-cyan-200/60";
-          dot = "bg-cyan-500";
-          path = "/super-admin/payments";
-        } else if (log.action?.includes("TICKET")) {
-          tag = "Support";
-          color = "text-amber-700 bg-amber-50 border-amber-200/60";
-          dot = "bg-amber-500";
-          path = "/super-admin/support";
-        } else if (log.action?.includes("LOGIN") || log.action?.includes("LOGOUT")) {
-          tag = "Security";
-          color = "text-purple-700 bg-purple-50 border-purple-200/60";
-          dot = "bg-purple-500";
-          path = "/super-admin/security";
+      {/* Row 2: Total Expenses, Total GST Collected, Payment Status */}
+      <StatCard
+        title="Total Expenses"
+        value={formatCurrency(stats.totalExpenses)}
+        icon={<Coins className="text-orange-500 w-5 h-5" />}
+        footer={
+          <div className="flex items-center gap-2 text-xs">
+            <span className="bg-orange-600 text-white px-2 py-0.5 rounded-full font-medium">
+              Expenses
+            </span>
+            <span className="text-slate-500">{stats.financialYearLabel}</span>
+          </div>
         }
+      />
+      <StatCard
+        title="Total GST Collected"
+        value={formatCurrency(stats.totalSGST)}
+        valueLabel="SGST"
+        secondaryValue={formatCurrency(stats.totalCGST)}
+        secondaryValueLabel="CGST"
+        icon={<BadgePercent className="text-purple-600 w-5 h-5" />}
+        footer={
+          <div className="w-full h-2 rounded-full mt-2 overflow-hidden flex bg-gray-200">
+            {stats.totalGST > 0 ? (
+              <>
+                <div
+                  className="h-2 bg-purple-500"
+                  style={{ width: `${(stats.totalSGST / stats.totalGST) * 100}%` }}
+                  title={`SGST: ${formatCurrency(stats.totalSGST)}`}
+                />
+                <div
+                  className="h-2 bg-indigo-500"
+                  style={{ width: `${(stats.totalCGST / stats.totalGST) * 100}%` }}
+                  title={`CGST: ${formatCurrency(stats.totalCGST)}`}
+                />
+              </>
+            ) : (
+              <div className="h-2 bg-gray-200 w-full" />
+            )}
+          </div>
+        }
+      />
+      <StatCard
+        title="Payment Status"
+        value={formatNumber(stats.paidInvoices)}
+        valueLabel={`Paid (${stats.paymentRate.toFixed(1)}%)`}
+        secondaryValue={formatNumber(stats.unpaidInvoices)}
+        secondaryValueLabel="Unpaid"
+        isSecondaryValueRed={stats.unpaidInvoices > 0}
+        icon={<CreditCard className="text-emerald-600 w-5 h-5" />}
+        footer={
+          <div className="w-full h-2 rounded-full mt-2 overflow-hidden flex">
+            {/* Paid portion - Green */}
+            <div
+              className="h-2 bg-green-500 transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.max(0, stats.paymentRate))}%` }}
+            />
+            {/* Unpaid portion - Red */}
+            <div
+              className="h-2 bg-red-500 flex-1 transition-all duration-300"
+              style={{ width: `${Math.max(0, 100 - stats.paymentRate)}%` }}
+            />
+          </div>
+        }
+      />
 
-        const dateObj = log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp || Date.now());
-        const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      {/* Row 3: Total Invoice, Total Customers, Total Products */}
+      <StatCard
+        title="Total Invoice"
+        value={formatNumber(stats.totalInvoices)}
+        icon={<Receipt className="text-blue-600 w-5 h-5" />}
+        subtext={stats.financialYearLabel}
+        subtextColor="blue"
+      />
+      <StatCard
+        title="Total Customers"
+        value={formatNumber(stats.totalCustomers)}
+        icon={<UserCheck className="text-indigo-600 w-5 h-5" />}
+      />
+      <StatCard
+        title="Total Products"
+        value={formatNumber(stats.totalProducts)}
+        icon={<Package className="text-purple-600 w-5 h-5" />}
+      />
+    </div>
+  );
+});
 
-        return {
-          id: log.id || Math.random().toString(),
+StatsGrid.displayName = "StatsGrid";
+
+StatsGrid.propTypes = {
+  stats: PropTypes.shape({
+    totalInvoices: PropTypes.number,
+    totalRevenue: PropTypes.number,
+    totalBillAmount: PropTypes.number,
+    totalOutstanding: PropTypes.number,
+    totalExpenses: PropTypes.number,
+    totalSGST: PropTypes.number,
+    totalCGST: PropTypes.number,
+    totalGST: PropTypes.number,
+    paidInvoices: PropTypes.number,
+    unpaidInvoices: PropTypes.number,
+    paymentRate: PropTypes.number,
+    totalCustomers: PropTypes.number,
+    totalProducts: PropTypes.number,
+    financialYearLabel: PropTypes.string,
+  }).isRequired,
+};
+
+// Recent Activity Component
+const RecentActivity = memo(({ logs = [], invoices = [] }) => {
+  const activities = useMemo(() => {
+    const list = [];
+
+    // From audit logs
+    if (Array.isArray(logs) && logs.length > 0) {
+      logs.slice(0, 5).forEach((log) => {
+        const dateObj = log.timestamp?.toDate
+          ? log.timestamp.toDate()
+          : new Date(log.timestamp || Date.now());
+        const timeStr = dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        list.push({
+          text: `${log.action?.replace(/_/g, " ") || "Event"}: ${log.details || log.target || "Platform event recorded"}`,
           time: timeStr,
-          title: log.action?.replace(/_/g, ' ') || "Action Performed",
-          desc: log.details || "System event recorded",
-          path,
-          tag,
-          color,
-          dot
-        };
-      });
-  }, [actualLogs]);
-
-  // Compute dynamic chart data from businesses
-  // Compute dynamic chart data from businesses
-  const chartData = useMemo(() => {
-    // Group by month
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const now = new Date();
-    
-    // Get last 6 months
-    const last6Months = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      last6Months.push({
-        monthStr: `${months[d.getMonth()]}`,
-        year: d.getFullYear(),
-        monthNum: d.getMonth(),
-        active: 0,
-        newBiz: 0,
-        suspended: 0
+          color: log.action?.includes("BUSINESS") ? "bg-blue-500" : log.action?.includes("PAYMENT") ? "bg-green-500" : "bg-purple-500",
+          timestamp: dateObj,
+        });
       });
     }
 
-    actualBusinesses.forEach(b => {
-      const createdAt = b?.createdAt?.toDate ? b.createdAt.toDate() : b?.createdAt ? new Date(b.createdAt) : null;
-      last6Months.forEach(m => {
-        // If business was created in this month
-        if (createdAt && createdAt.getFullYear() === m.year && createdAt.getMonth() === m.monthNum) {
-          m.newBiz += 1;
-        }
-        
-        // If business was created before or during this month, it contributes to active/suspended
-        if (createdAt && (createdAt.getFullYear() < m.year || (createdAt.getFullYear() === m.year && createdAt.getMonth() <= m.monthNum))) {
-           if (b?.status === "Suspended") {
-              m.suspended += 1;
-           } else {
-              m.active += 1;
-           }
-        }
+    // From invoices if fewer logs
+    if (list.length < 5 && Array.isArray(invoices)) {
+      invoices.slice(0, 5 - list.length).forEach((inv) => {
+        const d = new Date(inv.createdAt?.toDate?.() || inv.createdAt || inv.invoiceDate || Date.now());
+        const isPaid = (inv.status || "").toLowerCase() === "paid";
+        list.push({
+          text: `Invoice #${inv.invoiceNumber || inv.id?.slice(0, 8)} ${isPaid ? "marked as paid" : "created"}${inv.client?.name ? ` for ${inv.client.name}` : ""}`,
+          time: d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          color: isPaid ? "bg-green-500" : "bg-blue-500",
+          timestamp: d,
+        });
       });
-    });
+    }
 
-    // Bar heights are percentages of the busiest month
-    const maxCount = Math.max(1, ...last6Months.flatMap(m => [m.active, m.newBiz, m.suspended]));
-    const pct = (n) => (n / maxCount) * 100;
-
-    return last6Months.map(m => ({
-      month: m.monthStr,
-      active: pct(m.active),
-      newBiz: pct(m.newBiz),
-      suspended: pct(m.suspended),
-      counts: { active: m.active, newBiz: m.newBiz, suspended: m.suspended }
-    }));
-  }, [actualBusinesses]);
+    return list.sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+  }, [logs, invoices]);
 
   return (
-    <div className="space-y-6 animate-fadeIn">
-      {/* Header with Title and Quick Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="bg-white p-4 lg:p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <h3 className="text-lg font-semibold text-gray-900 mb-1">
+        Recent Activity
+      </h3>
+      <p className="text-sm text-gray-500 mb-4">
+        Latest updates and notifications
+      </p>
+      <ul className="space-y-2">
+        {activities.length > 0 ? (
+          activities.map((activity, index) => (
+            <li
+              key={index}
+              className="flex items-start gap-3 p-3 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              <div
+                className={`w-2 h-2 ${activity.color} rounded-full mt-1.5 flex-shrink-0`}
+              />
+              <div>
+                <p className="text-sm font-medium text-gray-800">{activity.text}</p>
+                <p className="text-xs text-slate-400">{activity.time}</p>
+              </div>
+            </li>
+          ))
+        ) : (
+          <li className="flex items-start gap-3 p-3 rounded-lg">
+            <div className="w-2 h-2 bg-gray-300 rounded-full mt-1.5 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-gray-500">No recent activity</p>
+              <p className="text-xs text-slate-400">
+                Activity will appear here as you use the system
+              </p>
+            </div>
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+});
+
+RecentActivity.displayName = "RecentActivity";
+
+RecentActivity.propTypes = {
+  logs: PropTypes.array,
+  invoices: PropTypes.array,
+};
+
+// Invoice Status Breakdown Chart Component
+const InvoiceStatusCard = memo(({ stats }) => {
+  const paid = stats?.paidInvoices || 0;
+  const unpaid = stats?.unpaidInvoices || 0;
+  const overdue = stats?.overdueInvoices || 0;
+  const draft = stats?.draftInvoices || 0;
+  const total = paid + unpaid + overdue + draft;
+
+  const data = useMemo(
+    () =>
+      [
+        { id: "Paid", label: "Paid", value: paid, color: "#22c55e" },
+        { id: "Unpaid", label: "Unpaid", value: unpaid, color: "#f97316" },
+        ...(overdue > 0
+          ? [{ id: "Overdue", label: "Overdue", value: overdue, color: "#ef4444" }]
+          : []),
+        ...(draft > 0
+          ? [{ id: "Draft", label: "Draft", value: draft, color: "#eab308" }]
+          : []),
+      ].filter((item) => item.value > 0),
+    [paid, unpaid, overdue, draft]
+  );
+
+  return (
+    <div className="bg-white p-4 lg:p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col justify-between">
+      <div className="flex items-center justify-between mb-4">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">
-            Welcome back, Super Admin!
-          </h2>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Here's what's happening with your SaaS platform and tenant fleet today.
+          <h3 className="text-lg font-semibold text-gray-900 mb-1">
+            Invoice Status
+          </h3>
+          <p className="text-sm text-gray-500">
+            Breakdown of invoice statuses
           </p>
         </div>
-
-        {/* Global Range Filter (Segmented Pills matching Billing Portal) */}
-        <div className="flex items-center gap-1 p-1 bg-gray-100 rounded-xl border border-gray-200/60 text-xs font-semibold self-start sm:self-auto">
-          {[
-            { id: "7d", label: "7 Days" },
-            { id: "30d", label: "30 Days" },
-            { id: "3m", label: "3 Months" },
-            { id: "6m", label: "6 Months" },
-            { id: "1y", label: "1 Year" },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setTimeRange(item.id)}
-              className={`px-3 py-1.5 rounded-lg transition ${
-                timeRange === item.id
-                  ? "bg-blue-600 text-white shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-white/60"
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-xs font-semibold">
+          {stats?.financialYearLabel}
+        </span>
       </div>
 
-      {/* Critical Actionable Alerts (Light Badges) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Failed Payments Alert */}
-        <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-100 shadow-[0_2px_8px_rgba(0,0,0,0.02)] flex flex-col justify-between">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0">
-              <AlertOctagon className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-rose-900">Failed Payments</h4>
-              <p className="text-xs text-rose-700/90 mt-0.5">{failedPaymentsCount} subscription payments failed during billing renewal cycle.</p>
-            </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-rose-100/80 flex items-center justify-between">
-            <span className="text-[11px] text-rose-600/80 font-medium">Action Required</span>
-            <Link
-              to="/super-admin/payments"
-              className="text-xs font-bold text-rose-700 hover:text-rose-800 flex items-center gap-1"
-            >
-              <span>View Payments</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
+      {total === 0 ? (
+        <div className="flex justify-center items-center py-16">
+          <p className="text-gray-500 text-sm">No invoices yet</p>
         </div>
-
-        {/* Expiring Subscriptions Alert */}
-        <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-100 shadow-[0_2px_8px_rgba(0,0,0,0.02)] flex flex-col justify-between">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-amber-900">Expiring Subscriptions</h4>
-              <p className="text-xs text-amber-700/90 mt-0.5">{expiringCount} businesses expire within the next 7 calendar days.</p>
-            </div>
+      ) : (
+        <div className="flex flex-col items-center">
+          <div style={{ height: 260, width: "100%" }}>
+            <ResponsivePie
+              data={data}
+              margin={{ top: 15, right: 30, bottom: 30, left: 30 }}
+              innerRadius={0.55}
+              padAngle={0.6}
+              cornerRadius={3}
+              activeOuterRadiusOffset={6}
+              colors={{ datum: "data.color" }}
+              enableArcLinkLabels={false}
+              arcLabelsSkipAngle={10}
+              arcLabelsTextColor="#ffffff"
+            />
           </div>
-          <div className="mt-4 pt-3 border-t border-amber-100/80 flex items-center justify-between">
-            <span className="text-[11px] text-amber-600/80 font-medium">Renewal Campaign</span>
-            <Link
-              to="/super-admin/subscriptions"
-              className="text-xs font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1"
-            >
-              <span>View Subscriptions</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
-
-        {/* System Alert */}
-        <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-100 shadow-[0_2px_8px_rgba(0,0,0,0.02)] flex flex-col justify-between">
-          <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
-              <Activity className="w-5 h-5" />
+          <div className="flex justify-center gap-4 text-xs font-medium text-slate-600 flex-wrap mt-3">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+              <span>Paid ({paid})</span>
             </div>
-            <div>
-              <h4 className="text-sm font-bold text-blue-900">Gateway Telemetry</h4>
-              <p className="text-xs text-blue-700/90 mt-0.5">Payment gateway API response time is nominal (184ms).</p>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-500 inline-block" />
+              <span>Unpaid ({unpaid})</span>
             </div>
-          </div>
-          <div className="mt-4 pt-3 border-t border-blue-100/80 flex items-center justify-between">
-            <span className="text-[11px] text-blue-600/80 font-medium">Operational</span>
-            <Link
-              to="/super-admin/system-health"
-              className="text-xs font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1"
-            >
-              <span>View System Health</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* 8 Main KPI Cards (Matching exact pattern from user's Billing dashboard screenshot) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpis.map((kpi, idx) => {
-          const Icon = kpi.icon;
-          return (
-            <div
-              key={idx}
-              onClick={() => navigate(kpi.link)}
-              className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm hover:shadow-md transition-shadow duration-200 cursor-pointer group flex flex-col justify-between"
-            >
-              <div className="flex justify-between items-start mb-2">
-                <h3 className="text-sm font-medium text-gray-600">{kpi.label}</h3>
-                <div className="p-1 bg-gray-50 rounded-md">
-                  <Icon className={`w-5 h-5 flex-shrink-0 ${kpi.iconColor}`} />
-                </div>
+            {overdue > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />
+                <span>Overdue ({overdue})</span>
               </div>
-
-              <div className="mt-1">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition">
-                      {kpi.value}
-                    </p>
-                    <p className="text-xs mt-0.5 text-gray-500 flex items-center gap-0.5">
-                      {kpi.sub}
-                      <ArrowUpRight className="w-3 h-3 text-gray-400 group-hover:text-blue-600 transition" />
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center text-xs mt-2">
-                  <span className={`px-2 py-0.5 rounded-full font-medium ${kpi.pillClass}`}>
-                    {kpi.pillText}
-                  </span>
-                </div>
+            )}
+            {draft > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-500 inline-block" />
+                <span>Draft ({draft})</span>
               </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Primary Visual Analytics Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Business Growth & Velocity */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex flex-col justify-between">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 className="text-base font-bold text-gray-900">Business Growth & Tenant Velocity</h3>
-              <p className="text-xs text-gray-500 mt-0.5">New merchant onboardings vs active platform retention</p>
-            </div>
-            <div className="flex items-center gap-3.5 text-xs bg-slate-50/80 px-3 py-1.5 rounded-lg border border-slate-100">
-              <span className="flex items-center gap-1.5 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span> Active
-              </span>
-              <span className="flex items-center gap-1.5 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 shrink-0"></span> New
-              </span>
-              <span className="flex items-center gap-1.5 text-gray-600 font-medium">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0"></span> Churn
-              </span>
-            </div>
-          </div>
-
-          {/* Dynamic Chart Bars Container */}
-          <div className="relative h-64 pt-6 pb-2 px-3 flex flex-col justify-end border-b border-gray-100 overflow-hidden">
-            {/* Subtle background horizontal grid lines */}
-            <div className="absolute inset-0 pt-6 pb-9 px-3 flex flex-col justify-between pointer-events-none opacity-40">
-              <div className="border-b border-dashed border-gray-200 w-full" />
-              <div className="border-b border-dashed border-gray-200 w-full" />
-              <div className="border-b border-dashed border-gray-200 w-full" />
-            </div>
-
-            {/* Bars Column Cluster */}
-            <div className="relative z-10 flex items-end justify-between gap-2 h-full">
-              {chartData.map((bar, i) => (
-                <div
-                  key={i}
-                  className="flex-1 flex flex-col items-center gap-2 h-full justify-end group relative py-1 rounded-xl hover:bg-slate-50/80 transition-all duration-150 cursor-pointer"
-                >
-                  {/* Floating Tooltip on Hover */}
-                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 pointer-events-none transition-all duration-200 z-30 bg-gray-900 text-white text-[11px] rounded-lg py-1 px-2.5 shadow-xl whitespace-nowrap flex items-center gap-2">
-                    <span className="font-semibold text-gray-200">{bar.month}:</span>
-                    <span className="text-emerald-400 font-bold">{bar.counts.active} Active</span>
-                    <span className="text-blue-400 font-bold">{bar.counts.newBiz} New</span>
-                    <span className="text-rose-400 font-bold">{bar.counts.suspended} Suspended</span>
-                  </div>
-
-                  {/* Tri-Bar Cluster */}
-                  <div className="w-full flex items-end justify-center gap-1 sm:gap-1.5 h-full">
-                    <div
-                      style={{ height: `${bar.active}%` }}
-                      className="w-3 sm:w-4 bg-emerald-500 group-hover:bg-emerald-600 rounded-t-md shadow-sm transition-all duration-300"
-                      title={`Active: ${bar.counts.active}`}
-                    />
-                    <div
-                      style={{ height: `${bar.newBiz}%` }}
-                      className="w-3 sm:w-4 bg-blue-600 group-hover:bg-blue-700 rounded-t-md shadow-sm transition-all duration-300"
-                      title={`New: ${bar.counts.newBiz}`}
-                    />
-                    <div
-                      style={{ height: `${bar.suspended}%` }}
-                      className="w-3 sm:w-4 bg-rose-400 group-hover:bg-rose-500 rounded-t-md shadow-sm transition-all duration-300"
-                      title={`Suspended: ${bar.counts.suspended}`}
-                    />
-                  </div>
-
-                  {/* Month Label */}
-                  <span className="text-[11px] font-semibold text-gray-500 group-hover:text-gray-900 transition-colors">
-                    {bar.month}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between text-xs text-gray-500">
-            <span>Aggregated Tenant Lifecycle</span>
-            <Link to="/super-admin/businesses" className="text-blue-600 hover:text-blue-700 flex items-center gap-1 font-semibold">
-              Explore All Businesses <ChevronRight className="w-3.5 h-3.5" />
-            </Link>
+            )}
           </div>
         </div>
+      )}
+    </div>
+  );
+});
 
-        {/* Subscription Distribution */}
-        <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] flex flex-col justify-between">
+InvoiceStatusCard.displayName = "InvoiceStatusCard";
+
+InvoiceStatusCard.propTypes = {
+  stats: PropTypes.object.isRequired,
+};
+
+// Main Super Admin Dashboard matching exact Billing Admin UI pattern
+export default function SuperAdminDashboard() {
+  const navigate = useNavigate();
+
+  const { businesses = [] } = usePlatformBusinesses();
+  const { invoices = [] } = usePlatformInvoices();
+  const { payments = [] } = usePlatformPayments();
+  const { logs = [], auditLogs = [] } = useAuditLogs();
+
+  const actualBusinesses = Array.isArray(businesses) ? businesses : [];
+  const actualInvoices = Array.isArray(invoices) ? invoices : [];
+  const actualLogs = Array.isArray(logs) && logs.length > 0 ? logs : Array.isArray(auditLogs) ? auditLogs : [];
+
+  // Calculate stats dynamically from all platform invoices & tenants
+  const stats = useMemo(() => {
+    const activeInvoices = actualInvoices.filter((i) => i.status !== "Cancelled");
+    const validInvoices = activeInvoices.filter(
+      (i) => (i.status || "").toLowerCase() !== "draft"
+    );
+
+    const totalInvoices = activeInvoices.length;
+
+    const totalRevenue = activeInvoices.reduce((sum, inv) => {
+      const received = Number(inv.paidAmount || inv.received || 0);
+      return sum + received;
+    }, 0);
+
+    const totalBillAmount = validInvoices.reduce((sum, inv) => {
+      const amount = Number(inv.total || inv.amount || inv.totalAmount || 0);
+      return sum + amount;
+    }, 0);
+
+    const totalOutstanding = Math.max(0, totalBillAmount - totalRevenue);
+
+    const paidInvoices = activeInvoices.filter(
+      (i) => (i.status || "").toLowerCase() === "paid"
+    ).length;
+    const draftInvoices = activeInvoices.filter(
+      (i) => (i.status || "").toLowerCase() === "draft"
+    ).length;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const overdueInvoices = activeInvoices.filter((i) => {
+      const s = (i.status || "").toLowerCase();
+      if (s === "paid" || s === "draft" || s === "partial") return false;
+      const dueDate = i.dueDate ? new Date(i.dueDate) : null;
+      if (dueDate) dueDate.setHours(0, 0, 0, 0);
+      return dueDate && today > dueDate;
+    }).length;
+
+    const unpaidInvoices = activeInvoices.filter((i) => {
+      const s = (i.status || "").toLowerCase();
+      if (s === "paid" || s === "draft" || s === "partial") return false;
+      const dueDate = i.dueDate ? new Date(i.dueDate) : null;
+      if (dueDate) dueDate.setHours(0, 0, 0, 0);
+      return !dueDate || today <= dueDate;
+    }).length;
+
+    const paymentRate =
+      paidInvoices + unpaidInvoices + draftInvoices + overdueInvoices > 0
+        ? (paidInvoices / (paidInvoices + unpaidInvoices + draftInvoices + overdueInvoices)) * 100
+        : 0;
+
+    let totalSGST = 0;
+    let totalCGST = 0;
+    let totalIGST = 0;
+
+    activeInvoices.forEach((inv) => {
+      const status = (inv.status || "").toLowerCase();
+      if (status === "paid" || status === "partial") {
+        totalSGST += Number(inv.sgst || 0);
+        totalCGST += Number(inv.cgst || 0);
+        totalIGST += Number(inv.igst || 0);
+      }
+    });
+
+    const totalGST = totalSGST + totalCGST + totalIGST;
+
+    // Platform user and product totals
+    const totalCustomers = actualBusinesses.reduce(
+      (sum, b) => sum + (Number(b?.usersCount) || 1),
+      0
+    );
+    const totalProducts = actualBusinesses.reduce(
+      (sum, b) => sum + (Number(b?.productsCount) || 0),
+      0
+    );
+
+    // Sum of platform operational/subscription expenses or 0
+    const totalExpenses = (payments || []).reduce(
+      (sum, p) => (p.status === "Refunded" ? sum + Number(p.amount || 0) : sum),
+      0
+    );
+
+    return {
+      totalInvoices,
+      totalRevenue,
+      paidInvoices,
+      unpaidInvoices,
+      draftInvoices,
+      overdueInvoices,
+      paymentRate,
+      totalExpenses,
+      totalCustomers,
+      totalProducts,
+      totalBillAmount,
+      totalOutstanding,
+      totalGST,
+      totalSGST,
+      totalCGST,
+      totalIGST,
+      financialYearLabel: getFYLabel(),
+    };
+  }, [actualInvoices, actualBusinesses, payments]);
+
+  return (
+    <div className="min-h-screen text-slate-800 font-mazzard">
+      <div className="max-w-full mx-auto pb-8">
+        {/* Header Section matching Business Portal pattern */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6">
           <div>
-            <h3 className="text-base font-bold text-gray-900">Subscription Distribution</h3>
-            <p className="text-xs text-gray-500 mt-0.5">Distribution across SaaS commercial tiers</p>
-
-            <div className="my-6 space-y-3.5">
-              {planDistribution.map((item, idx) => (
-                <div key={idx} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs font-semibold">
-                    <span className="text-gray-700">{item.name}</span>
-                    <span className="text-gray-500">
-                      {item.count} <span className="text-[10px] text-gray-400">({item.percent}%)</span>
-                    </span>
-                  </div>
-                  <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
-                    <div style={{ width: `${item.percent}%` }} className={`h-full rounded-full ${item.color}`} />
-                  </div>
-                </div>
-              ))}
-            </div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Welcome back, Admin!
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Here&apos;s what&apos;s happening with your business today.
+            </p>
           </div>
-
-          <div className="pt-4 border-t border-gray-100 flex items-center justify-between text-xs">
-            <span className="text-gray-500">Total Active Subscriptions</span>
-            <strong className="text-gray-900 font-bold">1,248</strong>
+          <div className="flex items-center gap-2 mt-3 sm:mt-0">
+            <button
+              onClick={() => navigate("/super-admin/businesses")}
+              className="bg-blue-600 text-white flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors shadow-sm active:scale-[0.98]"
+            >
+              <Plus className="w-4 h-4" />
+              Create Invoice
+            </button>
           </div>
-        </div>
-      </div>
+        </header>
 
-      {/* Secondary Row: Platform Activity & Timeline */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Platform Operations Telemetry */}
-        <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-          <h3 className="text-base font-bold text-gray-900 mb-1">Platform Activity Metrics</h3>
-          <p className="text-xs text-gray-500 mb-5">Real-time throughput processed across merchants</p>
-
-          <div className="space-y-3">
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-gray-900">Total Invoices Generated</div>
-                  <div className="text-[10px] text-gray-400">Past 30 days</div>
-                </div>
-              </div>
-              <strong className="text-sm font-black text-gray-900 font-mono">184,920</strong>
+        {/* Quick Platform Fleet Nav Strip */}
+        <div className="mb-6 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div
+            onClick={() => navigate("/super-admin/businesses")}
+            className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-sm hover:border-blue-300 transition-all cursor-pointer flex items-center gap-3"
+          >
+            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+              <Building2 className="w-4 h-4" />
             </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                  <Smartphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-gray-900">POS Terminal Transactions</div>
-                  <div className="text-[10px] text-gray-400">Fast checkout lanes</div>
-                </div>
-              </div>
-              <strong className="text-sm font-black text-gray-900 font-mono">612,480</strong>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                  <Building2 className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-gray-900">B2B Purchase Bills</div>
-                  <div className="text-[10px] text-gray-400">Vendor procurement</div>
-                </div>
-              </div>
-              <strong className="text-sm font-black text-gray-900 font-mono">42,110</strong>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
-                  <Users className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-gray-900">Active Concurrent Staff</div>
-                  <div className="text-[10px] text-gray-400">Logged in right now</div>
-                </div>
-              </div>
-              <strong className="text-sm font-black text-emerald-600 font-mono">1,489</strong>
-            </div>
-          </div>
-        </div>
-
-        {/* Recent Platform Activity Timeline (Matching Recent Activity pattern from Billing dashboard) */}
-        <div className="lg:col-span-2 p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
-          <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-base font-bold text-gray-900">Recent Activity</h3>
-              <p className="text-xs text-gray-500 mt-0.5">Latest updates and notifications across tenants</p>
+              <p className="text-[11px] font-medium text-slate-500 uppercase">Businesses</p>
+              <p className="text-base font-bold text-slate-900">{actualBusinesses.length}</p>
             </div>
-            <Link to="/super-admin/audit-logs" className="text-xs font-bold text-blue-600 hover:text-blue-700">
-              View Audit Logs →
-            </Link>
           </div>
-
-          <div className="space-y-3">
-            {recentActivities.map((act, idx) => (
-              <div
-                key={idx}
-                onClick={() => navigate(act.path)}
-                className="p-3 rounded-xl bg-slate-50/60 hover:bg-slate-100/80 border border-slate-100 transition cursor-pointer flex items-center justify-between gap-4 group"
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <span className={`w-2 h-2 rounded-full ${act.dot} flex-shrink-0`} />
-                  <span className="text-[11px] font-mono font-semibold text-gray-400 flex-shrink-0 w-16">{act.time}</span>
-                  <div className="min-w-0">
-                    <div className="text-xs font-bold text-gray-900 group-hover:text-blue-600 transition truncate">
-                      {act.title}
-                    </div>
-                    <div className="text-[11px] text-gray-500 truncate">{act.desc}</div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${act.color}`}>{act.tag}</span>
-                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-gray-700 transition" />
-                </div>
-              </div>
-            ))}
+          <div
+            onClick={() => navigate("/super-admin/branches")}
+            className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-sm hover:border-blue-300 transition-all cursor-pointer flex items-center gap-3"
+          >
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+              <GitBranch className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 uppercase">Branches</p>
+              <p className="text-base font-bold text-slate-900">
+                {actualBusinesses.reduce((s, b) => s + (b.branchesCount || 1), 0)}
+              </p>
+            </div>
+          </div>
+          <div
+            onClick={() => navigate("/super-admin/godowns")}
+            className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-sm hover:border-blue-300 transition-all cursor-pointer flex items-center gap-3"
+          >
+            <div className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+              <Warehouse className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 uppercase">Godowns</p>
+              <p className="text-base font-bold text-slate-900">
+                {actualBusinesses.reduce((s, b) => s + (b.godownsCount || 1), 0)}
+              </p>
+            </div>
+          </div>
+          <div
+            onClick={() => navigate("/super-admin/pos-terminals")}
+            className="bg-white p-3 rounded-lg border border-slate-200/80 shadow-sm hover:border-blue-300 transition-all cursor-pointer flex items-center gap-3"
+          >
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg">
+              <Smartphone className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-slate-500 uppercase">POS Terminals</p>
+              <p className="text-base font-bold text-slate-900">
+                {actualBusinesses.reduce((s, b) => s + (b.terminalsCount || 1), 0)}
+              </p>
+            </div>
           </div>
         </div>
+
+        {/* Main 9-Card Stats Grid (Matching User Screenshot Layout) */}
+        <main className="flex flex-col gap-6">
+          <StatsGrid stats={stats} />
+
+          {/* Bottom Row: Recent Activity & Invoice Status */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+            <RecentActivity logs={actualLogs} invoices={actualInvoices} />
+            <InvoiceStatusCard stats={stats} />
+          </div>
+        </main>
       </div>
     </div>
   );
