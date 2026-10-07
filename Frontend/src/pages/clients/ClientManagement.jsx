@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useContext, useMemo, memo } from "react";
+import React, { useState, useRef, useEffect, useMemo, memo } from "react";
+import { STATES, stateCodeFromGstin, stateName } from "../../utils/gst.js";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Search,
@@ -10,15 +11,39 @@ import {
   Phone,
   Mail,
   TrendingUp,
-  AlertCircle,
   MapPin,
   User,
 } from "lucide-react";
 import Pagination from "../../components/Pagination";
-import { AuthContext } from "../../context/AuthContext";
-import { useCustomers, useInvoices } from "../../hooks/useFirestore";
+import { useCustomers, useInvoices, usePriceLists } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
 import PropTypes from "prop-types";
+
+// Customer's state = place of supply: decides CGST+SGST or IGST on their bills.
+function StateSelect({ value, gstin, onChange }) {
+  const fromGstin = stateCodeFromGstin(gstin);
+  return (
+    <div>
+      <label className="block text-sm text-gray-700 mb-1">State (place of supply)</label>
+      <select
+        name="state"
+        value={value || ""}
+        onChange={onChange}
+        disabled={Boolean(fromGstin)}
+        className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:text-gray-700"
+      >
+        <option value="">Same as my state</option>
+        {STATES.map((s) => (
+          <option key={s.code} value={s.name}>
+            {s.name} ({s.code})
+          </option>
+        ))}
+      </select>
+      <p className="text-xs text-gray-500 mt-1">{fromGstin ? "Set from the GSTIN" : "Decides CGST+SGST or IGST on this customer's bills"}</p>
+    </div>
+  );
+}
+
 const ClientManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -52,13 +77,14 @@ const ClientManagement = () => {
   // Get authentication context
 	// ...existing code...
   const { success, error: showError, warning } = useToast();
+  const { priceLists } = usePriceLists();
 
   // Use data hooks
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
 
   // Use data hooks
-  const { customers, loading, error, pagination, addCustomer, editCustomer, removeCustomer } =
+  const { customers, loading, error, pagination, addCustomer, editCustomer } =
     useCustomers({
       search: searchTerm,
       page: currentPage,
@@ -131,7 +157,7 @@ const ClientManagement = () => {
 
       // Total Revenue = All amounts that have been paid (regardless of status)
       // Outstanding = Invoice total minus what has been paid
-      const unpaidAmount = Math.max(0, invoiceAmount - effectivePaid);
+      const unpaidAmount = Math.max(0, invoiceAmount - effectivePaid - (Number(invoice.creditedAmount) || 0) - (Number(invoice.advanceAdjusted) || 0));
       
       stats[clientId].totalRevenue += effectivePaid;
       stats[clientId].amountPaid += effectivePaid;
@@ -213,6 +239,8 @@ const ClientManagement = () => {
     mobile: "",
     email: "",
     address: "",
+    state: "",
+    openingBalance: "",
     customerLanguage: "English",
     notes: "",
   });
@@ -223,16 +251,28 @@ const ClientManagement = () => {
     phone: "",
     email: "",
     address: "",
+    state: "",
+    openingBalance: "",
   });
+
+  // A GSTIN's first two digits are the state code, so typing one fills the state.
+  const withGstinState = (prev, name, value) => {
+    const next = { ...prev, [name]: value };
+    if (name === "gstin") {
+      const code = stateCodeFromGstin(value);
+      if (code) next.state = stateName(code);
+    }
+    return next;
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => withGstinState(prev, name, value));
   };
 
   const handleEditInputChange = (e) => {
     const { name, value } = e.target;
-    setEditFormData((prev) => ({ ...prev, [name]: value }));
+    setEditFormData((prev) => withGstinState(prev, name, value));
   };
 
   const handleAddClient = async () => {
@@ -265,6 +305,8 @@ const ClientManagement = () => {
       mobile: "",
       email: "",
       address: "",
+      state: "",
+      openingBalance: "",
       customerLanguage: "English",
       notes: "",
     });
@@ -273,8 +315,6 @@ const ClientManagement = () => {
       navigate("/clients", { replace: true });
     }
 
-    success(`Customer "${clientName}" added successfully!`, "Added");
-
     const result = await addCustomer({
       name: clientName,
       email: clientEmail,
@@ -282,6 +322,10 @@ const ClientManagement = () => {
       address: clientAddress,
       company: formData.companyName || clientGstin,
       taxId: clientGstin,
+      gstin: (clientGstin || "").toUpperCase(),
+      state: formData.state || "",
+      openingBalance: Number(formData.openingBalance) || 0,
+      priceList: formData.priceList || "",
       customerType: formData.customerType,
       salutation: formData.salutation,
       firstName: formData.firstName,
@@ -292,7 +336,9 @@ const ClientManagement = () => {
       notes: formData.notes,
     });
 
-    if (!result.success) {
+    if (result.success) {
+      success(`Customer "${clientName}" added successfully!`, "Added");
+    } else {
       showError(`Failed to add customer: ${result.error}`, "Error");
     }
   };
@@ -310,6 +356,8 @@ const ClientManagement = () => {
       mobile: "",
       email: "",
       address: "",
+      state: "",
+      openingBalance: "",
       customerLanguage: "English",
       notes: "",
     });
@@ -338,6 +386,9 @@ const ClientManagement = () => {
       phone: client.phone,
       email: client.email,
       address: client.address,
+      state: client.state || stateName(stateCodeFromGstin(client.gstin || client.taxId)) || "",
+      openingBalance: client.openingBalance ?? "",
+      priceList: client.priceList || "",
     });
     setShowEditModal(true);
     setDropdownOpen(null);
@@ -351,6 +402,8 @@ const ClientManagement = () => {
       const clientPhone = editFormData.phone;
       const clientAddress = editFormData.address;
       const clientGstin = editFormData.gstin;
+      const clientState = editFormData.state;
+      const clientOpening = Number(editFormData.openingBalance) || 0;
 
       // Optimistic UI: Close modal and show notification immediately
       setShowEditModal(false);
@@ -361,6 +414,7 @@ const ClientManagement = () => {
         phone: "",
         email: "",
         address: "",
+        state: "",
       });
 
       // Update = Yellow (Warning style)
@@ -373,6 +427,10 @@ const ClientManagement = () => {
         address: clientAddress,
         company: clientGstin,
         taxId: clientGstin,
+        gstin: (clientGstin || "").toUpperCase(),
+        state: clientState || "",
+        openingBalance: clientOpening,
+        priceList: editFormData.priceList || "",
       });
 
       // Handle failure
@@ -726,6 +784,32 @@ const ClientManagement = () => {
                   />
                 </div>
 
+                <StateSelect value={formData.state} gstin={formData.gstin} onChange={handleInputChange} />
+
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Opening balance receivable (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    name="openingBalance"
+                    value={formData.openingBalance}
+                    onChange={handleInputChange}
+                    placeholder="Amount owed before you started using Kanakku Desk"
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                {priceLists.length > 0 && (
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Price list</label>
+                    <select name="priceList" value={formData.priceList || ""} onChange={handleInputChange} className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Standard prices</option>
+                      {priceLists.map((l) => (
+                        <option key={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">Address</label>
                   <textarea
@@ -836,6 +920,29 @@ const ClientManagement = () => {
                     />
                   </div>
                 </div>
+                <StateSelect value={editFormData.state} gstin={editFormData.gstin} onChange={handleEditInputChange} />
+                <div>
+                  <label className="block text-sm text-gray-700 mb-1">Opening balance receivable (₹)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    name="openingBalance"
+                    value={editFormData.openingBalance}
+                    onChange={handleEditInputChange}
+                    className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                {priceLists.length > 0 && (
+                  <div>
+                    <label className="block text-sm text-gray-700 mb-1">Price list</label>
+                    <select name="priceList" value={editFormData.priceList || ""} onChange={handleEditInputChange} className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Standard prices</option>
+                      {priceLists.map((l) => (
+                        <option key={l.id}>{l.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm text-gray-700 mb-1">
                     Address *

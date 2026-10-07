@@ -1,6 +1,5 @@
-import React, { useState, useRef, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import {
-  Upload,
   Save,
   User,
   Lock,
@@ -15,6 +14,9 @@ import { AuthContext } from "../../context/AuthContext";
 import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import { useSettings } from "../../hooks/useFirestore";
 import PropTypes from "prop-types";
+import BusinessSettings from "./BusinessSettings";
+import TeamSettings from "./TeamSettings";
+import DataSettings from "./DataSettings";
 
 // A reusable toggle switch component
 const ToggleSwitch = ({ enabled, setEnabled }) => (
@@ -56,7 +58,7 @@ const ProfileSettings = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
 
-  // Company logo from signup profile, or default Techno Vanam icon
+  // Company logo from signup profile, or default Kanakku Desk icon
   const logoURL = companyProfile?.logoURL || "/Icon@4x-8.png";
 
   useEffect(() => {
@@ -343,32 +345,6 @@ const ProfileSettings = () => {
         </div>
       </div>
 
-      {/* Admin UID — share with warehouse users */}
-      <div className="p-6 border border-blue-100 rounded-xl bg-blue-50">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-sm font-bold text-blue-900">Your Admin UID</span>
-          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-semibold">For Warehouse Linking</span>
-        </div>
-        <p className="text-xs text-blue-700 mb-3">
-          Share this UID with your warehouse operator. They paste it in{" "}
-          <strong>Warehouse Portal → Setup &amp; Linking</strong> to see your product catalog.
-        </p>
-        <div className="flex items-center gap-2">
-          <code className="flex-1 text-xs bg-white border border-blue-200 rounded-lg px-3 py-2 font-mono text-slate-700 truncate">
-            {user?.uid || "Loading…"}
-          </code>
-          <button
-            type="button"
-            onClick={() => {
-              navigator.clipboard.writeText(user?.uid || "");
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
-          >
-            Copy UID
-          </button>
-        </div>
-      </div>
-
       {/* Change Password Section */}
       <div className="p-6 border border-gray-200 rounded-xl">
         <h2 className="text-lg font-bold text-gray-900 mb-6">
@@ -490,7 +466,7 @@ const SystemSettings = () => {
     timeZone: "Asia/Kolkata",
     dateFormat: "DD/MM/YYYY",
     invoicePrefix: "INV",
-    razorpayLink: "https://razorpay.me/@esaengineeringworks",
+    razorpayLink: "",
   });
   const [features, setFeatures] = useState({
     autoInvoice: true,
@@ -499,7 +475,7 @@ const SystemSettings = () => {
   });
 
   // Use settings hook
-  const { settings, error: settingsError, updateSettings } = useSettings();
+  const { settings, updateSettings } = useSettings();
 
   // Load settings
   useEffect(() => {
@@ -660,7 +636,7 @@ const SystemSettings = () => {
             <input
               id="razorpayLink"
               type="text"
-              placeholder="https://razorpay.me/@esaengineeringworks"
+              placeholder="https://razorpay.me/@yourbusiness"
               value={config.razorpayLink || ""}
               onChange={(e) =>
                 setConfig({ ...config, razorpayLink: e.target.value })
@@ -736,8 +712,6 @@ const SecuritySettings = () => {
     signOut,
     isSessionTimeoutEnabled,
     toggleSessionTimeout,
-    sessionTimeoutMinutes,
-    setSessionTimeoutMinutes,
   } = useContext(AuthContext);
   const { settings, updateSettings } = useSettings();
   const [localTimeoutMinutes, setLocalTimeoutMinutes] = useState(15);
@@ -891,20 +865,20 @@ const SecuritySettings = () => {
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState("Profile");
-  const tabs = ["Profile", "System", "Security"];
-
-  // Get authentication context
-  const { user } = useContext(AuthContext);
-
-  // Use settings hook
-  const { settings, error: settingsError } = useSettings();
+  const tabs = ["Profile", "Business", "System", "Team", "Data", "Security"];
 
   const renderContent = () => {
     switch (activeTab) {
       case "Profile":
         return <ProfileSettings />;
+      case "Business":
+        return <BusinessSettings />;
       case "System":
         return <SystemSettings />;
+      case "Team":
+        return <TeamSettings />;
+      case "Data":
+        return <DataSettings />;
       case "Security":
         return <SecuritySettings />;
       default:
@@ -927,16 +901,17 @@ const SettingsPage = () => {
         </header>
 
         <main className="mt-6 flex flex-col gap-6">
-          <div>
-            <div className="bg-gray-100 rounded-lg p-1 flex items-center space-x-1 max-w-fit overflow-x-auto scrollbar-hide">
+          <div className="w-fit overflow-x-auto pb-1 scrollbar-hide">
+            <div className="flex p-1 bg-white border border-slate-300 rounded-xl whitespace-nowrap shadow-xs">
               {tabs.map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex-shrink-0 ${activeTab === tab
-                    ? "bg-white text-gray-900 shadow-sm"
-                    : "bg-transparent text-gray-600 hover:bg-gray-200"
-                    }`}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                    activeTab === tab
+                      ? "bg-blue-600 text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-medium"
+                  }`}
                 >
                   {tab}
                 </button>

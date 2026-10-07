@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { invoiceTotals } from "../../utils/gst.js";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   doc,
@@ -16,18 +17,14 @@ import {
   CheckCircle2,
   AlertCircle,
   CreditCard,
-  Building2,
-  Calendar,
   FileText,
-  User,
-  ShieldCheck,
   Printer,
-  ArrowLeft,
   Loader2,
   QrCode,
-  IndianRupee,
 } from "lucide-react";
 import { loadRazorpayScript } from "../../utils/loadRazorpay";
+
+import { BACKEND_URL, backendUrl } from "../../lib/backend";
 
 export default function PublicInvoicePayPage() {
   const { userId, invoiceId } = useParams();
@@ -67,7 +64,7 @@ export default function PublicInvoicePayPage() {
 
         // 1. Try Backend API first (bypasses permissions, handles token/invoiceNumber/docId)
         try {
-          const apiRes = await fetch(`http://localhost:5000/api/public/payment/invoice/${encodeURIComponent(targetIdentifier)}`);
+          const apiRes = await fetch(`${BACKEND_URL}/api/public/payment/invoice/${encodeURIComponent(targetIdentifier)}`);
           if (apiRes.ok) {
             const apiData = await apiRes.json();
             if (apiData.success) {
@@ -85,6 +82,8 @@ export default function PublicInvoicePayPage() {
                 sgst: apiData.sgst || 0,
                 igst: apiData.igst || 0,
                 isRoundOff: apiData.isRoundOff,
+                isGstEnabled: apiData.isGstEnabled !== false,
+                ...(apiData.gstVersion ? { gstVersion: apiData.gstVersion, isInterState: apiData.isInterState, placeOfSupply: apiData.placeOfSupply } : {}),
                 amount: apiData.amount,
                 paidAmount: apiData.amount - apiData.balanceDue,
                 status: apiData.status === "PAID" ? "Paid" : "Unpaid",
@@ -95,6 +94,7 @@ export default function PublicInvoicePayPage() {
                 address: apiData.companyAddress,
                 phone: apiData.companyPhone,
                 gstin: apiData.companyGstin,
+                bank: apiData.seller?.bank || {},
               });
               setRealInvId(apiData.invoiceId || apiData.invoiceNumber);
               if (apiData.userId) setResolvedUserId(apiData.userId);
@@ -190,15 +190,14 @@ export default function PublicInvoicePayPage() {
 
   // Calculate totals
   const items = invoice?.items || invoice?.products || [];
-  const subtotal = items.reduce(
-    (sum, item) => sum + (item.amount || item.total || (item.quantity * item.rate) || 0),
-    0
-  );
-  const cgstAmount = (subtotal * (invoice?.cgst || 0)) / 100;
-  const sgstAmount = (subtotal * (invoice?.sgst || 0)) / 100;
-  const igstAmount = (subtotal * (invoice?.igst || 0)) / 100;
-  const roundOffAmount = invoice?.isRoundOff ? Math.round(invoice.amount) - invoice.amount : 0;
-  const totalAmount = invoice?.amount || (subtotal + cgstAmount + sgstAmount + igstAmount + roundOffAmount);
+  const totals = invoiceTotals(invoice || {});
+  const subtotal = totals.taxableAmount;
+  const cgstAmount = totals.cgstAmount;
+  const sgstAmount = totals.sgstAmount;
+  const igstAmount = totals.igstAmount;
+  const roundOffAmount = totals.roundOffAmount;
+  const totalAmount = invoice?.amount || totals.total;
+  const bank = companyProfile?.bank || invoice?.seller?.bank || {};
   const paidAmount = invoice?.paidAmount || (invoice?.status?.toLowerCase() === "paid" ? totalAmount : 0);
   const balanceDue = Math.max(0, totalAmount - paidAmount);
 
@@ -213,7 +212,7 @@ export default function PublicInvoicePayPage() {
 
       // 1. Call Backend API to record payment with admin privileges
       try {
-        await fetch("http://localhost:5000/api/public/payment/record", {
+        await fetch(backendUrl("/api/public/payment/record"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -290,7 +289,7 @@ export default function PublicInvoicePayPage() {
       // Request Order Creation from Backend
       let orderData = null;
       try {
-        const res = await fetch("http://localhost:5000/create-razorpay-order", {
+        const res = await fetch(backendUrl("/create-razorpay-order"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -316,9 +315,9 @@ export default function PublicInvoicePayPage() {
         key: razorpayKey,
         amount: Math.round(balanceDue * 100),
         currency: "INR",
-        name: companyProfile?.companyName || "ESA ENGINEERING WORKS",
+        name: companyProfile?.companyName || "Invoice payment",
         description: `Payment for Invoice ${invoice.invoiceNumber}`,
-        image: companyProfile?.logoURL || "https://res.cloudinary.com/dnmvriw3e/image/upload/v1756868204/ESA_uggt8u.png",
+        image: companyProfile?.logoURL || undefined,
         order_id: orderData?.orderId || undefined,
         handler: async function (response) {
           const txId = response.razorpay_payment_id || `RZP_${Date.now()}`;
@@ -399,14 +398,14 @@ export default function PublicInvoicePayPage() {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img
-              src={companyProfile?.logoURL || "https://res.cloudinary.com/dnmvriw3e/image/upload/v1756868204/ESA_uggt8u.png"}
+              src={companyProfile?.logoURL || "/Icon@4x-8.png"}
               alt="Company Logo"
               className="h-14 w-auto object-contain"
             />
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{companyProfile?.companyName || "ESA ENGINEERING WORKS"}</h1>
-              <p className="text-xs text-gray-500">{companyProfile?.address || "1/100, Chettipalayam Road, E.B. Compound, CBE"}</p>
-              <p className="text-xs text-gray-500">GSTIN: {companyProfile?.gstin || "33AMWPB2116Q1ZS"} | Phone: {companyProfile?.phone || "+91 98432 94464"}</p>
+              <h1 className="text-xl font-bold text-gray-900">{companyProfile?.companyName || "Invoice"}</h1>
+              <p className="text-xs text-gray-500">{companyProfile?.address || ""}</p>
+              <p className="text-xs text-gray-500">{[companyProfile?.gstin && `GSTIN: ${companyProfile.gstin}`, companyProfile?.phone && `Phone: ${companyProfile.phone}`].filter(Boolean).join(" | ")}</p>
             </div>
           </div>
           <div className="text-right">
@@ -525,36 +524,43 @@ export default function PublicInvoicePayPage() {
 
             {/* Financial Summary */}
             <div className="flex flex-col sm:flex-row justify-between items-start gap-4 pt-4 border-t border-gray-200">
-              <div className="text-xs text-gray-500 bg-slate-50 p-3 rounded-lg border border-slate-200 max-w-xs">
-                <p className="font-semibold text-gray-700 mb-1">Bank Account Transfer Details:</p>
-                <p>Bank: State Bank of India</p>
-                <p>A/C: 42455711572</p>
-                <p>IFSC: SBIN0015017</p>
-                <p>Branch: Malumichampatti</p>
-              </div>
+              {(bank.bankName || bank.accountNumber || bank.upiId) ? (
+                <div className="text-xs text-gray-500 bg-slate-50 p-3 rounded-lg border border-slate-200 max-w-xs">
+                  <p className="font-semibold text-gray-700 mb-1">Bank Account Transfer Details:</p>
+                  {bank.bankName && <p>Bank: {bank.bankName}</p>}
+                  {bank.accountName && <p>A/C Name: {bank.accountName}</p>}
+                  {bank.accountNumber && <p>A/C: {bank.accountNumber}</p>}
+                  {bank.ifsc && <p>IFSC: {bank.ifsc}</p>}
+                  {bank.branch && <p>Branch: {bank.branch}</p>}
+                  {bank.upiId && <p>UPI: {bank.upiId}</p>}
+                </div>
+              ) : (
+                <div />
+              )}
 
               <div className="w-full sm:w-72 space-y-2 text-sm">
                 <div className="flex justify-between text-gray-600">
                   <span>Subtotal</span>
                   <span>₹{subtotal.toFixed(2)}</span>
                 </div>
-                {invoice.cgst > 0 && (
-                  <div className="flex justify-between text-gray-600">
-                    <span>CGST ({invoice.cgst}%)</span>
-                    <span>₹{cgstAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                {invoice.sgst > 0 && (
-                  <div className="flex justify-between text-gray-600">
-                    <span>SGST ({invoice.sgst}%)</span>
-                    <span>₹{sgstAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                {invoice.igst > 0 && (
-                  <div className="flex justify-between text-gray-600">
-                    <span>IGST ({invoice.igst}%)</span>
-                    <span>₹{igstAmount.toFixed(2)}</span>
-                  </div>
+                {(totals.taxBreakup || []).map((t) =>
+                  invoice.isInterState || (!invoice.gstVersion && invoice.igst > 0) ? (
+                    <div key={`i${t.gstRate}`} className="flex justify-between text-gray-600">
+                      <span>IGST ({t.gstRate}%)</span>
+                      <span>₹{Number(t.igst).toFixed(2)}</span>
+                    </div>
+                  ) : (
+                    <React.Fragment key={`c${t.gstRate}`}>
+                      <div className="flex justify-between text-gray-600">
+                        <span>CGST ({t.gstRate / 2}%)</span>
+                        <span>₹{Number(t.cgst).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-gray-600">
+                        <span>SGST ({t.gstRate / 2}%)</span>
+                        <span>₹{Number(t.sgst).toFixed(2)}</span>
+                      </div>
+                    </React.Fragment>
+                  )
                 )}
                 {roundOffAmount !== 0 && (
                   <div className="flex justify-between text-gray-600">
@@ -615,7 +621,7 @@ export default function PublicInvoicePayPage() {
 
         {/* FOOTER */}
         <div className="text-center text-xs text-gray-400 py-4">
-          Protected by 256-bit SSL Encryption • Powered by Techno Vanam Billing
+          Protected by 256-bit SSL Encryption • Powered by Kanakku Desk
         </div>
       </div>
     </div>

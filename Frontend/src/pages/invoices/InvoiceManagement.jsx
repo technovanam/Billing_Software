@@ -15,15 +15,24 @@ import {
   Trash2,
   Printer,
   Filter,
-  Calendar,
   ChevronDown,
 } from "lucide-react";
-import { useInvoices, useSettings, useCustomers, useProducts } from "../../hooks/useFirestore";
+import { useInvoices, useSettings, useCustomers, useProducts, usePriceLists } from "../../hooks/useFirestore";
+import { priceListFor } from "../../utils/priceLists";
 import { AuthContext } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { generateInvoiceHTML } from "../../utils/invoiceGenerator";
 import { loadRazorpayScript } from "../../utils/loadRazorpay";
 import PropTypes from "prop-types";
+import { authJsonHeaders } from "../../lib/authHeaders";
+import CreateInvoiceComponent from "./CreateInvoiceComponent";
+import { calculateInvoiceTotals } from "../../utils/invoiceTotals";
+import { invoiceTaxSettings } from "../../utils/invoiceFromDraft";
+import { ITEMWISE_DEFAULTS, newInvoiceItem, applyItemChange, applyProduct, withClient, prepareForEdit, invoiceForSave } from "../../utils/invoiceForm";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
+import { buildEinvoicePayload, buildEwayBillJson } from "../../utils/einvoice.js";
+import { invoiceTotals, isItemwise, upgradeToItemwise, sellerFor, sellerAddressLines, partyStateCode, stateName, supplyNotes, supplyTypeLabel, isExport, inrFactor } from "../../utils/gst.js";
+import { backendUrl } from "../../lib/backend";
+
 // Removed jsPDF and html2canvas imports
 
 const ConfirmationModal = ({
@@ -184,7 +193,7 @@ const ProductAutocomplete = ({
   }, [isFocused]);
 
   useEffect(() => {
-    setSearchTerm(value);
+    setSearchTerm(value || "");
   }, [value]);
 
   useEffect(() => {
@@ -487,25 +496,53 @@ const InvoicePreview = ({
 
   // Prioritize invoiceData (current form) over invoice (previously viewed)
   const previewData = invoiceData || invoice;
-  const previewCalcs = invoiceData
-    ? calculations
-    : (() => {
-      // Handle both 'items' and 'products' fields
-      const itemsArray = invoice.items || invoice.products || [];
-      const subtotal = itemsArray.reduce((sum, item) => sum + (item.amount || item.total || 0), 0);
+  const { companyProfile } = useCompanyProfile();
 
-      const invoiceTotal = Number(invoice?.amount ?? invoice?.total ?? subtotal ?? 0);
-      return {
-        subtotal: subtotal,
-        cgstAmount: (subtotal * (invoice?.cgst || 0)) / 100,
-        sgstAmount: (subtotal * (invoice?.sgst || 0)) / 100,
-        igstAmount: (subtotal * (invoice?.igst || 0)) / 100,
-        roundOffAmount: invoice?.isRoundOff
-          ? Math.round(invoiceTotal) - invoiceTotal
-          : 0,
-        total: invoice?.isRoundOff ? Math.round(invoiceTotal) : invoiceTotal,
-      };
-    })();
+  // Same GST engine as the form, so the printed bill always adds up.
+  const previewCalcs = invoiceTotals(previewData || {});
+  const itemwise = isItemwise(previewData);
+  const gstOn = previewData?.isGstEnabled !== false;
+  const interState = itemwise
+    ? Boolean(previewData?.isInterState)
+    : Number(previewData?.igst) > 0 && !(Number(previewData?.cgst) + Number(previewData?.sgst));
+  const seller = sellerFor(previewData, companyProfile);
+  const isTaxInvoice = gstOn && Boolean(seller.gstin);
+  const lines = previewCalcs.lines || [];
+  const hasDiscount = lines.some((l) => Number(l.discount) > 0);
+  const showGstColumn = gstOn && itemwise;
+  const hsnRows = gstOn ? (itemwise ? previewCalcs.hsnSummary : invoiceTotals(upgradeToItemwise(previewData)).hsnSummary) : [];
+
+  const client = previewData?.client || {};
+  const looksLikeGstin = (v) => /^\d{2}[A-Z0-9]{13}$/i.test(String(v || "").trim());
+  const buyerGstin = client.gstin || client.taxId || client.gst || (looksLikeGstin(client.company) ? client.company : "");
+  const buyerStateCode = partyStateCode({ ...client, gstin: buyerGstin });
+  const posCode = previewData?.placeOfSupply?.code || buyerStateCode || seller.stateCode;
+  const posLabel = posCode ? `${stateName(posCode)} (${posCode})` : "";
+
+  const fmt = (v) => Number(v || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const totalRows = [{ label: "Taxable Value", value: fmt(previewCalcs.taxableAmount ?? previewCalcs.subtotal) }];
+  if (gstOn) {
+    for (const b of previewCalcs.taxBreakup || []) {
+      if (interState) totalRows.push({ label: `IGST @ ${b.gstRate}%`, value: fmt(b.igst) });
+      else {
+        totalRows.push({ label: `CGST @ ${b.gstRate / 2}%`, value: fmt(b.cgst) });
+        totalRows.push({ label: `SGST @ ${b.gstRate / 2}%`, value: fmt(b.sgst) });
+      }
+    }
+  }
+  if (Number(previewCalcs.cessAmount) > 0) totalRows.push({ label: "Cess", value: fmt(previewCalcs.cessAmount) });
+  if (Number(previewCalcs.tcsAmount) > 0) totalRows.push({ label: `TCS @ ${previewCalcs.tcsRate}%`, value: fmt(previewCalcs.tcsAmount) });
+  if (previewData?.isRoundOff || Number(previewCalcs.roundOffAmount)) totalRows.push({ label: "Round Off", value: fmt(previewCalcs.roundOffAmount) });
+
+  const bank = seller.bank || {};
+  const bankLines = [
+    ["Bank Name", bank.bankName],
+    ["A/c Name", bank.accountName],
+    ["A/c No", bank.accountNumber],
+    ["IFSC Code", bank.ifsc],
+    ["Branch", bank.branch],
+    ["UPI ID", bank.upiId],
+  ].filter(([, v]) => v);
 
   const isPaid =
     (previewData?.status || "").toLowerCase() === "paid" ||
@@ -568,7 +605,7 @@ const InvoicePreview = ({
     ? window.location.origin
     : "http://localhost:5173";
 
-  const currentUserId = user?.uid || previewData?.userId || previewData?.uid || "";
+  const currentUserId = user?.businessUid || user?.uid || previewData?.userId || previewData?.uid || "";
   const rawId = previewData?.id || previewData?.invoiceNumber || "";
   const currentInvoiceId = previewData?.id ? previewData.id : String(rawId).replace(/\//g, "_");
 
@@ -598,7 +635,7 @@ const InvoicePreview = ({
         if (toastError) toastError("Razorpay SDK failed to load. Check your internet connection.");
         return;
       }
-      const res = await fetch("http://localhost:5000/create-razorpay-order", {
+      const res = await fetch(backendUrl("/create-razorpay-order"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -623,12 +660,12 @@ const InvoicePreview = ({
           key: keyId,
           amount: orderData.amount,
           currency: orderData.currency || "INR",
-          name: "Techno Vanam Billing",
+          name: "Kanakku Desk",
           description: `Payment for Invoice #${previewData?.invoiceNumber || ""}`,
           order_id: orderData.orderId,
           handler: async function (response) {
             try {
-              const verifyRes = await fetch("http://localhost:5000/verify-razorpay-payment", {
+              const verifyRes = await fetch(backendUrl("/verify-razorpay-payment"), {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(response)
@@ -680,9 +717,9 @@ const InvoicePreview = ({
         .join("\n");
 
       // Send to backend
-      const response = await fetch("http://localhost:5000/generate-pdf", {
+      const response = await fetch(backendUrl("/generate-pdf"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authJsonHeaders(),
         body: JSON.stringify({
           html: element.outerHTML,
           css: styles,
@@ -722,6 +759,67 @@ const InvoicePreview = ({
       return () => clearTimeout(timer);
     }
   }, [autoDownload]);
+
+  // ── E-invoice / e-way bill ──────────────────────────────────────────────
+  const [einv, setEinv] = useState({ busy: false, irn: previewData?.irn || "", ackNo: previewData?.ackNo || "", ackDate: previewData?.ackDate || "", problems: [] });
+  const downloadJson = (name, data) => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+  const safeNo = String(previewData?.invoiceNumber || "invoice").replace(/[^\w-]+/g, "_");
+
+  const handleEwayBill = () => {
+    const { json, problems } = buildEwayBillJson(previewData, companyProfile);
+    const blocking = problems.filter((p) => !p.startsWith("Note:"));
+    if (blocking.length) {
+      setEinv((e) => ({ ...e, problems }));
+      return;
+    }
+    downloadJson(`EWB_${safeNo}.json`, json);
+    setEinv((e) => ({ ...e, problems }));
+    toastSuccess("E-way bill JSON downloaded — upload it on ewaybillgst.gov.in (Generate → Bulk).");
+  };
+
+  const handleEinvoiceJson = () => {
+    const { payload, problems } = buildEinvoicePayload(previewData, companyProfile);
+    setEinv((e) => ({ ...e, problems }));
+    if (problems.length) return;
+    downloadJson(`EINV_${safeNo}.json`, payload);
+    toastSuccess("E-invoice JSON downloaded.");
+  };
+
+  const handleGenerateIrn = async () => {
+    const { payload, problems } = buildEinvoicePayload(previewData, companyProfile);
+    setEinv((e) => ({ ...e, problems }));
+    if (problems.length) return;
+    if (!previewData?.id) {
+      toastError("Save the invoice before generating an IRN.");
+      return;
+    }
+    setEinv((e) => ({ ...e, busy: true }));
+    try {
+      const res = await fetch(backendUrl("/api/einvoice/irn"), {
+        method: "POST",
+        headers: await authJsonHeaders(),
+        body: JSON.stringify({ invoiceId: previewData.id, payload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const extra = data.missing?.length ? ` Missing: ${data.missing.join(", ")}.` : "";
+        throw new Error((data.error || "IRN generation failed.") + extra);
+      }
+      setEinv({ busy: false, irn: data.irn, ackNo: data.ackNo, ackDate: data.ackDate, problems: [] });
+      if (onUpdateInvoice) onUpdateInvoice(previewData.id, { irn: data.irn, ackNo: data.ackNo, ackDate: data.ackDate, signedQrCode: data.signedQrCode, einvoiceStatus: "Generated" });
+      toastSuccess(`IRN generated (Ack ${data.ackNo}).`);
+    } catch (err) {
+      setEinv((e) => ({ ...e, busy: false }));
+      toastError(err.message === "Failed to fetch" ? "Could not reach the server." : err.message);
+    }
+  };
 
   const handlePrint = () => {
     // Select the OUTER wrapper which has the padding
@@ -810,6 +908,21 @@ const InvoicePreview = ({
           <div className="p-4 border-b flex justify-between items-center bg-gray-50 rounded-t-lg">
             <h2 className="text-lg font-bold text-gray-900">Invoice Preview</h2>
             <div className="flex items-center space-x-2">
+              {previewData?.isGstEnabled !== false && (
+                <>
+                  <button onClick={handleEwayBill} className="flex items-center px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50" title="Download e-way bill JSON for bulk upload">
+                    e-Way Bill
+                  </button>
+                  <button onClick={handleEinvoiceJson} className="flex items-center px-3 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50" title="Download IRP e-invoice JSON">
+                    e-Invoice JSON
+                  </button>
+                  {!einv.irn && (
+                    <button onClick={handleGenerateIrn} disabled={einv.busy} className="flex items-center px-3 py-1.5 text-sm text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 disabled:opacity-60" title="Generate IRN through your GSP">
+                      {einv.busy ? "Generating…" : "Generate IRN"}
+                    </button>
+                  )}
+                </>
+              )}
               <button
                 onClick={handleSaveAsPDF}
                 className="flex items-center px-3 py-1.5 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700"
@@ -829,6 +942,20 @@ const InvoicePreview = ({
                 className="p-2 text-gray-500 hover:bg-gray-200 rounded-full"
               >
                 <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
+        {!embedded && einv.problems.length > 0 && (
+          <div className="px-4 py-3 bg-amber-50 border-b border-amber-200 text-sm text-amber-800">
+            <div className="flex items-start justify-between gap-3">
+              <ul className="list-disc pl-5 space-y-0.5">
+                {einv.problems.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+              <button onClick={() => setEinv((e) => ({ ...e, problems: [] }))} className="text-amber-700 hover:text-amber-900" aria-label="Dismiss">
+                <X className="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -855,208 +982,230 @@ const InvoicePreview = ({
               className="invoice-preview-content border-2 border-black flex flex-col flex-grow"
               style={{ width: "100%", height: "100%" }}
             >
-              {/* Header Phone Numbers */}
-              <div className="flex justify-between px-4 py-2 font-bold text-sm">
-                <div>☎ 98432 94464</div>
-                <div>☎ 96984 87096</div>
-              </div>
-
-              {/* Main Header */}
-              <div className="text-center border-b border-black pb-2 ">
-                <div className="flex pl-8">
-                  <img
-                    src="https://res.cloudinary.com/dnmvriw3e/image/upload/v1756868204/ESA_uggt8u.png"
-                    alt="ESA Logo"
-                    className="h-16"
-                  />
-                  <div className="flex">
-                    <div className="text-center">
-                      <h1
-                        className="text-4xl font-bold"
-                        style={{
-                          fontFamily: '"Times New Roman", serif',
-                          color: "#d00000ff",
-                          margin: 0,
-                        }}
-                      >
-                        ESA ENGINEERING WORKS
-                      </h1>
-                      <div className="text-md text-black">
-                        <p>All Kinds of Lathe and Milling Works</p>
-                        <p>Specialist in : Press Tools, Die Casting Tools, Precision Components</p>
-                        <p>1/100, Chettipalayam Road, E.B. Compound, Malumichampatti, CBE - 641 050.</p>
-                        <p>E-Mail : esaengineeringworks@gmail.com | GSTIN : 33AMWPB2116Q1ZS</p>
-                      </div>
-                    </div>
+              {/* Seller header — from the invoice's saved seller details or the business profile */}
+              <div className="flex items-center gap-4 border-b border-black px-4 py-3">
+                {seller.logoURL && <img src={seller.logoURL} alt={`${seller.companyName} logo`} className="h-16 w-16 object-contain" />}
+                <div className="flex-1 text-center">
+                  <h1 className="text-3xl font-bold" style={{ fontFamily: '"Times New Roman", serif', color: "#d00000", margin: 0 }}>
+                    {seller.companyName || "Your Business Name"}
+                  </h1>
+                  <div className="text-sm text-black leading-snug mt-1">
+                    {sellerAddressLines(seller).map((line) => (
+                      <p key={line}>{line}</p>
+                    ))}
+                    <p>
+                      {[seller.phone && `Phone : ${seller.phone}`, seller.email && `E-Mail : ${seller.email}`].filter(Boolean).join(" | ")}
+                    </p>
+                    <p className="font-semibold">
+                      {seller.gstin ? `GSTIN : ${seller.gstin}` : "Unregistered"}
+                      {seller.stateCode ? ` | State : ${stateName(seller.stateCode)} (${seller.stateCode})` : ""}
+                    </p>
                   </div>
                 </div>
+                {seller.logoURL && <div className="w-16" />}
               </div>
 
               {/* Invoice Title */}
               <div className="flex border-b border-black">
-                <div className="w-[20%] border-r border-black pl-2 flex items-center text-sm">
-                  <span className="font-bold mr-2">NO :</span> {previewData.invoiceNumber}
+                <div className="w-[30%] border-r border-black pl-2 flex items-center text-sm">
+                  <span className="font-bold mr-2">Invoice No :</span> {previewData.invoiceNumber}
                 </div>
-                <div className="w-[49.9%] text-center font-bold text-2xl pl-2">
-                  INVOICE
-                </div>
-                <div className="w-[30.1%] border-l border-black pl-2 flex items-center text-sm">
-                  <span className="font-bold mr-2">DATE :</span> {previewData.invoiceDate}
+                <div className="w-[40%] text-center font-bold text-2xl">{isTaxInvoice ? "TAX INVOICE" : "INVOICE"}</div>
+                <div className="w-[30%] border-l border-black pl-2 flex items-center text-sm">
+                  <span className="font-bold mr-2">Date :</span> {previewData.invoiceDate}
                 </div>
               </div>
 
-              {/* Client & Invoice Details */}
+              {einv.irn && (
+                <div className="border-b border-black px-2 py-1 text-[11px] leading-snug break-all">
+                  <span className="font-bold">IRN :</span> {einv.irn} &nbsp;|&nbsp; <span className="font-bold">Ack No :</span> {einv.ackNo} &nbsp;|&nbsp;{" "}
+                  <span className="font-bold">Ack Date :</span> {einv.ackDate}
+                </div>
+              )}
+
+              {/* Buyer & reference details */}
               <div className="flex border-b border-black">
-                <div className="w-[70%] border-r border-black text-sm flex flex-col h-32">
-                  <div className="pl-2 pt-1 flex-grow">
-                    <div>To, M/s,</div>
-                    <div className="font-bold ml-4">{previewData.client?.name}</div>
-                    <div className="ml-4">{previewData.client?.address}</div>
+                <div className="w-[60%] border-r border-black text-sm flex flex-col">
+                  <div className="pl-2 pt-1 pb-1 flex-grow">
+                    <div className="text-xs font-bold uppercase">Bill To</div>
+                    <div className="font-bold">{previewData.client?.name}</div>
+                    <div className="whitespace-pre-line">{previewData.client?.address}</div>
                   </div>
-                  <div className="h-8 border-t border-black pl-2 flex items-center">
-                    GSTIN : {previewData.client?.taxId || previewData.client?.company || previewData.client?.gst || ""}
+                  <div className="border-t border-black pl-2 py-1 flex flex-wrap gap-x-6">
+                    <span>
+                      <span className="font-bold">GSTIN :</span> {buyerGstin || "Unregistered"}
+                    </span>
+                    {buyerStateCode && (
+                      <span>
+                        <span className="font-bold">State :</span> {stateName(buyerStateCode)} ({buyerStateCode})
+                      </span>
+                    )}
                   </div>
                 </div>
-                <div className="w-[30%] text-sm h-32">
-                  <div className="border-b border-black pl-2 h-8 flex items-center">
-                    <span className="font-bold mr-2">P.O. No :</span> {previewData.poNumber || ""}
-                  </div>
-                  <div className="border-b border-black pl-2 h-8 flex items-center">
-                    <span className="font-bold mr-2">P.O. Date :</span> {previewData.poDate || ""}
-                  </div>
-                  <div className="border-b border-black pl-2 h-8 flex items-center">
-                    <span className="font-bold mr-2">D.C. No :</span> {previewData.dcNumber || ""}
-                  </div>
-                  <div className="pl-2 h-8 flex items-center">
-                    <span className="font-bold mr-2">D.C. Date :</span> {previewData.dcDate || ""}
-                  </div>
+                <div className="w-[40%] text-sm">
+                  {[
+                    ["Place of Supply", isExport(previewData) ? "96 – Outside India" : posLabel],
+                    ...(previewData.supplyType && previewData.supplyType !== "REGULAR" ? [["Supply Type", supplyTypeLabel(previewData)]] : []),
+                    ["Reverse Charge", previewData.reverseCharge ? "Yes" : "No"],
+                    ...(isExport(previewData)
+                      ? [
+                          ["Shipping Bill", [previewData.shippingBillNo, previewData.shippingBillDate].filter(Boolean).join(" / ")],
+                          ["Port / Country", [previewData.portCode, previewData.countryCode].filter(Boolean).join(" / ")],
+                        ]
+                      : []),
+                    ["Due Date", previewData.dueDate],
+                    ["P.O. No / Date", [previewData.poNumber, previewData.poDate].filter(Boolean).join(" / ")],
+                    ["D.C. No / Date", [previewData.dcNumber, previewData.dcDate].filter(Boolean).join(" / ")],
+                  ].map(([label, value], i, arr) => (
+                    <div key={label} className={`pl-2 py-1 flex ${i < arr.length - 1 ? "border-b border-black" : ""}`}>
+                      <span className="font-bold mr-2 whitespace-nowrap">{label} :</span>
+                      <span>{value || ""}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Items Table - Added flex-grow to push footer down */}
+              {/* Items */}
               <div className="flex-grow">
                 <table className="w-full text-sm border-b border-black h-full">
                   <thead>
-                    <tr className="border-b border-black">
-                      <th className="w-[5%] border-r border-black p-1 text-center">S.No.</th>
-                      <th className="w-[55%] border-r border-black p-1 text-center">PARTICULARS</th>
-                      <th className="w-[10%] border-r border-black p-1 text-center">HSN CODE</th>
-                      <th className="w-[6%] border-r border-black p-1 text-center">QTY.</th>
+                    <tr className="border-b border-black text-xs">
+                      <th className="w-[4%] border-r border-black p-1 text-center">S.No</th>
+                      <th className="border-r border-black p-1 text-center">PARTICULARS</th>
+                      <th className="w-[9%] border-r border-black p-1 text-center">HSN/SAC</th>
+                      <th className="w-[8%] border-r border-black p-1 text-center">QTY</th>
                       <th className="w-[10%] border-r border-black p-1 text-center">RATE</th>
-                      <th className="w-[19%] p-1 text-center">AMOUNT</th>
+                      {hasDiscount && <th className="w-[6%] border-r border-black p-1 text-center">DISC %</th>}
+                      {showGstColumn && <th className="w-[6%] border-r border-black p-1 text-center">GST %</th>}
+                      <th className="w-[13%] p-1 text-center">TAXABLE VALUE</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(previewData.items || previewData.products || []).map((item, index) => (
-                      <tr key={index}>
+                    {lines.map((item, index) => (
+                      <tr key={item.id ?? index}>
                         <td className="border-r border-black p-1 text-center">{index + 1}</td>
                         <td className="border-r border-black p-1">{item.description || item.name}</td>
                         <td className="border-r border-black p-1 text-center">{item.hsnCode || item.hsn}</td>
-                        <td className="border-r border-black p-1 text-center">{item.quantity}</td>
-                        <td className="border-r border-black p-1 text-right">{item.rate || item.price}</td>
-                        <td className="p-1 text-right">{item.amount || item.total}</td>
+                        <td className="border-r border-black p-1 text-center">
+                          {item.quantity} {item.unit || ""}
+                        </td>
+                        <td className="border-r border-black p-1 text-right">{fmt(item.rate ?? item.price)}</td>
+                        {hasDiscount && <td className="border-r border-black p-1 text-center">{Number(item.discount || 0) ? `${item.discount}%` : ""}</td>}
+                        {showGstColumn && <td className="border-r border-black p-1 text-center">{item.gstRate}%</td>}
+                        <td className="p-1 text-right">{fmt(item.taxable ?? item.amount ?? item.total)}</td>
                       </tr>
                     ))}
-
-                    {new Array(Math.max(0, 12 - (previewData.items || previewData.products || []).length))
-                      .fill(0)
-                      .map((_, index) => (
-                        <tr key={`empty-${index}`}>
-                          <td className="border-r border-black p-1 h-6">&nbsp;</td>
-                          <td className="border-r border-black p-1"></td>
-                          <td className="border-r border-black p-1"></td>
-                          <td className="border-r border-black p-1"></td>
-                          <td className="border-r border-black p-1"></td>
-                          <td className="p-1"></td>
-                        </tr>
-                      ))}
+                    {new Array(Math.max(0, 10 - lines.length)).fill(0).map((_, index) => (
+                      <tr key={`empty-${index}`}>
+                        <td className="border-r border-black p-1 h-6">&nbsp;</td>
+                        <td className="border-r border-black p-1"></td>
+                        <td className="border-r border-black p-1"></td>
+                        <td className="border-r border-black p-1"></td>
+                        <td className="border-r border-black p-1"></td>
+                        {hasDiscount && <td className="border-r border-black p-1"></td>}
+                        {showGstColumn && <td className="border-r border-black p-1"></td>}
+                        <td className="p-1"></td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Footer Section - Added mt-auto to ensure it sits at bottom */}
+              {/* HSN/SAC-wise tax summary (required on GST tax invoices) */}
+              {isTaxInvoice && hsnRows.length > 0 && (
+                <table className="w-full text-xs border-b border-black">
+                  <thead>
+                    <tr className="border-b border-black">
+                      <th className="border-r border-black p-1 text-left">HSN/SAC</th>
+                      <th className="border-r border-black p-1 text-right">Taxable Value</th>
+                      {interState ? (
+                        <th className="border-r border-black p-1 text-right">IGST (Rate / Amt)</th>
+                      ) : (
+                        <>
+                          <th className="border-r border-black p-1 text-right">CGST (Rate / Amt)</th>
+                          <th className="border-r border-black p-1 text-right">SGST (Rate / Amt)</th>
+                        </>
+                      )}
+                      <th className="p-1 text-right">Total Tax</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hsnRows.map((h) => (
+                      <tr key={`${h.hsn}-${h.gstRate}`}>
+                        <td className="border-r border-black p-1">{h.hsn || "—"}</td>
+                        <td className="border-r border-black p-1 text-right">{fmt(h.taxable)}</td>
+                        {interState ? (
+                          <td className="border-r border-black p-1 text-right">
+                            {h.gstRate}% / {fmt(h.igst)}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="border-r border-black p-1 text-right">
+                              {h.gstRate / 2}% / {fmt(h.cgst)}
+                            </td>
+                            <td className="border-r border-black p-1 text-right">
+                              {h.gstRate / 2}% / {fmt(h.sgst)}
+                            </td>
+                          </>
+                        )}
+                        <td className="p-1 text-right">{fmt(h.cgst + h.sgst + h.igst)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+
+              {/* Footer: notes, bank details, totals */}
               <table className="w-full text-sm mt-auto">
                 <tbody>
-                  {/* Invoice Notes Row - Only show if notes exist */}
                   {previewData.invoiceNotes && (
                     <tr>
-                      <td className="p-1 pl-10 align-top border-b" colSpan="2">
-                        <div className="text-sm">{previewData.invoiceNotes}</div>
+                      <td className="p-1 pl-2 align-top border-b border-black" colSpan="4">
+                        <span className="font-bold">Note : </span>
+                        {previewData.invoiceNotes}
                       </td>
-                      <td className="border-black p-1 border-b" colSpan="2"></td>
                     </tr>
                   )}
 
-                  {/* Bank Details Row */}
+                  {totalRows.map((row, i) => (
+                    <tr key={row.label}>
+                      {i === 0 && (
+                        <td className="w-[60%] p-1 pl-2 align-top" colSpan="2" rowSpan={totalRows.length}>
+                          <div className="font-bold mb-1">Bank Details</div>
+                          {bankLines.length ? (
+                            bankLines.map(([label, value]) => (
+                              <div key={label}>
+                                <span className="inline-block w-28">{label}</span>: {value}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-gray-500">Add bank details in Settings → Business</div>
+                          )}
+                        </td>
+                      )}
+                      <th scope="row" className="w-[22%] border-l border-b border-black p-1 font-normal text-left">
+                        {row.label}
+                      </th>
+                      <td className="w-[18%] border-l border-b border-black p-1 text-right">{row.value}</td>
+                    </tr>
+                  ))}
+
                   <tr>
-                    <th scope="row" className="w-[15%] p-1 font-normal text-left">Bank Details :</th>
-                    <td className="w-[55%] p-1">Bank Name : State Bank Of India</td>
-                    <th scope="row" className="w-[16%] border-l border-b border-black p-1 font-normal text-left">SUB TOTAL</th>
-                    <td className="w-[16%] border-l border-b border-black p-1 text-right">
-                      {(Number(previewCalcs?.subtotal || 0)).toFixed(2)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-1 pl-9" colSpan="2">
-                      <span className="inline-block w-20">&nbsp;</span>
-                      A/C No : 42455711572
-                    </td>
-                    <th scope="row" className="border-l border-b border-black p-1 font-normal text-left">
-                      CGST <span className="ml-6">{previewData.cgst}%</span>
-                    </th>
-                    <td className="border-l border-b border-black p-1 text-right">
-                      {(Number(previewCalcs?.cgstAmount || 0)).toFixed(2)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-1 pl-9" colSpan="2">
-                      <span className="inline-block w-20">&nbsp;</span>
-                      IFSC Code : SBIN0015017
-                    </td>
-                    <th scope="row" className="border-l border-b border-black p-1 font-normal text-left">
-                      SGST <span className="ml-6">{previewData.sgst}%</span>
-                    </th>
-                    <td className="border-l border-b border-black p-1 text-right">
-                      {(Number(previewCalcs?.sgstAmount || 0)).toFixed(2)}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="p-1 pl-9" colSpan="2">
-                      <span className="inline-block w-20">&nbsp;</span>
-                      Branch : Malumichampatti
-                    </td>
-                    <th scope="row" className="border-l border-b border-black p-1 font-normal text-left">
-                      IGST <span className="ml-6">{previewData.igst}%</span>
-                    </th>
-                    <td className="border-l border-b border-black p-1 text-right">
-                      {(Number(previewCalcs?.igstAmount || 0)).toFixed(2)}
-                    </td>
-                  </tr>
-                  <tr>
-                    {/* LEFT SIDE — Rupees spans 2 rows */}
-                    <td
-                      className="border-t p-2 align-middle"
-                      colSpan={2}
-                      rowSpan={2}
-                    >
+                    <td className="border-t border-black p-2 align-middle" colSpan={2} rowSpan={paidAmount > 0 ? 3 : 1}>
                       <div className="flex flex-row items-center justify-between gap-4 w-full h-full min-h-[44px]">
                         <div>
-                          <span className="font-bold">Rupees :</span>{" "}
-                          <span className="font-normal">{amountInWords}</span>
+                          <span className="font-bold">{(previewData.currency || "INR") === "INR" ? "Rupees" : previewData.currency} :</span> <span className="font-normal">{amountInWords} Only</span>
+                          {(previewData.currency || "INR") !== "INR" && (
+                            <div className="text-xs mt-1">
+                              ({previewData.currency} 1 = ₹{previewData.exchangeRate}; invoice value ₹{fmt(Number(previewCalcs?.total || 0) * inrFactor(previewData))})
+                            </div>
+                          )}
                         </div>
                         <div>
                           {isPaid ? (
                             <span
-                              className="inline-block px-3 py-1.5 bg-emerald-600 text-white font-bold text-xs rounded shadow-sm border border-emerald-700"
-                              style={{
-                                backgroundColor: "#10b981",
-                                color: "#ffffff",
-                                padding: "6px 12px",
-                                borderRadius: "4px",
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                border: "1px solid #059669"
-                              }}
+                              className="inline-block px-3 py-1.5 font-bold text-xs rounded"
+                              style={{ backgroundColor: "#10b981", color: "#ffffff", padding: "6px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold", border: "1px solid #059669" }}
                             >
                               ✓ PAID IN FULL
                             </span>
@@ -1066,79 +1215,48 @@ const InvoicePreview = ({
                               onClick={handleOpenRazorpayCheckout}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-block px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded shadow-sm transition-colors border border-blue-700 no-underline cursor-pointer"
-                              style={{
-                                backgroundColor: "#2563eb",
-                                color: "#ffffff",
-                                textDecoration: "none",
-                                display: "inline-block",
-                                padding: "6px 12px",
-                                borderRadius: "4px",
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                border: "1px solid #1d4ed8"
-                              }}
+                              className="inline-block font-bold text-xs rounded no-underline cursor-pointer"
+                              style={{ backgroundColor: "#2563eb", color: "#ffffff", textDecoration: "none", display: "inline-block", padding: "6px 12px", borderRadius: "4px", fontSize: "12px", fontWeight: "bold", border: "1px solid #1d4ed8" }}
                             >
-                              {paidAmount > 0 ? `Pay Balance (₹${balanceDue.toFixed(2)})` : 'Pay'}
+                              {paidAmount > 0 ? `Pay Balance (₹${balanceDue.toFixed(2)})` : "Pay"}
                             </a>
                           )}
                         </div>
                       </div>
                     </td>
-
-                    {/* RIGHT SIDE — ROUND OFF */}
-                    <td className="border-b border-l text-right font-bold">
-                      ROUND OFF
-                    </td>
-                    <td className="border-b border-l  text-right">
-                      {(Number(previewCalcs?.roundOffAmount || 0)).toFixed(2)}
-                    </td>
-                  </tr>
-
-                  <tr>
-                    {/* RIGHT SIDE — NET TOTAL */}
-                    <td className="border-b border-l text-right font-bold">
-                      NET TOTAL
-                    </td>
-                    <td className="border-b border-l text-right font-bold">
-                      {(Number(previewCalcs?.total || 0)).toFixed(2)}
-                    </td>
+                    <td className="border-b border-l border-t border-black p-1 text-left font-bold">NET TOTAL</td>
+                    <td className="border-b border-l border-t border-black p-1 text-right font-bold">{fmt(previewCalcs?.total)}</td>
                   </tr>
 
                   {paidAmount > 0 && (
                     <>
                       <tr>
-                        <td className="border-b border-l text-right text-emerald-700 font-bold text-xs">
-                          PAID / RECEIVED
-                        </td>
-                        <td className="border-b border-l text-right text-emerald-700 font-bold text-xs">
-                          -{(Number(paidAmount)).toFixed(2)}
-                        </td>
+                        <td className="border-b border-l border-black p-1 text-left text-emerald-700 font-bold text-xs">PAID / RECEIVED</td>
+                        <td className="border-b border-l border-black p-1 text-right text-emerald-700 font-bold text-xs">-{fmt(paidAmount)}</td>
                       </tr>
                       <tr>
-                        <td className="border-b border-l text-right text-red-700 font-bold text-sm">
-                          BALANCE DUE
-                        </td>
-                        <td className="border-b border-l text-right text-red-700 font-bold text-sm">
-                          {(Number(balanceDue)).toFixed(2)}
-                        </td>
+                        <td className="border-b border-l border-black p-1 text-left text-red-700 font-bold text-sm">BALANCE DUE</td>
+                        <td className="border-b border-l border-black p-1 text-right text-red-700 font-bold text-sm">{fmt(balanceDue)}</td>
                       </tr>
                     </>
                   )}
 
                   <tr>
-                    <td className=" border-t border-black align-top" colSpan="2" rowSpan="2">
+                    <td className="border-t border-black align-top p-1 pl-2" colSpan="2">
                       <div className="font-bold mb-1">Declaration</div>
-                      <div className="text-md">
-                        We declare that this invoice shows the actual price of the goods Described and that all Particulars are true and correct
+                      {supplyNotes(previewData).map((note) => (
+                        <div key={note} className="text-sm font-semibold">
+                          {note}
+                        </div>
+                      ))}
+                      <div className="text-sm">
+                        {previewData.declaration ||
+                          "We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct."}
                       </div>
                     </td>
-
-                  </tr>
-                  <tr>
-                    <td className="border-l border-black h-20 align-bottom text-left" colSpan="2">
-                      <div className="font-bold text-red-600 mb-8">For ESA Engineering Works</div>
-                      <div className="text-md text-right">Authorized Signatory</div>
+                    <td className="border-l border-t border-black h-24 align-bottom text-left p-1" colSpan="2">
+                      <div className="font-bold text-red-600 mb-8">For {seller.companyName || "Your Business"}</div>
+                      <div className="text-right">Authorised Signatory</div>
                     </td>
                   </tr>
                 </tbody>
@@ -1150,537 +1268,6 @@ const InvoicePreview = ({
     </div>
   );
 };
-
-const CreateInvoiceComponent = ({
-  editingInvoice,
-  invoiceData,
-  clients,
-  products,
-  calculations,
-  setCurrentPage,
-  saveDraft,
-  handlePreview, // Renamed/Passed prop
-  setShowPreview, // Kept for other uses if any, but main one is handlePreview
-  updateInvoice,
-  saveInvoice,
-  setInvoiceData,
-  handleClientSelect,
-  handleAddNewProduct,
-  addItem,
-  updateItem,
-  removeItem,
-}) => (
-  <div className="min-h-screen text-slate-800 font-mazzard">
-    <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 pb-8 pt-6">
-      <div className="flex justify-between items-center mb-2">
-        <div className="flex items-center">
-          <button
-            onClick={() => setCurrentPage("management")}
-            className="mr-4 p-2 hover:bg-gray-100 rounded-lg"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              {editingInvoice ? "Edit Invoice" : "Create Invoice"}
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              {editingInvoice
-                ? "Update details for an existing invoice"
-                : "Create a new invoice for your client"}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 text-sm font-medium">
-          <button
-            onClick={() => setCurrentPage("management")}
-            className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={saveDraft}
-            className="flex items-center px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            <Save className="w-4 h-4 mr-2" />
-            Save Draft
-          </button>
-          <button
-            onClick={handlePreview}
-            className="flex items-center px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            Preview
-          </button>
-          <button
-            onClick={editingInvoice ? updateInvoice : saveInvoice}
-            className="flex items-center px-4 py-2 text-white bg-green-600 rounded-lg hover:bg-green-700"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            {editingInvoice ? "Update Invoice" : "Save Invoice"}
-          </button>
-        </div>
-      </div>
-      <main className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="col-span-1 lg:col-span-2 space-y-6">
-          <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">
-              Invoice Details
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                  Invoice Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={invoiceData.invoiceNumber}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      invoiceNumber: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                  Invoice Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  max="9999-12-31"
-                  value={invoiceData.invoiceDate}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      invoiceDate: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                  P.O. Number
-                </label>
-                <input
-                  type="text"
-                  value={invoiceData.poNumber}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      poNumber: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                  P.O. Date
-                </label>
-                <input
-                  type="date"
-                  max="9999-12-31"
-                  value={invoiceData.poDate}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      poDate: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                    D.O. Number
-                </label>
-                <input
-                  type="text"
-                  value={invoiceData.dcNumber}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      dcNumber: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                    D.O. Date
-                </label>
-                <input
-                  type="date"
-                  max="9999-12-31"
-                  value={invoiceData.dcDate}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      dcDate: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 mb-1">
-                  Due Date <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="date"
-                  max="9999-12-31"
-                  value={invoiceData.dueDate}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      dueDate: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                />
-              </div>
-            </div>
-          </div>
-          <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">
-              Client Information <span className="text-red-500">*</span>
-            </h3>
-            <ClientAutocomplete
-              clients={clients}
-              selectedClient={invoiceData.client}
-              onSelect={handleClientSelect}
-            />
-          </div>
-          <div className="bg-white p-3 lg:p-4 rounded-lg border border-gray-200 shadow-sm">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Items & Services <span className="text-red-500">*</span>
-              </h3>
-              <button
-                onClick={addItem}
-                className="flex items-center px-3 py-1.5 text-white bg-blue-600 rounded-lg text-xs font-medium hover:bg-blue-700"
-              >
-                <Plus className="w-4 h-4 mr-1" /> Add Item
-              </button>
-            </div>
-            <div>
-              <table className="w-full">
-                <thead className="text-xs uppercase font-semibold text-gray-500">
-                  <tr>
-                    <th className="p-2 text-left w-[5%]">S.No</th>
-                    <th className="p-2 text-left w-[35%]">Description</th>
-                    <th className="p-2 text-left w-[10%]">HSN</th>
-                    <th className="p-2 text-left w-[10%]">Qty</th>
-                    <th className="p-2 text-left w-[10%]">Rate (₹)</th>
-                    <th className="p-2 text-left w-[12%]">Amount (₹)</th>
-                    <th className="p-2 text-left w-[5%]"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(invoiceData.items || invoiceData.products || []).map((item, index) => (
-                    <tr key={item.id} className="border-t">
-                      <td className="p-4 text-sm align-top">{index + 1}</td>
-                      <td className="p-2">
-                        <ProductAutocomplete
-                          products={products}
-                          value={item.description || item.name || ''}
-                          onSelect={(product) => {
-                            updateItem(item.id, "description", product.name);
-                            updateItem(item.id, "hsnCode", product.hsn);
-                            updateItem(item.id, "rate", product.price);
-                          }}
-                          onChange={(val) =>
-                            updateItem(item.id, "description", val)
-                          }
-                          onAddNewProduct={handleAddNewProduct}
-                          clientId={invoiceData.clientId}
-                        />
-                      </td>
-                      <td className="p-2 align-top">
-                        <input
-                          type="text"
-                          placeholder="HSN"
-                          value={item.hsnCode || item.hsn || ''}
-                          onChange={(e) =>
-                            updateItem(item.id, "hsnCode", e.target.value)
-                          }
-                          className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                        />
-                      </td>
-                      <td className="p-2 align-top">
-                        <input
-                          type="number"
-                          value={item.quantity || 0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updateItem(
-                              item.id,
-                              "quantity",
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                          className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                          min="0"
-                        />
-                      </td>
-                      <td className="p-2 align-top">
-                        <input
-                          type="number"
-                          value={item.rate || item.price || 0}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) =>
-                            updateItem(
-                              item.id,
-                              "rate",
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                          className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                          min="0"
-                        />
-                      </td>
-                      <td className="p-2 align-top">
-                        <input
-                          type="text"
-                          value={(item.amount || item.total || 0).toLocaleString()}
-                          readOnly
-                          className="w-full px-3 py-2 text-sm bg-gray-200 border-0 rounded-lg text-gray-600"
-                        />
-                      </td>
-                      <td className="p-2 align-top">
-                        <button
-                          onClick={() => removeItem(item.id)}
-                          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1 rounded"
-                        >
-                          <Trash2 className="w-4 h-7" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="mt-4">
-              <label className="block text-sm text-gray-700 mb-1">
-                Invoice Notes (Optional)
-              </label>
-              <textarea
-                placeholder="e.g., For labour charges only"
-                value={invoiceData.invoiceNotes}
-                onChange={(e) =>
-                  setInvoiceData((prev) => ({
-                    ...prev,
-                    invoiceNotes: e.target.value,
-                  }))
-                }
-                className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg resize-none h-16 focus:outline-none focus:ring-0"
-              />
-            </div>
-          </div>
-        </div>
-        <div className="space-y-8">
-          <div className="p-6 bg-white rounded-xl border border-gray-200">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">
-              Tax & Calculation
-            </h3>
-            <div className="grid grid-cols-3 gap-4 mb-4">
-              <div>
-                <label htmlFor="cgstInput" className="block mb-1 text-sm text-gray-700">
-                  CGST (%)
-                </label>
-                <input
-                  id="cgstInput"
-                  type="number"
-                  value={invoiceData.cgst}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      cgst: Number.parseFloat(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              <div>
-                <label htmlFor="sgstInput" className="block mb-1 text-sm text-gray-700">
-                  SGST (%)
-                </label>
-                <input
-                  id="sgstInput"
-                  type="number"
-                  value={invoiceData.sgst}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      sgst: Number.parseFloat(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                  min="0"
-                  max="100"
-                />
-              </div>
-              <div>
-                <label htmlFor="igstInput" className="block mb-1 text-sm text-gray-700">
-                  IGST (%)
-                </label>
-                <input
-                  id="igstInput"
-                  type="number"
-                  value={invoiceData.igst}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      igst: Number.parseFloat(e.target.value) || 0,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none focus:ring-0"
-                  min="0"
-                  max="100"
-                />
-              </div>
-            </div>
-            <div className="flex items-center justify-between py-2">
-              <span className="text-sm font-medium text-gray-700 select-none">
-                Enable Round Off
-              </span>
-              <button
-                type="button"
-                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${invoiceData.isRoundOff ? "bg-blue-600" : "bg-gray-200"
-                  }`}
-                onClick={() =>
-                  setInvoiceData((prev) => ({
-                    ...prev,
-                    isRoundOff: !prev.isRoundOff,
-                  }))
-                }
-              >
-                <span className="sr-only">Enable Round Off</span>
-                <span
-                  aria-hidden="true"
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${invoiceData.isRoundOff ? "translate-x-5" : "translate-x-0"
-                    }`}
-                />
-              </button>
-            </div>
-            <div className="p-6 bg-gray-50 rounded-xl border border-gray-100 mt-4">
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal:</span>
-                  <span className="font-semibold text-slate-900">
-                    ₹
-                    {calculations.subtotal.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-                {invoiceData.cgst > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">
-                      CGST ({invoiceData.cgst}%):
-                    </span>
-                    <span className="font-semibold text-slate-900">
-                      ₹
-                      {calculations.cgstAmount.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                {invoiceData.sgst > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">
-                      SGST ({invoiceData.sgst}%):
-                    </span>
-                    <span className="font-semibold text-slate-900">
-                      ₹
-                      {calculations.sgstAmount.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                {invoiceData.igst > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">
-                      IGST ({invoiceData.igst}%):
-                    </span>
-                    <span className="font-semibold text-slate-900">
-                      ₹
-                      {calculations.igstAmount.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                {invoiceData.isRoundOff && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">Round Off:</span>
-                    <span className="font-semibold text-slate-900">
-                      ₹
-                      {calculations.roundOffAmount.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                )}
-                <div className="pt-4 mt-4 border-t border-gray-200">
-                  <div className="flex justify-between items-center text-lg font-bold text-slate-900">
-                    <span>Total Amount:</span>
-                    <span>
-                      ₹
-                      {calculations.total.toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="p-6 bg-white rounded-xl border border-gray-200">
-            <h3 className="mb-4 text-lg font-bold text-gray-900">
-              Payment & Notes
-            </h3>
-            <div className="space-y-4">
-              <div>
-                <label className="block mb-1 text-sm text-gray-700">
-                  Bank Details
-                </label>
-                <div className="w-full px-3 py-2 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-0">
-                  State Bank Of India
-                </div>
-              </div>
-              <div>
-                <label className="block mb-1 text-sm text-gray-700">
-                  Declaration
-                </label>
-                <textarea
-                  value={invoiceData.declaration}
-                  onChange={(e) =>
-                    setInvoiceData((prev) => ({
-                      ...prev,
-                      declaration: e.target.value,
-                    }))
-                  }
-                  className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg resize-none h-20 focus:outline-none focus:ring-0"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-
-    </div>
-  </div>
-);
 
 const InvoiceManagementComponent = ({
   activeTab,
@@ -1697,9 +1284,6 @@ const InvoiceManagementComponent = ({
   pagination,
   onPageChange,
   itemsPerPage,
-  productConfirmation, // Added prop
-  handleProductConfirmationSkip, // Added prop
-  handleProductConfirmationConfirm, // Added prop
   onItemsPerPageChange,
   loading,
   // Filter props
@@ -2144,6 +1728,9 @@ const InvoiceManagementSystem = () => {
 
   // Get authentication context
   const { user } = useContext(AuthContext);
+  const { companyProfile } = useCompanyProfile();
+  const { settings: invoiceSettings } = useSettings();
+  const { defaultGstRate } = invoiceTaxSettings(invoiceSettings);
 
   // Handle navigation from dashboard
   useEffect(() => {
@@ -2172,11 +1759,9 @@ const InvoiceManagementSystem = () => {
     invoices,
     allInvoices,
     loading: invoicesLoading,
-    error: invoicesError,
     pagination,
     addInvoice,
     editInvoice,
-    removeInvoice
   } = useInvoices({
     search: searchTerm,
     page: page,
@@ -2191,12 +1776,10 @@ const InvoiceManagementSystem = () => {
     setPage(1);
   }, [searchTerm, activeTab]);
 
-  const { customers, error: customersError } = useCustomers();
+  const { customers } = useCustomers();
 
-  const { products, addProduct, error: productsError } = useProducts();
-
-  // Use Settings hook to fetch company info
-  const { settings, loading: settingsLoading, error: settingsError } = useSettings();
+  const { products, addProduct } = useProducts();
+  const { priceLists } = usePriceLists();
 
   const generateNextInvoiceNumber = () => {
     const today = new Date();
@@ -2243,10 +1826,8 @@ const InvoiceManagementSystem = () => {
     clientId: "",
     client: null,
     items: [],
-    cgst: 9,
-    sgst: 9,
-    igst: 0,
-    bankDetails: "State Bank Of India",
+    ...ITEMWISE_DEFAULTS,
+    isGstEnabled: true,
     status: "Unpaid",
     declaration:
       "We declare that this invoice shows the actual price of the goods Described and that all Particulars are true and correct.",
@@ -2274,7 +1855,7 @@ const InvoiceManagementSystem = () => {
       return "Draft";
 
     const received = Number(invoice.paidAmount || invoice.received || 0);
-    const total = Number(invoice.total || invoice.amount || 0);
+    const total = Number(invoice.total || invoice.amount || 0) - Number(invoice.creditedAmount || 0) - Number(invoice.advanceAdjusted || 0);
     const tds = Number(invoice.tdsAmount || 0);
 
     if (total > 0 && (received + tds >= total || Math.abs(total - (received + tds)) < 1)) {
@@ -2335,38 +1916,8 @@ const InvoiceManagementSystem = () => {
 
 
   useEffect(() => {
-    // Handle both 'items' and 'products' fields
-    const itemsArray = invoiceData.items || invoiceData.products || [];
-    const subtotal = itemsArray.reduce(
-      (sum, item) => sum + (item.quantity || 0) * (item.rate || item.price || 0),
-      0
-    );
-    const cgstAmount = (subtotal * invoiceData.cgst) / 100;
-    const sgstAmount = (subtotal * invoiceData.sgst) / 100;
-    const igstAmount = (subtotal * invoiceData.igst) / 100;
-    let total = subtotal + cgstAmount + sgstAmount + igstAmount;
-    let roundOffAmount = 0;
-    if (invoiceData.isRoundOff) {
-      const roundedTotal = Math.round(total);
-      roundOffAmount = roundedTotal - total;
-      total = roundedTotal;
-    }
-    setCalculations({
-      subtotal,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
-      roundOffAmount,
-      total,
-    });
-  }, [
-    invoiceData.items,
-    invoiceData.products,
-    invoiceData.cgst,
-    invoiceData.sgst,
-    invoiceData.igst,
-    invoiceData.isRoundOff,
-  ]);
+    setCalculations(calculateInvoiceTotals(invoiceData));
+  }, [invoiceData]);
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -2386,32 +1937,20 @@ const InvoiceManagementSystem = () => {
   };
 
   const addItem = () => {
-    const newItem = {
-      id: Date.now(),
-      description: "",
-      hsnCode: "",
-      quantity: 1,
-      rate: 0,
-      amount: 0,
-    };
-    setInvoiceData((prev) => ({ ...prev, items: [...prev.items, newItem] }));
+    setInvoiceData((prev) => ({ ...prev, items: [...(prev.items || []), newInvoiceItem(defaultGstRate)] }));
   };
 
   const updateItem = (itemId, field, value) => {
     setInvoiceData((prev) => ({
       ...prev,
-      items: prev.items.map((item) => {
-        if (item.id === itemId) {
-          const updatedItem = { ...item, [field]: value };
-          if (field === "quantity" || field === "rate") {
-            updatedItem.amount =
-              (Number.parseFloat(updatedItem.quantity) || 0) *
-              (Number.parseFloat(updatedItem.rate) || 0);
-          }
-          return updatedItem;
-        }
-        return item;
-      }),
+      items: (prev.items || []).map((item) => (item.id === itemId ? applyItemChange(item, field, value) : item)),
+    }));
+  };
+
+  const applyProductToItem = (itemId, product) => {
+    setInvoiceData((prev) => ({
+      ...prev,
+      items: (prev.items || []).map((item) => (item.id === itemId ? applyProduct(item, product, defaultGstRate, priceListFor(prev.client, priceLists)) : item)),
     }));
   };
 
@@ -2423,37 +1962,15 @@ const InvoiceManagementSystem = () => {
   };
 
   const handleClientSelect = (clientId) => {
-    if (clientId === null) {
-      setInvoiceData((prev) => ({ ...prev, clientId: "", client: null }));
-      return;
-    }
-    const selectedClient = customers.find((c) => c.id === clientId);
-    setInvoiceData((prev) => ({
-      ...prev,
-      clientId: clientId,
-      client: selectedClient,
-    }));
+    const selectedClient = clientId === null ? null : customers.find((c) => c.id === clientId);
+    setInvoiceData((prev) => withClient(prev, selectedClient, companyProfile));
   };
 
   const handleAddNewProduct = async (productName, clientId) => {
-    try {
-      // For now, we'll add a basic product structure
-      // This would ideally be connected to a proper addProduct function from useProducts hook
-      const newProduct = {
-        name: productName,
-        description: productName,
-        hsnCode: "",
-        rate: 0,
-        unit: "Nos",
-        associatedClients: clientId ? [clientId] : [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      // ...existing code...
-    } catch (error) {
-      throw error;
-    }
+    if (!productName?.trim()) return;
+    const result = await addProduct({ name: productName, hsn: "", price: 0, gstRate: defaultGstRate, clientId: clientId || "" });
+    if (result?.success) success(`Product "${productName}" added successfully!`);
+    else showError("Failed to add new product.");
   };
 
   const resetInvoiceForm = () => {
@@ -2466,10 +1983,6 @@ const InvoiceManagementSystem = () => {
       invoiceNumber,
       invoiceDate,
       dueDate,
-      poNumber,
-      poDate,
-      dcNumber,
-      dcDate,
       clientId,
       items,
     } = invoiceData;
@@ -2490,11 +2003,7 @@ const InvoiceManagementSystem = () => {
   };
 
   const saveDraft = async () => {
-    const draftInvoice = {
-      ...invoiceData,
-      status: "Draft",
-      amount: calculations.total,
-    };
+    const draftInvoice = invoiceForSave(invoiceData, companyProfile, { status: "Draft" });
 
     const result = await addInvoice(draftInvoice);
     if (result.success) {
@@ -2510,11 +2019,7 @@ const InvoiceManagementSystem = () => {
   const saveInvoice = async () => {
     if (!validateInvoice()) return;
 
-    const newInvoice = {
-      ...invoiceData,
-      amount: calculations.total,
-      status: invoiceData.status,
-    };
+    const newInvoice = invoiceForSave(invoiceData, companyProfile, { status: invoiceData.status });
 
     const result = await addInvoice(newInvoice);
     if (result.success) {
@@ -2529,10 +2034,7 @@ const InvoiceManagementSystem = () => {
   const updateInvoice = async () => {
     if (!validateInvoice()) return;
 
-    const updatedInvoice = {
-      ...invoiceData,
-      amount: calculations.total,
-    };
+    const updatedInvoice = invoiceForSave(invoiceData, companyProfile);
 
     const result = await editInvoice(editingInvoice.id, updatedInvoice);
     if (result.success) {
@@ -2595,6 +2097,7 @@ const InvoiceManagementSystem = () => {
           name: item.description.trim(),
           price: Number(item.rate) || 0,
           hsn: item.hsnCode || "",
+          gstRate: item.gstRate ?? defaultGstRate,
           category: "General",
           unit: "Nos",
           createdAt: new Date().toISOString()
@@ -2650,22 +2153,22 @@ const InvoiceManagementSystem = () => {
     setShowPreview(true);
   };
   const handleEditInvoice = (invoice) => {
-    const invoiceToEdit = JSON.parse(JSON.stringify(invoice));
+    const invoiceToEdit = prepareForEdit(invoice, companyProfile);
     setInvoiceData(invoiceToEdit);
     setEditingInvoice(invoiceToEdit);
     setCurrentPage("edit");
   };
   const handleDownloadInvoice = (invoice) => {
     let invToDownload = invoice;
-    if (!invoice?.userId && user?.uid) {
-      invToDownload = { ...invToDownload, userId: user.uid };
+    if (!invoice?.userId && user?.businessUid) {
+      invToDownload = { ...invToDownload, userId: user.businessUid };
     }
     if (!invToDownload?.paymentToken) {
       const bytes = new Uint8Array(16);
       if (typeof crypto !== "undefined" && crypto.getRandomValues) crypto.getRandomValues(bytes);
       const token = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("") || Math.random().toString(36).slice(2);
       invToDownload = { ...invToDownload, paymentToken: token };
-      if (invoice?.id) editInvoice(invoice.id, { paymentToken: token, userId: user?.uid });
+      if (invoice?.id) editInvoice(invoice.id, { paymentToken: token, userId: user?.businessUid });
     }
     setDownloadingInvoice(invToDownload);
   };
@@ -2808,6 +2311,7 @@ const InvoiceManagementSystem = () => {
           addItem={addItem}
           updateItem={updateItem}
           removeItem={removeItem}
+          applyProductToItem={applyProductToItem}
         />
       )}
       {showPreview && (
@@ -2897,24 +2401,6 @@ InvoicePreview.propTypes = {
   settings: PropTypes.object,
 };
 
-CreateInvoiceComponent.propTypes = {
-  editingInvoice: PropTypes.object,
-  invoiceData: PropTypes.object.isRequired,
-  clients: PropTypes.array.isRequired,
-  products: PropTypes.array.isRequired,
-  calculations: PropTypes.object.isRequired,
-  setCurrentPage: PropTypes.func.isRequired,
-  saveDraft: PropTypes.func.isRequired,
-  setShowPreview: PropTypes.func.isRequired,
-  updateInvoice: PropTypes.func.isRequired,
-  saveInvoice: PropTypes.func.isRequired,
-  setInvoiceData: PropTypes.func.isRequired,
-  handleClientSelect: PropTypes.func.isRequired,
-  handleAddNewProduct: PropTypes.func.isRequired,
-  addItem: PropTypes.func.isRequired,
-  updateItem: PropTypes.func.isRequired,
-  removeItem: PropTypes.func.isRequired,
-};
 
 export { InvoicePreview, ClientAutocomplete, ProductAutocomplete, ConfirmationModal };
 export default InvoiceManagementSystem;

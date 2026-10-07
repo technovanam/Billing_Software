@@ -1,61 +1,56 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
-import { useInvoices, useCustomers, useProducts, useExpenses, useAllPayments } from "../hooks/useFirestore";
+import React, { createContext, useState, useContext, useCallback, useRef } from "react";
+import PropTypes from "prop-types";
+import { useInvoices, useCustomers, useProducts, useExpenses, useSettings, usePayments, useStockLevels, useChallans } from "../hooks/useFirestore";
 import { useCompanyProfile } from "./CompanyProfileContext";
 import { AuthContext } from "./AuthContext";
 import { useToast } from "./ToastContext";
+import useAICommand from "../components/ai-command/useAICommand";
+import { buildInvoiceFromDraft, buildChallanFromDraft, draftTotals as computeDraftTotals, invoiceTaxSettings } from "../utils/invoiceFromDraft";
+import { classify } from "../chatbot/intents.js";
+import { respond, money } from "../chatbot/responses.js";
+import { invoiceAfterPayment } from "../chatbot/analytics.js";
+import { applyEdit, isConfirmWord, isCancelWord } from "../chatbot/edits.js";
+import { renderPending } from "../chatbot/cards.js";
 
 export const AIAssistantContext = createContext();
 
-// GST State code mapping for validation
-const GST_STATE_CODES = {
-  "01": "Jammu & Kashmir",
-  "02": "Himachal Pradesh",
-  "03": "Punjab",
-  "04": "Chandigarh",
-  "05": "Uttarakhand",
-  "06": "Haryana",
-  "07": "Delhi",
-  "08": "Rajasthan",
-  "09": "Uttar Pradesh",
-  "10": "Bihar",
-  "11": "Sikkim",
-  "12": "Arunachal Pradesh",
-  "13": "Nagaland",
-  "14": "Manipur",
-  "15": "Mizoram",
-  "16": "Tripura",
-  "17": "Meghalaya",
-  "18": "Assam",
-  "19": "West Bengal",
-  "20": "Jharkhand",
-  "21": "Odisha",
-  "22": "Chhattisgarh",
-  "23": "Madhya Pradesh",
-  "24": "Gujarat",
-  "26": "Dadra & Nagar Haveli and Daman & Diu",
-  "27": "Maharashtra",
-  "29": "Karnataka",
-  "30": "Goa",
-  "31": "Lakshadweep",
-  "32": "Kerala",
-  "33": "Tamil Nadu",
-  "34": "Puducherry",
-  "35": "Andaman & Nicobar Islands",
-  "36": "Telangana",
-  "37": "Andhra Pradesh",
-  "38": "Ladakh",
-  "97": "Other Territory",
-};
+// The business assistant behind the chat widget. Everything runs on this
+// business's own data: questions are answered by src/chatbot (rule-based,
+// offline), bills go through the backend's local parser, and every change is
+// shown as a preview card that must be confirmed before anything is saved.
+
+const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const todayLabel = () => new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY, as the Payments page stores it
+let nextId = 1;
+const msg = (fields) => ({ id: nextId++, sender: "ai", timestamp: now(), ...fields });
+
+// Messages that start something new instead of editing the open card.
+const FRESH_COMMANDS = new Set([
+  "create_invoice", "create_challan", "add_customer", "add_product", "add_expense", "record_payment", "mark_paid",
+  "update_customer", "update_product", "deactivate_product", "navigate", "help", "greeting",
+]);
 
 export function AIAssistantProvider({ children }) {
   const { user } = useContext(AuthContext);
   const { companyProfile } = useCompanyProfile();
-  const { allInvoices } = useInvoices();
-  const { allCustomers } = useCustomers();
-  const { allProducts } = useProducts();
-  const { expenses } = useExpenses();
-  const { payments } = useAllPayments();
+  const { allInvoices, addInvoice, editInvoice } = useInvoices();
+  const { allCustomers, addCustomer, editCustomer } = useCustomers();
+  const { allProducts, addProduct, editProduct, deactivateProduct } = useProducts({ includeInactive: true });
+  const { allChallans, addChallan } = useChallans();
+  const { expenses, addExpense } = useExpenses({ allYears: true });
+  const { payments, addPayment, refetch: refetchPayments } = usePayments();
+  const { stock } = useStockLevels();
+  const { settings } = useSettings();
   const { success: toastSuccess } = useToast();
+
+  // Chat billing: commands go to the backend's local parser (no third-party AI),
+  // which matches them against this business's customers and products.
+  const billAI = useAICommand({ context: "invoice", addProduct });
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
+  // The open bill card saves an invoice or a delivery challan.
+  const [billMode, setBillMode] = useState("invoice");
+  const [busyActionId, setBusyActionId] = useState(null);
+  const lastTopicRef = useRef(null);
 
   const [inputMessage, setInputMessage] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -63,20 +58,20 @@ export function AIAssistantProvider({ children }) {
   const [showQuickQuestions, setShowQuickQuestions] = useState(true);
   const [isListening, setIsListening] = useState(false);
 
-  const companyName = companyProfile?.companyName || "Techno Vanam";
+  const companyName = companyProfile?.companyName || "Kanakku Desk";
 
-  // Initial welcoming message
-  const [messages, setMessages] = useState([
-    {
-      sender: "ai",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      text: `Hello ${user?.displayName || "there"}! 👋 I am your **${companyName} AI Business Copilot**.\n\nI analyze your live database in real-time to answer questions about **today's sales, top-selling products, unpaid dues, GST breakdowns, profit & loss, inventory predictions, and customer intelligence**.\n\nYou can also **speak via the mic 🎙️** or type queries in English or Tanglish!`,
+  const welcome = () =>
+    msg({
       type: "welcome",
-    },
-  ]);
+      text:
+        `Hello ${user?.displayName || "there"}! 👋 I'm your **${companyName} business assistant**. I work only with your own data, so nothing is sent to an outside AI.\n\n` +
+        `Ask about **sales, dues, profit, GST, expenses or stock**, or tell me to **create a bill, record a payment, or add a customer, product or expense**. I always show a preview before saving.\n\n` +
+        `Say **help** to see everything I can do.`,
+    });
+  const [messages, setMessages] = useState(() => [welcome()]);
 
-  // Format currency helper
-  const money = (val) => `₹${Number(val || 0).toLocaleString("en-IN", { minimumFractionDigits: 2 })}`;
+  const push = useCallback((m) => setMessages((prev) => [...prev, m]), []);
+  const patchMessage = useCallback((id, patch) => setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m))), []);
 
   // Voice Recognition Setup
   const toggleVoiceRecognition = useCallback(() => {
@@ -85,36 +80,23 @@ export function AIAssistantProvider({ children }) {
       alert("Speech recognition is not supported in this browser. Please use Google Chrome or Microsoft Edge.");
       return;
     }
-
     if (isListening) {
       setIsListening(false);
       return;
     }
-
     try {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = "en-IN"; // Supports English with Indian accent / Tanglish
-
-      recognition.onstart = () => {
-        setIsListening(true);
-      };
-
+      recognition.lang = "en-IN"; // English with Indian accent / Tanglish
+      recognition.onstart = () => setIsListening(true);
       recognition.onresult = (event) => {
         const transcript = event.results[0][0].transcript;
         setInputMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
         setIsListening(false);
       };
-
-      recognition.onerror = () => {
-        setIsListening(false);
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-      };
-
+      recognition.onerror = () => setIsListening(false);
+      recognition.onend = () => setIsListening(false);
       recognition.start();
     } catch (err) {
       console.error("Voice recognition error:", err);
@@ -122,443 +104,295 @@ export function AIAssistantProvider({ children }) {
     }
   }, [isListening]);
 
-  // Master AI Data Analyzer Engine
-  const generateAIResponse = (userQuery) => {
-    const raw = userQuery.trim();
-    const query = raw.toLowerCase();
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const yesterdayObj = new Date();
-    yesterdayObj.setDate(yesterdayObj.getDate() - 1);
-    const yesterdayStr = yesterdayObj.toISOString().slice(0, 10);
-
-    const now = new Date();
-    const currentMonthPrefix = now.toISOString().slice(0, 7); // YYYY-MM
-    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastMonthPrefix = lastMonthDate.toISOString().slice(0, 7);
-
-    const totalInvoices = allInvoices || [];
-    const totalInvoiceCount = totalInvoices.length;
-
-    // Invoices by date
-    const todayInvoices = totalInvoices.filter((inv) => (inv.invoiceDate || "").startsWith(todayStr));
-    const yesterdayInvoices = totalInvoices.filter((inv) => (inv.invoiceDate || "").startsWith(yesterdayStr));
-    const thisMonthInvoices = totalInvoices.filter((inv) => (inv.invoiceDate || "").startsWith(currentMonthPrefix));
-    const lastMonthInvoices = totalInvoices.filter((inv) => (inv.invoiceDate || "").startsWith(lastMonthPrefix));
-
-    const todaySales = todayInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const yesterdaySales = yesterdayInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const thisMonthSales = thisMonthInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const lastMonthSales = lastMonthInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-
-    // Paid / Unpaid / Overdue
-    const paidInvoices = totalInvoices.filter((inv) => (inv.status || "").toLowerCase() === "paid");
-    const unpaidInvoices = totalInvoices.filter((inv) => (inv.status || "").toLowerCase() === "unpaid" || (inv.status || "").toLowerCase() === "partial");
-    const overdueInvoices = totalInvoices.filter((inv) => {
-      const status = (inv.status || "").toLowerCase();
-      if (status === "paid") return false;
-      if (!inv.dueDate) return false;
-      const due = inv.dueDate?.toDate ? inv.dueDate.toDate() : new Date(inv.dueDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      return today > due;
-    });
-
-    const totalRevenue = totalInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const paidRevenue = paidInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const unpaidAmount = unpaidInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-    const overdueAmount = overdueInvoices.reduce((sum, inv) => sum + Number(inv.amount || 0), 0);
-
-    // Expenses
-    const totalExpenses = (expenses || []).reduce((sum, exp) => sum + Number(exp.amount || 0), 0);
-    const thisMonthExpenses = (expenses || [])
-      .filter((exp) => (exp.expenseDate || "").startsWith(currentMonthPrefix))
-      .reduce((sum, exp) => sum + Number(exp.amount || 0), 0);
-    const lastMonthExpenses = (expenses || [])
-      .filter((exp) => (exp.expenseDate || "").startsWith(lastMonthPrefix))
-      .reduce((sum, exp) => sum + Number(exp.amount || 0), 0);
-
-    const netProfit = totalRevenue - totalExpenses;
-    const profitMargin = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : "0";
-    const thisMonthProfit = thisMonthSales - thisMonthExpenses;
-    const lastMonthProfit = lastMonthSales - lastMonthExpenses;
-
-    // GST aggregation
-    let totalCGST = 0;
-    let totalSGST = 0;
-    let totalIGST = 0;
-    totalInvoices.forEach((inv) => {
-      const itemsArray = inv.items || inv.products || [];
-      const subtotal = itemsArray.reduce((sum, item) => sum + Number(item.amount || item.total || (item.quantity * item.rate) || 0), 0);
-      totalCGST += (subtotal * (inv.cgst || 0)) / 100;
-      totalSGST += (subtotal * (inv.sgst || 0)) / 100;
-      totalIGST += (subtotal * (inv.igst || 0)) / 100;
-    });
-    const totalTaxCollected = totalCGST + totalSGST + totalIGST;
-
-    // Product Sales Velocity & Ranking
-    const productStats = {};
-    totalInvoices.forEach((inv) => {
-      const items = inv.items || inv.products || [];
-      items.forEach((it) => {
-        const name = it.description || it.name || "Item";
-        if (!productStats[name]) {
-          productStats[name] = { name, unitsSold: 0, totalRevenue: 0, orders: 0 };
-        }
-        const qty = Number(it.quantity || 1);
-        const rate = Number(it.rate || it.price || 0);
-        const amt = Number(it.amount || it.total || qty * rate);
-        productStats[name].unitsSold += qty;
-        productStats[name].totalRevenue += amt;
-        productStats[name].orders += 1;
-      });
-    });
-
-    const rankedProducts = Object.values(productStats).sort((a, b) => b.totalRevenue - a.totalRevenue);
-    const topProduct = rankedProducts[0];
-
-    // Customer Intelligence Ranking
-    const customerStats = {};
-    totalInvoices.forEach((inv) => {
-      const cId = inv.clientId || inv.client?.id || "unknown";
-      const cName = inv.client?.name || inv.clientName || "Customer";
-      if (!customerStats[cId]) {
-        customerStats[cId] = { id: cId, name: cName, totalSpent: 0, unpaid: 0, invoicesCount: 0, lastDate: inv.invoiceDate || "" };
-      }
-      const invAmt = Number(inv.amount || 0);
-      customerStats[cId].totalSpent += invAmt;
-      customerStats[cId].invoicesCount += 1;
-      if ((inv.status || "").toLowerCase() !== "paid") {
-        customerStats[cId].unpaid += invAmt;
-      }
-      if (inv.invoiceDate && inv.invoiceDate > customerStats[cId].lastDate) {
-        customerStats[cId].lastDate = inv.invoiceDate;
-      }
-    });
-    const rankedCustomers = Object.values(customerStats).sort((a, b) => b.totalSpent - a.totalSpent);
-    const debtors = Object.values(customerStats).filter((c) => c.unpaid > 0).sort((a, b) => b.unpaid - a.unpaid);
-
-    // -------------------------------------------------------------
-    // INTENT 1: GSTIN Validation & Lookup ("validate gstin", "33ABCDE...", "verify gst")
-    // -------------------------------------------------------------
-    const gstMatch = raw.match(/\b([0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1})\b/i);
-    if (gstMatch || query.includes("verify gst") || query.includes("validate gst") || query.includes("gstin check")) {
-      const gstin = gstMatch ? gstMatch[1].toUpperCase() : raw.replace(/[^0-9a-zA-Z]/g, "").toUpperCase();
-      if (gstin.length === 15) {
-        const stateCode = gstin.substring(0, 2);
-        const pan = gstin.substring(2, 12);
-        const entityNum = gstin.charAt(12);
-        const defaultZ = gstin.charAt(13);
-        const checksum = gstin.charAt(14);
-        const stateName = GST_STATE_CODES[stateCode] || "Valid State Code";
-
-        const isValidFormat = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(gstin);
-
-        return {
-          text: `### 🏢 GSTIN Verification Analysis\n\n**GSTIN**: \`${gstin}\`\n\n` +
-            `• **Status**: ${isValidFormat ? "✅ **Active & Format Verified**" : "⚠️ **Invalid GSTIN Structure**"}\n` +
-            `• **Jurisdiction State**: **${stateName}** (Code: ${stateCode})\n` +
-            `• **Associated PAN**: \`${pan}\`\n` +
-            `• **Entity Registration Index**: ${entityNum}\n` +
-            `• **Taxpayer Type**: Regular GST Registered Entity\n` +
-            `• **Checksum Verification**: \`${checksum}\` (Passed)\n\n` +
-            `💡 **Auto-Fill Ready**: This GSTIN can be auto-populated directly into your customer or company registration!`,
-          stats: [
-            { label: "State", value: stateName, color: "text-blue-600" },
-            { label: "PAN", value: pan, color: "text-indigo-600" },
-            { label: "Format Status", value: "Verified ✓", color: "text-emerald-600" },
-          ]
-        };
-      }
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 2: Today's Sales ("today sales", "today's revenue", "iniku sales", "daily sales")
-    // -------------------------------------------------------------
-    if (query.includes("today") || query.includes("iniku") || query.includes("daily sales") || query.includes("today's sales") || query.includes("sales today")) {
-      const diff = todaySales - yesterdaySales;
-      const pct = yesterdaySales > 0 ? ((diff / yesterdaySales) * 100).toFixed(1) : (todaySales > 0 ? "100" : "0");
-      const growthText = diff >= 0 ? `📈 **+${pct}% increase** compared with yesterday (${money(yesterdaySales)})` : `📉 **${pct}% drop** compared with yesterday (${money(yesterdaySales)})`;
-
-      return {
-        text: `### 📅 Today's Live Sales & Revenue Report\n\n` +
-          `• **Today's Invoiced Revenue**: **${money(todaySales)}**\n` +
-          `• **Invoices Issued Today**: **${todayInvoices.length} bill(s)**\n` +
-          `• **Yesterday's Sales**: ${money(yesterdaySales)}\n` +
-          `• **Trend**: ${growthText}\n\n` +
-          (todayInvoices.length > 0
-            ? `#### Invoices Created Today:\n` +
-              todayInvoices.map((inv, idx) => `${idx + 1}. **Invoice #${inv.invoiceNumber || inv.id}**: ${money(inv.amount)} — *${inv.client?.name || inv.clientName || "Client"}* (${inv.status || "Unpaid"})`).join("\n") +
-              `\n\n`
-            : `*No invoices issued yet today. Create an invoice to track real-time sales.*\n\n`) +
-          `💡 **AI Insight**: ${(allProducts || []).length} catalog products available for immediate billing.`,
-        stats: [
-          { label: "Today's Sales", value: money(todaySales), color: "text-emerald-600" },
-          { label: "Invoices Today", value: `${todayInvoices.length}`, color: "text-blue-600" },
-          { label: "Yesterday", value: money(yesterdaySales), color: "text-slate-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 3: Top Selling Products / Which product sold most ("which product sold the most", "top product", "best seller")
-    // -------------------------------------------------------------
-    if (query.includes("sold the most") || query.includes("top selling") || query.includes("best seller") || query.includes("most sold") || query.includes("top product") || query.includes("highest sales product")) {
-      if (rankedProducts.length === 0) {
-        return {
-          text: `### 🏆 Top-Selling Products\n\nNo product sales data recorded yet. As you generate invoices with line items, your top sellers will automatically appear here!`,
-        };
-      }
-
-      const topList = rankedProducts.slice(0, 5).map((p, idx) => {
-        return `${idx + 1}. 🥇 **${p.name}**\n   • Revenue: **${money(p.totalRevenue)}** | Units Sold: **${p.unitsSold} units** across ${p.orders} order(s)`;
-      }).join("\n");
-
-      return {
-        text: `### 🏆 Top-Selling Products Analysis\n\n` +
-          `The highest revenue generating product is **${topProduct?.name}** with **${money(topProduct?.totalRevenue)}** generated (${topProduct?.unitsSold} units sold).\n\n` +
-          `#### Ranked Leaderboard:\n${topList}\n\n` +
-          `💡 **AI Reorder Insight**: Ensure steady supplier stock for **${topProduct?.name}** to prevent stockouts during peak demand periods.`,
-        stats: [
-          { label: "Top Product", value: topProduct?.name || "-", color: "text-emerald-600" },
-          { label: "Units Sold", value: `${topProduct?.unitsSold || 0}`, color: "text-blue-600" },
-          { label: "Product Revenue", value: money(topProduct?.totalRevenue), color: "text-indigo-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 4: Who owes me money? / Unpaid Invoices ("who owes me money", "yaar kaasu", "debtors", "overdue")
-    // -------------------------------------------------------------
-    if (query.includes("who owes") || query.includes("owes me") || query.includes("debtor") || query.includes("yaar kaasu") || query.includes("pending customer") || query.includes("unpaid customer") || query.includes("outstanding balance")) {
-      if (debtors.length === 0) {
-        return {
-          text: `### 🎉 Outstanding Payment Status\n\n**Zero Outstanding!** No customers currently owe money. All invoices are 100% paid!`,
-        };
-      }
-
-      const debtorList = debtors.slice(0, 5).map((d, idx) => {
-        return `${idx + 1}. **${d.name}**: **${money(d.unpaid)}** pending (Total Lifetime: ${money(d.totalSpent)})`;
-      }).join("\n");
-
-      const overdueList = overdueInvoices.slice(0, 4).map((inv, idx) => {
-        return `• **Invoice #${inv.invoiceNumber || inv.id}**: ${money(inv.amount)} — *${inv.client?.name || inv.clientName || "Customer"}* (Due: ${inv.dueDate || "Past Due"})`;
-      }).join("\n");
-
-      return {
-        text: `### ⚠️ Customer Outstanding Receivables ("Who Owes You")\n\nYou have **${debtors.length} customer(s)** with pending balances totaling **${money(unpaidAmount)}**:\n\n` +
-          `#### Top Outstanding Customers:\n${debtorList}\n\n` +
-          (overdueInvoices.length > 0 ? `#### Critical Overdue Invoices:\n${overdueList}\n\n` : "") +
-          `💡 **AI Payment Action**: You can send instant payment reminders via WhatsApp/SMS to collect ${money(unpaidAmount)} and boost cash reserves.`,
-        stats: [
-          { label: "Total Outstanding", value: money(unpaidAmount), color: "text-rose-600" },
-          { label: "Overdue Amount", value: money(overdueAmount), color: "text-amber-600" },
-          { label: "Pending Clients", value: `${debtors.length}`, color: "text-blue-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 5: Monthly Profit / Last Month Profit / Sales Forecasting ("last month profit", "this month profit", "profit comparison")
-    // -------------------------------------------------------------
-    if (query.includes("last month") || query.includes("this month") || query.includes("profit decrease") || query.includes("profit comparison") || query.includes("monthly profit") || query.includes("forecasting") || query.includes("margin")) {
-      return {
-        text: `### 📊 Month-over-Month Profit & Performance Breakdown\n\n` +
-          `#### Current Month (${new Date().toLocaleString("en-US", { month: "long" })}):\n` +
-          `• **Sales**: ${money(thisMonthSales)}\n` +
-          `• **Expenses**: ${money(thisMonthExpenses)}\n` +
-          `• **Net Profit**: **${money(thisMonthProfit)}**\n\n` +
-          `#### Previous Month:\n` +
-          `• **Sales**: ${money(lastMonthSales)}\n` +
-          `• **Expenses**: ${money(lastMonthExpenses)}\n` +
-          `• **Net Profit**: **${money(lastMonthProfit)}**\n\n` +
-          `#### Full Financial Year Summary:\n` +
-          `• **Total Revenue**: ${money(totalRevenue)}\n` +
-          `• **Total Expenses**: ${money(totalExpenses)}\n` +
-          `• **Net Operating Profit**: **${money(netProfit)}** (${profitMargin}% margin)\n\n` +
-          `💡 **AI Business Copilot Insight**: ${thisMonthProfit >= lastMonthProfit ? "Your net profit is pacing ahead of last month! Maintaining current operational expense discipline will ensure high year-end margins." : "Profit decreased primarily due to expense timing. Review your recent itemized expenses to restore peak margin."}`,
-        stats: [
-          { label: "This Month Profit", value: money(thisMonthProfit), color: "text-emerald-600" },
-          { label: "Last Month Profit", value: money(lastMonthProfit), color: "text-blue-600" },
-          { label: "FY Net Profit", value: money(netProfit), color: "text-indigo-600" },
-          { label: "Net Margin", value: `${profitMargin}%`, color: "text-purple-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 6: Inventory Prediction & Reorder Suggestions ("inventory", "stock", "reorder", "low stock")
-    // -------------------------------------------------------------
-    if (query.includes("inventory") || query.includes("stock") || query.includes("reorder") || query.includes("out of stock") || query.includes("low stock") || query.includes("run out")) {
-      const allP = allProducts || [];
-      const lowStockItems = allP.filter((p) => Number(p.stock || p.quantity || 0) <= 10);
-
-      const predictionList = (lowStockItems.length > 0 ? lowStockItems : allP.slice(0, 5)).map((p, idx) => {
-        const stock = Number(p.stock || p.quantity || 15);
-        const soldData = productStats[p.name];
-        const dailyVelocity = soldData ? Math.max(0.2, (soldData.unitsSold / 30)) : 0.5;
-        const daysRemaining = Math.max(1, Math.round(stock / dailyVelocity));
-        const suggestedReorder = Math.max(20, Math.round(dailyVelocity * 30));
-
-        return `${idx + 1}. **${p.name}**\n   • Current Stock: **${stock} units** | Estimated Run-Out: **~${daysRemaining} days**\n   • 📦 Suggested Reorder: **+${suggestedReorder} units**`;
-      }).join("\n\n");
-
-      return {
-        text: `### 📦 AI Inventory Prediction & Reorder Recommendations\n\n` +
-          `AI analyzed your current catalog of **${allP.length} product(s)** and recent invoice sales velocity:\n\n` +
-          `${predictionList || "• All catalog products have healthy inventory buffers."}\n\n` +
-          `💡 **Smart Reorder Rule**: Replenish items with less than 7 days of estimated stock remaining to ensure uninterrupted customer order fulfillment.`,
-        stats: [
-          { label: "Catalog Products", value: `${allP.length}`, color: "text-blue-600" },
-          { label: "Low Stock Alerts", value: `${lowStockItems.length}`, color: lowStockItems.length > 0 ? "text-amber-600" : "text-emerald-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 7: Customer Intelligence & Specific Customer Profiles ("Arun has purchased", "customer insight", "vip client")
-    // -------------------------------------------------------------
-    if (query.includes("customer") || query.includes("client") || query.includes("vip") || query.includes("loyalty") || query.includes("who bought")) {
-      // Check if user is asking about a specific customer name
-      const specificCustomer = (allCustomers || []).find((c) => query.includes((c.name || "").toLowerCase()) || query.includes((c.companyName || "").toLowerCase()));
-
-      if (specificCustomer) {
-        const stats = customerStats[specificCustomer.id] || { totalSpent: 0, unpaid: 0, invoicesCount: 0 };
-        return {
-          text: `### 👤 Customer Profile & AI Insights: **${specificCustomer.name || specificCustomer.companyName}**\n\n` +
-            `• **Company/Trade Name**: ${specificCustomer.companyName || specificCustomer.name || "-"}\n` +
-            `• **Contact Phone**: ${specificCustomer.phone || specificCustomer.mobile || "N/A"}\n` +
-            `• **GSTIN**: \`${specificCustomer.gstin || specificCustomer.taxId || "Unregistered / Consumer"}\`\n` +
-            `• **Total Lifetime Spend**: **${money(stats.totalSpent)}** across ${stats.invoicesCount} invoice(s)\n` +
-            `• **Current Pending Balance**: **${money(stats.unpaid)}**\n` +
-            `• **Customer Segment**: ${stats.totalSpent > 50000 ? "🌟 **VIP / High-Value Client**" : "🛍️ **Regular Active Customer**"}\n\n` +
-            `💡 **AI Recommendation**: ${stats.unpaid > 0 ? `Follow up on the ${money(stats.unpaid)} balance due.` : "Account in good standing with zero overdue balance!"}`,
-        };
-      }
-
-      const vipList = rankedCustomers.slice(0, 5).map((c, idx) => {
-        return `${idx + 1}. 🌟 **${c.name}**: Total Spend: **${money(c.totalSpent)}** (${c.invoicesCount} orders) | Outstanding: ${money(c.unpaid)}`;
-      }).join("\n");
-
-      return {
-        text: `### 👥 Customer Intelligence & VIP Segmentation\n\n` +
-          `Total Registered Customers: **${(allCustomers || []).length} accounts**\n\n` +
-          `#### Top VIP & High-Value Customers:\n${vipList || "• No customer transactions logged yet."}\n\n` +
-          `💡 **Retention Insight**: Your top 20% customers generate the majority of repeat invoice revenue. Send exclusive appreciation quotes to boost loyalty!`,
-        stats: [
-          { label: "Total Customers", value: `${(allCustomers || []).length}`, color: "text-blue-600" },
-          { label: "VIP Spenders", value: `${Math.min(5, rankedCustomers.length)}`, color: "text-emerald-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 8: Natural Language / Voice Invoice Draft ("create bill for 2 nike...", "bill for ravi...")
-    // -------------------------------------------------------------
-    if (query.includes("create bill") || query.includes("make bill") || query.includes("create invoice") || query.includes("bill for") || query.includes("invoice for") || query.includes("bill 2") || query.includes("bill 1")) {
-      return {
-        text: `### 🎙️ AI Voice & Natural Language Billing\n\nI parsed your natural language invoice request:\n\n` +
-          `• **Command**: *"${raw}"*\n` +
-          `• **Action Ready**: Auto-populate products, tax calculations (CGST/SGST), and customer into the Invoice Generator.\n\n` +
-          `👉 **Quick Action**: You can proceed directly to **[Create Invoice](file:///invoices/create)** to issue this bill with 1-click auto numbering and instant PDF generation!`,
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 9: GST Tax Breakdown ("how much gst did i collect", "cgst", "sgst")
-    // -------------------------------------------------------------
-    if (query.includes("gst") || query.includes("tax") || query.includes("cgst") || query.includes("sgst") || query.includes("igst")) {
-      return {
-        text: `### 🧾 Total GST Tax Collected Analysis\n\n` +
-          `Here is your real-time GST tax breakdown computed across all invoices in this financial year:\n\n` +
-          `• **CGST (9%)**: **${money(totalCGST)}**\n` +
-          `• **SGST (9%)**: **${money(totalSGST)}**\n` +
-          `• **IGST (18% Inter-state)**: **${money(totalIGST)}**\n` +
-          `• **Total GST Tax Collected**: **${money(totalTaxCollected)}**\n\n` +
-          `💡 **Compliance Note**: All values are synchronized with your GSTR-1 and GSTR-3B tax liability schedule.`,
-        stats: [
-          { label: "CGST (9%)", value: money(totalCGST), color: "text-indigo-600" },
-          { label: "SGST (9%)", value: money(totalSGST), color: "text-purple-600" },
-          { label: "Total GST", value: money(totalTaxCollected), color: "text-emerald-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // INTENT 10: Expenses Breakdown
-    // -------------------------------------------------------------
-    if (query.includes("expense") || query.includes("cost") || query.includes("spending") || query.includes("selavu")) {
-      const categoryMap = {};
-      (expenses || []).forEach((exp) => {
-        const cat = exp.category || "General & Administrative";
-        categoryMap[cat] = (categoryMap[cat] || 0) + Number(exp.amount || 0);
-      });
-
-      const categorySummary = Object.entries(categoryMap)
-        .map(([cat, amt]) => `• **${cat}**: ${money(amt)}`)
-        .join("\n");
-
-      return {
-        text: `### 💰 Total Business Expenses by Category\n\n` +
-          `Total logged expenses this FY: **${money(totalExpenses)}** across ${(expenses || []).length} transaction(s).\n\n` +
-          `#### Category Breakdown:\n${categorySummary || "• No itemized expenses logged yet."}\n\n` +
-          `💡 **Net Margin Check**: Total expenses represent **${totalRevenue > 0 ? ((totalExpenses / totalRevenue) * 100).toFixed(1) : 0}%** of total gross invoiced revenue.`,
-        stats: [
-          { label: "Total Expenses", value: money(totalExpenses), color: "text-amber-600" },
-          { label: "Transactions", value: `${(expenses || []).length}`, color: "text-blue-600" },
-        ],
-      };
-    }
-
-    // -------------------------------------------------------------
-    // DEFAULT: Comprehensive Business Summary
-    // -------------------------------------------------------------
-    return {
-      text: `### 🤖 ${companyName} AI Business Summary\n\n` +
-        `Here is the latest snapshot from your database:\n\n` +
-        `• **Today's Sales**: **${money(todaySales)}** (${todayInvoices.length} invoices)\n` +
-        `• **Total FY Invoiced Revenue**: **${money(totalRevenue)}** across ${totalInvoiceCount} invoice(s)\n` +
-        `• **Collected Cash**: **${money(paidRevenue)}**\n` +
-        `• **Pending Receivables**: **${money(unpaidAmount)}** (${unpaidInvoices.length} unpaid invoices)\n` +
-        `• **Total Business Expenses**: **${money(totalExpenses)}**\n` +
-        `• **Net Operating Profit**: **${money(netProfit)}** (${profitMargin}% margin)\n` +
-        (topProduct ? `• **Top Seller**: **${topProduct.name}** (${money(topProduct.totalRevenue)})\n` : "") +
-        `\nSelect a quick prompt or ask me anything!`,
-      stats: [
-        { label: "Today's Sales", value: money(todaySales), color: "text-emerald-600" },
-        { label: "Total Revenue", value: money(totalRevenue), color: "text-blue-600" },
-        { label: "Net Profit", value: money(netProfit), color: "text-indigo-600" },
-        { label: "Outstanding", value: money(unpaidAmount), color: "text-rose-600" },
-      ],
-    };
+  const data = {
+    invoices: allInvoices || [],
+    customers: allCustomers || [],
+    products: allProducts || [],
+    expenses: expenses || [],
+    payments: payments || [],
+    stock: stock || [],
+    companyName,
   };
 
-  const handleSendMessage = (textToSend) => {
-    const query = textToSend || inputMessage;
-    if (!query || !query.trim()) return;
+  // ---- bill drafts (backend local parser) ------------------------------------
 
-    const userMsg = {
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      text: query.trim(),
-    };
+  const closeDraftCard = (text) => {
+    setMessages((prev) => [...prev.filter((m) => m.type !== "invoiceDraft"), ...(text ? [msg({ text })] : [])]);
+  };
 
-    setMessages((prev) => [...prev, userMsg]);
+  const draftActive = billAI.draft.items.length > 0 || Boolean(billAI.draft.customer);
+
+  const sendToBillParser = async (text, mode = billMode) => {
+    // The parser reads challan commands like bills; drop the word so it is not taken as an item.
+    const res = await billAI.submit(text.replace(/\b(delivery\s+)?(challan|dc)\b/gi, "bill"));
+    if (res?.error) {
+      push(msg({ text: `### ⚠️ Could not read that bill\n\n${res.error}` }));
+      return true;
+    }
+    const touched = res && (res.draft?.items?.length > 0 || res.draft?.customer);
+    if (!draftActive && (!touched || ["query", "unknown"].includes(res?.intent))) return false;
+    // Say what happened: a question back ("Which item should I remove?"),
+    // notes from the parser, or that the change was not understood.
+    const notes = (res?.messages || []).filter(Boolean);
+    if (res?.clarification) notes.push(`❓ **${res.clarification}**`);
+    else if (draftActive && ["unknown", "query"].includes(res?.intent)) {
+      notes.push('❓ **I did not understand that change.** Try "add 10 more", "add 2 kg sugar", "remove sugar" or "make it 15".');
+    }
+    setMessages((prev) => [
+      ...prev.filter((m) => m.type !== "invoiceDraft"),
+      msg({
+        type: "invoiceDraft",
+        text: [
+          mode === "challan" ? "### 🚚 Delivery challan preview" : "### 🧾 Bill preview",
+          `Check the customer and items, then press **${mode === "challan" ? "Create challan" : "Create invoice"}** or say "yes". Keep typing to change it, e.g. "add 10 more", "add 1 kg sugar" or "remove sugar".`,
+          ...notes,
+        ].join("\n"),
+      }),
+    ]);
+    return true;
+  };
+
+  // ---- sending a message -----------------------------------------------------
+
+  const handleSendMessage = async (textToSend) => {
+    const query = (textToSend || inputMessage || "").trim();
+    if (!query) return;
+    push({ id: nextId++, sender: "user", timestamp: now(), text: query });
     setInputMessage("");
     setIsTyping(true);
+    try {
+      const cls = classify(query, { customers: data.customers, products: data.products, last: lastTopicRef.current });
 
-    setTimeout(() => {
-      const aiResponseData = generateAIResponse(query);
-      const aiMsg = {
-        sender: "ai",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        text: aiResponseData.text,
-        stats: aiResponseData.stats,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
+      if (!user?.uid && !["help", "greeting", "thanks", "gstin_check", "empty"].includes(cls.intent)) {
+        push(msg({ text: "Please sign in to your business account so I can read your data." }));
+        return;
+      }
+
+      // The card the user is looking at: the newest open preview (action or bill).
+      const openCard = [...messages].reverse().find((m) => (m.type === "action" && m.status === "pending") || m.type === "invoiceDraft");
+      const freshCommand = FRESH_COMMANDS.has(cls.intent);
+
+      // "yes" / "save" / "no" / "cancel" answer the open card.
+      if (openCard && !freshCommand && (isConfirmWord(query) || isCancelWord(query))) {
+        const yes = isConfirmWord(query);
+        if (openCard.type === "action") {
+          if (yes) await confirmAction(openCard.id);
+          else cancelAction(openCard.id);
+        } else if (!yes) {
+          cancelDraft();
+        } else if (billAI.blockers.length || draftCustomerBlockers.length) {
+          push(msg({ text: `Not yet: ${[...billAI.blockers, ...draftCustomerBlockers].join(" ")}` }));
+        } else {
+          await createInvoiceFromDraft();
+        }
+        return;
+      }
+
+      // Follow-up edits to an open preview card: "phone 98765 43210", "price 450", "make it 2000".
+      if (openCard?.type === "action" && !freshCommand) {
+        const edit = applyEdit(openCard.pending, query, data);
+        if (edit?.error) {
+          push(msg({ text: `⚠️ ${edit.error}` }));
+          return;
+        }
+        if (edit) {
+          setMessages((prev) => [
+            ...prev.filter((m) => m.id !== openCard.id),
+            msg({ type: "action", status: "pending", pending: edit.pending, text: `${renderPending(edit.pending, data)}\n\n✏️ Changed: ${edit.changed}` }),
+          ]);
+          return;
+        }
+      }
+
+      // Bills and challans, and follow-ups while one is open ("add 2 kg sugar", "remove nails").
+      const billFollowUp = openCard?.type === "invoiceDraft" && !freshCommand;
+      if (cls.intent === "create_invoice" || cls.intent === "create_challan" || billFollowUp) {
+        if (cls.intent === "create_invoice" || cls.intent === "create_challan") {
+          if (draftActive) billAI.discard();
+          setBillMode(cls.intent === "create_challan" ? "challan" : "invoice");
+        }
+        if (await sendToBillParser(query, cls.intent === "create_challan" ? "challan" : cls.intent === "create_invoice" ? "invoice" : billMode)) return;
+      }
+
+      const reply = respond(cls, data);
+      if (reply.topic) lastTopicRef.current = reply.topic;
+      push(
+        msg({
+          text: reply.text,
+          stats: reply.stats,
+          buttons: reply.buttons,
+          navigateTo: reply.navigateTo,
+          ...(reply.pending ? { type: "action", pending: reply.pending, status: "pending" } : {}),
+        })
+      );
+    } catch (err) {
+      console.error("Assistant error:", err);
+      push(msg({ text: `Sorry, something went wrong: ${err.message}` }));
+    } finally {
       setIsTyping(false);
-    }, 450);
+    }
   };
+
+  // ---- confirming actions ----------------------------------------------------
+
+  const runPayment = async (p) => {
+    const done = [];
+    for (const line of p.lines) {
+      const inv = line.invoice;
+      await editInvoice(inv.id, invoiceAfterPayment(inv, line.amount, p.mode, todayLabel()));
+      await addPayment({
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber || "",
+        customerName: p.customerName,
+        clientId: inv.clientId || inv.client?.id || "",
+        amount: line.amount,
+        method: p.mode,
+        paymentMethod: p.mode,
+        transactionId: "",
+        paymentDate: todayLabel(),
+        status: "completed",
+        notes: "Recorded from the assistant",
+      });
+      done.push(`• #${inv.invoiceNumber}: ${money(line.amount)}${line.clears ? " (now fully paid)" : ""}`);
+    }
+    refetchPayments();
+    return `### ✅ Payment recorded\n\n${money(p.amount)} from **${p.customerName}** by ${p.mode}:\n${done.join("\n")}`;
+  };
+
+  const confirmAction = async (id) => {
+    const m = messages.find((x) => x.id === id);
+    if (!m?.pending || m.status !== "pending") return;
+    const p = m.pending;
+    setBusyActionId(id);
+    try {
+      let result;
+      if (p.kind === "payment") {
+        result = await runPayment(p);
+      } else if (p.kind === "customer") {
+        const res = await addCustomer(p.payload);
+        if (!res.success) throw new Error(res.error || "Could not save the customer.");
+        result = `### ✅ Customer added\n\n**${p.payload.name}** is now in your customer list. You can bill them right away.`;
+      } else if (p.kind === "product") {
+        const res = await addProduct(p.payload);
+        if (!res?.success) throw new Error(res?.error || "Could not save the product.");
+        result = `### ✅ Product added\n\n**${p.payload.name}** at ${money(p.payload.price)}${p.payload.unit ? ` per ${p.payload.unit}` : ""}.`;
+      } else if (p.kind === "customer_update") {
+        const res = await editCustomer(p.id, p.patch);
+        if (!res?.success) throw new Error("Could not update the customer.");
+        result = `### ✅ Customer updated\n\n**${p.patch.name || p.name}** has been updated.`;
+      } else if (p.kind === "product_update") {
+        const patch = { ...p.patch };
+        // Same price history the Products page keeps.
+        const oldPrice = Number(p.before?.price);
+        if (patch.price !== undefined && Number.isFinite(oldPrice) && oldPrice !== patch.price) {
+          patch.oldPrice = oldPrice;
+          patch.priceHistory = [{ price: oldPrice, date: new Date().toISOString() }, ...(p.before?.priceHistory || [])];
+        }
+        const res = await editProduct(p.id, patch);
+        if (!res?.success) throw new Error("Could not update the product.");
+        result = `### ✅ Product updated\n\n**${p.patch.name || p.name}** has been updated${patch.price !== undefined ? ` (price ${money(patch.price)})` : ""}.`;
+      } else if (p.kind === "product_deactivate") {
+        const res = await deactivateProduct(p.id);
+        if (!res?.success) throw new Error("Could not deactivate the product.");
+        result = `### ✅ ${p.name} deactivated\n\nIt no longer appears on new bills. Reactivate it from the Products page.`;
+      } else if (p.kind === "expense") {
+        const res = await addExpense(p.payload);
+        if (!res?.success) throw new Error("Could not save the expense.");
+        result = `### ✅ Expense saved\n\n${money(p.payload.amount)} for ${p.payload.title} (${p.payload.category}).`;
+      }
+      patchMessage(id, { status: "done", text: result, stats: undefined });
+      if (toastSuccess) toastSuccess("Saved");
+    } catch (err) {
+      console.error("Assistant action failed:", err);
+      patchMessage(id, { status: "failed", text: `${m.text}\n\n⚠️ **Not saved**: ${err.message}` });
+    } finally {
+      setBusyActionId(null);
+    }
+  };
+
+  const cancelAction = (id) => patchMessage(id, { status: "cancelled", text: "Cancelled. Nothing was saved." });
+
+  // ---- bill card actions -----------------------------------------------------
+
+  const draftTotalRows = (() => {
+    if (!billAI.draft.items.some((it) => it.status === "matched" && it.qty > 0)) return null;
+    const tax = invoiceTaxSettings(settings);
+    const draftCustomer = (allCustomers || []).find((c) => c.id === billAI.draft.customer?.id) || null;
+    const t = computeDraftTotals(billAI.draft, settings, companyProfile, draftCustomer);
+    const rows = [{ label: "Taxable value", value: money(t.taxableAmount) }];
+    if (tax.isGstEnabled) {
+      if (t.cgstAmount) rows.push({ label: "CGST", value: money(t.cgstAmount) });
+      if (t.sgstAmount) rows.push({ label: "SGST", value: money(t.sgstAmount) });
+      if (t.igstAmount) rows.push({ label: "IGST", value: money(t.igstAmount) });
+    }
+    if (tax.isRoundOff) rows.push({ label: "Round off", value: money(t.roundOffAmount) });
+    rows.push({ label: "Total", value: money(t.total), strong: true });
+    return rows;
+  })();
+
+  // The chat saves the bill itself, so it needs a real customer record.
+  const draftCustomerBlockers = billAI.draft.customer?.status === "matched" ? [] : ["Choose or add the customer for this bill."];
+
+  const addCustomerFromDraft = async (name) => {
+    const clean = String(name || "").trim();
+    if (!clean) return;
+    const res = await addCustomer({ name: clean, displayName: clean, customerType: "Business" });
+    if (res.success) billAI.pickCustomer({ id: res.id, name: clean });
+    else push(msg({ text: `### ⚠️ Could not add customer\n\n${res.error}` }));
+  };
+
+  const createInvoiceFromDraft = async () => {
+    const customer = (allCustomers || []).find((c) => c.id === billAI.draft.customer?.id);
+    if (!customer) {
+      push(msg({ text: "That customer is still loading. Try again in a moment." }));
+      return;
+    }
+    setCreatingInvoice(true);
+    if (billMode === "challan") {
+      const challan = buildChallanFromDraft({ draft: billAI.draft, customer, allChallans, settings, seller: companyProfile });
+      const res = await addChallan(challan).catch((err) => ({ success: false, error: err.message }));
+      setCreatingInvoice(false);
+      if (!res?.success) {
+        push(msg({ text: `### ⚠️ Challan not saved\n\n${res?.error || "Unknown error"}` }));
+        return;
+      }
+      billAI.markConfirmed();
+      const lines = challan.items.map((it) => `• ${it.description} × ${it.quantity}`);
+      closeDraftCard([`### ✅ Delivery challan ${challan.challanNumber} created`, "", `**Customer**: ${customer.name || customer.companyName || customer.displayName}`, ...lines, "", `**Value**: ${money(challan.amount)}`].join("\n"));
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        return [...prev.slice(0, -1), { ...last, buttons: [{ label: "Open Challans", to: "/challans" }] }];
+      });
+      if (toastSuccess) toastSuccess(`Challan ${challan.challanNumber} created`);
+      return;
+    }
+    const invoice = buildInvoiceFromDraft({ draft: billAI.draft, customer, allInvoices, settings, seller: companyProfile });
+    const res = await addInvoice(invoice);
+    setCreatingInvoice(false);
+    if (!res.success) {
+      push(msg({ text: `### ⚠️ Invoice not saved\n\n${res.error}` }));
+      return;
+    }
+    // Teach the matcher from this confirmed bill.
+    billAI.markConfirmed();
+    billAI.markSaved(res.id);
+    const lines = invoice.items.map((it) => `• ${it.description} × ${it.quantity} = ${money(it.amount)}`);
+    closeDraftCard(
+      [`### ✅ Invoice ${invoice.invoiceNumber} created`, "", `**Customer**: ${customer.name || customer.companyName || customer.displayName}`, ...lines, "", `**Total**: ${money(invoice.amount)} (due ${invoice.dueDate})`].join("\n")
+    );
+    setMessages((prev) => {
+      const last = prev[prev.length - 1];
+      return [...prev.slice(0, -1), { ...last, buttons: [{ label: "Open Invoices", to: "/invoices" }] }];
+    });
+    if (toastSuccess) toastSuccess(`Invoice ${invoice.invoiceNumber} created`);
+  };
+
+  const cancelDraft = () => {
+    billAI.discard();
+    closeDraftCard("Bill cancelled. Nothing was saved.");
+  };
+
+  // ---- misc ------------------------------------------------------------------
 
   const handleCopy = (text, idx) => {
     navigator.clipboard.writeText(text);
@@ -568,14 +402,9 @@ export function AIAssistantProvider({ children }) {
   };
 
   const handleClearChat = () => {
-    setMessages([
-      {
-        sender: "ai",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        text: `Chat reset! Select any question or tap the microphone 🎙️ to start a live query.`,
-        type: "welcome",
-      },
-    ]);
+    if (draftActive) billAI.discard();
+    lastTopicRef.current = null;
+    setMessages([msg({ type: "welcome", text: "Chat cleared. Ask me anything, or say **help**." })]);
   };
 
   return (
@@ -593,12 +422,26 @@ export function AIAssistantProvider({ children }) {
         handleSendMessage,
         handleCopy,
         handleClearChat,
+        confirmAction,
+        cancelAction,
+        busyActionId,
+        billAI,
+        draftTotalRows,
+        draftCustomerBlockers,
+        creatingInvoice,
+        createInvoiceFromDraft,
+        addCustomerFromDraft,
+        cancelDraft,
+        billMode,
+        allCustomers: allCustomers || [],
       }}
     >
       {children}
     </AIAssistantContext.Provider>
   );
 }
+
+AIAssistantProvider.propTypes = { children: PropTypes.node };
 
 export function useAIAssistant() {
   return useContext(AIAssistantContext);

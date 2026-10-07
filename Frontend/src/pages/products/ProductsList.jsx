@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useContext, memo, useCallback } from "react";
+import React, { useState, useEffect, memo, useCallback } from "react";
+import { GST_RATES } from "../../utils/gst.js";
 import PropTypes from 'prop-types';
 import { Plus, Search, Eye, Edit, X, History, ArrowLeft, ArrowRight, Archive, RotateCcw } from "lucide-react";
 import Pagination from "../../components/Pagination";
 import { useProducts } from "../../hooks/useFirestore";
-import { AuthContext } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { useGodowns, useCreateWarehouseProduct } from "../../hooks/useWarehouse";
 import ProductAliasesSection from "../../components/ai-command/ProductAliasesSection";
 
 const ModalWrapper = ({ children, onClose, maxWidth = "max-w-md" }) => (
@@ -33,99 +32,22 @@ ModalWrapper.propTypes = {
   maxWidth: PropTypes.string,
 };
 
-// --- Modal for prompting initial stock when adding a barcode to legacy products ---
-const AssignBarcodeModal = ({ productData, godowns, onConfirm, onCancel }) => {
-  const [godownId, setGodownId] = useState(godowns[0]?.id || "");
-  const [initialQty, setInitialQty] = useState(1);
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    await onConfirm({ godownId, initialQuantity: Number(initialQty) || 0 });
-    setSubmitting(false);
-  };
-
-  return (
-    <ModalWrapper onClose={onCancel}>
-      <div className="p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-2">Assign Barcode &amp; Initialize Stock</h3>
-        <p className="text-sm text-gray-500 mb-4">
-          Assigning barcode <span className="font-mono font-bold text-blue-600">{productData.barcode}</span> to{" "}
-          <strong>{productData.name}</strong> requires initializing stock and recording an opening movement.
-        </p>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-              Select Godown
-            </label>
-            <select
-              value={godownId}
-              onChange={(e) => setGodownId(e.target.value)}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-semibold"
-              required
-            >
-              {godowns.map((g) => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-              Initial Stock Quantity
-            </label>
-            <input
-              type="number"
-              min="0"
-              value={initialQty}
-              onChange={(e) => setInitialQty(Math.max(0, parseInt(e.target.value) || 0))}
-              className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-center"
-              required
-            />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm font-semibold hover:bg-gray-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || !godownId}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
-            >
-              {submitting ? "Initializing…" : "Confirm & Save"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </ModalWrapper>
-  );
-};
-
-AssignBarcodeModal.propTypes = {
-  productData: PropTypes.object.isRequired,
-  godowns: PropTypes.array.isRequired,
-  onConfirm: PropTypes.func.isRequired,
-  onCancel: PropTypes.func.isRequired,
-};
-
 // --- ProductFormModal for adding/editing products ---
 const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
   const [name, setName] = useState("");
   const [hsn, setHsn] = useState("");
   const [price, setPrice] = useState("");
   const [unit, setUnit] = useState("");
+  const [gstRate, setGstRate] = useState("18");
+  const [cessRate, setCessRate] = useState("");
+  const [trackBatches, setTrackBatches] = useState(false);
+  const [openingStock, setOpeningStock] = useState("");
   const [description, setDescription] = useState("");
-  // ── Warehouse extension fields ──────────────────────────────────────────────
-  const [barcode, setBarcode] = useState("");
+  // ── Stock & catalogue fields ────────────────────────────────────────────
   const [sku, setSku] = useState("");
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState("");
   const [purchasePrice, setPurchasePrice] = useState("");
-  const [minStockLevel, setMinStockLevel] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   // ────────────────────────────────────────────────────────────────────────────
 
@@ -133,17 +55,19 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
     if (productToEdit) {
       setName(productToEdit.name);
       setHsn(productToEdit.hsn);
-      const priceValue = productToEdit.price.replaceAll(/[^0-9.-]+/g, "");
+      const priceValue = String(productToEdit.price ?? "").replaceAll(/[^0-9.-]+/g, "");
       setPrice(priceValue);
       setUnit(productToEdit.unit || "");
+      setGstRate(productToEdit.gstRate === undefined || productToEdit.gstRate === null ? "18" : String(productToEdit.gstRate));
+      setCessRate(productToEdit.cessRate ? String(productToEdit.cessRate) : "");
+      setTrackBatches(Boolean(productToEdit.trackBatches));
+      setOpeningStock(productToEdit.openingStock ?? "");
       setDescription(productToEdit.description || "");
-      // Warehouse fields (optional — may not exist on older products)
-      setBarcode(productToEdit.barcode || "");
+      // Stock & catalogue fields (optional — may not exist on older products)
       setSku(productToEdit.sku || "");
       setBrand(productToEdit.brand || "");
       setCategory(productToEdit.category || "");
       setPurchasePrice(productToEdit.purchasePrice || "");
-      setMinStockLevel(productToEdit.minStockLevel || "");
       setImageUrl(productToEdit.imageUrl || "");
     } else {
       // Reset form for adding new product
@@ -151,13 +75,13 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
       setHsn("");
       setPrice("");
       setUnit("");
+      setGstRate("18");
+      setOpeningStock("");
       setDescription("");
-      setBarcode("");
       setSku("");
       setBrand("");
       setCategory("");
       setPurchasePrice("");
-      setMinStockLevel("");
       setImageUrl("");
     }
   }, [productToEdit]);
@@ -166,13 +90,15 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
     e.preventDefault();
     onSave({
       ...productToEdit, name, hsn, price, unit, description,
-      // Warehouse fields — always included, empty string if not set
-      barcode: barcode.trim(),
+      gstRate: Number(gstRate),
+      cessRate: Number(cessRate) || 0,
+      trackBatches,
+      openingStock: openingStock === "" ? "" : Number(openingStock),
+      // Stock & catalogue fields — always included, empty string if not set
       sku: sku.trim(),
       brand: brand.trim(),
       category: category.trim(),
       purchasePrice: purchasePrice || "",
-      minStockLevel: minStockLevel || "",
       imageUrl: imageUrl.trim(),
     });
   };
@@ -209,7 +135,7 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
               required
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label
                 htmlFor="hsnCode"
@@ -244,6 +170,40 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
                 required
               />
             </div>
+            <div>
+              <label htmlFor="gstRate" className="block text-sm text-gray-700 mb-1">
+                GST Rate *
+              </label>
+              <select
+                id="gstRate"
+                value={gstRate}
+                onChange={(e) => setGstRate(e.target.value)}
+                className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {GST_RATES.map((r) => (
+                  <option key={r} value={String(r)}>{r}%</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="cessRate" className="block text-sm text-gray-700 mb-1">
+                Cess % <span className="text-gray-400">(if any)</span>
+              </label>
+              <input
+                id="cessRate"
+                type="number"
+                min="0"
+                step="0.01"
+                value={cessRate}
+                onChange={(e) => setCessRate(e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 sm:col-span-2">
+              <input type="checkbox" checked={trackBatches} onChange={(e) => setTrackBatches(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+              Track batches &amp; expiry dates (medicines, food, chemicals)
+            </label>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -283,21 +243,10 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
             </div>
           </div>
 
-          {/* ── Warehouse / Stock fields ──────────────────────────────────── */}
+          {/* ── Stock & catalogue fields ────────────────────────────────── */}
           <div className="pt-2 border-t border-gray-100">
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Warehouse &amp; Stock</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">Stock &amp; Catalogue</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="productBarcode" className="block text-sm text-gray-700 mb-1">Barcode</label>
-                <input
-                  id="productBarcode"
-                  type="text"
-                  value={barcode}
-                  onChange={(e) => setBarcode(e.target.value)}
-                  placeholder="EAN-13 / UPC / custom"
-                  className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm font-mono placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
               <div>
                 <label htmlFor="productSku" className="block text-sm text-gray-700 mb-1">SKU</label>
                 <input
@@ -344,14 +293,14 @@ const ProductFormModal = ({ onClose, onSave, productToEdit }) => {
                 />
               </div>
               <div>
-                <label htmlFor="productMinStock" className="block text-sm text-gray-700 mb-1">Min Stock Level</label>
+                <label htmlFor="productOpeningStock" className="block text-sm text-gray-700 mb-1">Opening Stock (qty)</label>
                 <input
-                  id="productMinStock"
+                  id="productOpeningStock"
                   type="number"
                   min="0"
-                  value={minStockLevel}
-                  onChange={(e) => setMinStockLevel(e.target.value)}
-                  placeholder="Alert threshold"
+                  value={openingStock}
+                  onChange={(e) => setOpeningStock(e.target.value)}
+                  placeholder="Quantity on hand at the start"
                   className="w-full px-3 py-2 bg-gray-100 border-0 rounded-lg text-sm placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -444,7 +393,10 @@ const ProductViewModal = ({ product, onClose }) => {
               </div>
               <div className="p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1">HSN Code</p>
-                <p className="text-base font-semibold text-gray-900">{product.hsn}</p>
+                <p className="text-base font-semibold text-gray-900">
+                  {product.hsn}
+                  {product.gstRate !== undefined && product.gstRate !== null && <span className="ml-2 text-sm font-medium text-blue-700">· {product.gstRate}% GST</span>}
+                </p>
               </div>
             </div>
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between">
@@ -540,7 +492,7 @@ const DeleteConfirmationModal = ({ onClose, onConfirm, productName, isActive = t
         <p className="text-sm text-gray-600 mb-6">
           {isActive ? (
             <>
-              <strong>{productName}</strong> will be hidden from invoices, POS, the scanner and other pickers. Existing bills keep it. You can reactivate it at any time.
+              <strong>{productName}</strong> will be hidden from invoices, the scanner and other pickers. Existing bills keep it. You can reactivate it at any time.
             </>
           ) : (
             <>
@@ -593,19 +545,13 @@ const ProductRow = memo(({
           <span className="ml-2 rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-gray-600">Inactive</span>
         )}
       </div>
-      <div className="mt-1">
-        {product.barcode ? (
-          <span className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
-            {product.barcode}
-          </span>
-        ) : (
-          <span className="inline-flex items-center text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-            No barcode
-          </span>
-        )}
-      </div>
     </td>
-    <td className="px-6 py-4 text-gray-700">{product.hsn}</td>
+    <td className="px-6 py-4 text-gray-700">
+      {product.hsn}
+      {product.gstRate !== undefined && product.gstRate !== null && (
+        <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700">{product.gstRate}% GST</span>
+      )}
+    </td>
     <td className="px-6 py-4 font-medium text-gray-900">{product.price}</td>
     <td className="px-6 py-4">
       <div className="flex items-center space-x-3">
@@ -660,12 +606,10 @@ export default function ProductManagement() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
-  const [showInactive, setShowInactive] = useState(false);
 
   // Use products hook
   const {
     products,
-    allProducts,
     loading,
     error,
     pagination,
@@ -674,18 +618,14 @@ export default function ProductManagement() {
     deactivateProduct,
     reactivateProduct
   } = useProducts({
-    includeInactive: showInactive,
+    // Every product is listed; deactivated ones are greyed out and tagged "Inactive".
+    includeInactive: true,
     search: searchTerm,
     page: currentPage,
     limit: itemsPerPage,
     sortBy: 'serialNumber', // Sort by serial number, not name
     sortDirection: 'asc'
   });
-
-  // Warehouse integration
-  const { godowns } = useGodowns();
-  const { assignBarcode } = useCreateWarehouseProduct();
-  const [barcodePrompt, setBarcodePrompt] = useState(null);
 
   // Reset page when search changes
   useEffect(() => {
@@ -714,71 +654,14 @@ export default function ProductManagement() {
     setModal({ isOpen: true, type: "delete", data: product });
   }, []);
 
-  // Handle barcode assignment + opening stock
-  const handleConfirmBarcodeStock = async ({ godownId, initialQuantity }) => {
-    if (!barcodePrompt) return;
-    const { productData } = barcodePrompt;
-    try {
-      const res = await assignBarcode({
-        productId: productData.id,
-        barcode: productData.barcode,
-        godownId,
-        initialQuantity: Number(initialQuantity) || 0,
-      });
-      if (!res?.success) {
-        showError(res?.error || "Failed to assign barcode", "Error");
-        return;
-      }
-
-      // Also save product details with barcode into firestore via editProduct
-      const updateData = {
-        name: productData.name,
-        hsn: productData.hsn,
-        price: Number.parseFloat(productData.price),
-        unit: productData.unit,
-        description: productData.description,
-        barcode: productData.barcode,
-        sku: productData.sku || "",
-        brand: productData.brand || "",
-        category: productData.category || "",
-        purchasePrice: productData.purchasePrice || "",
-        minStockLevel: productData.minStockLevel || "",
-        imageUrl: productData.imageUrl || "",
-      };
-      await editProduct(productData.id, updateData);
-      success(`Barcode ${productData.barcode} assigned and opening stock recorded!`, "Assigned");
-      setBarcodePrompt(null);
-    } catch (err) {
-      showError(err.message || "Failed to assign barcode", "Error");
-    }
-  };
-
   // handle save (add or edit)
   const handleSaveProduct = async (productData) => {
     const isEdit = modal.type === "edit" && productData?.id;
     const productName = productData.name;
-    const previousBarcode = modal.data?.barcode || "";
-    const newBarcode = (productData.barcode || "").trim();
-
-    // Check if adding barcode to an existing product that previously had none
-    if (isEdit && newBarcode && !previousBarcode) {
-      closeModal();
-      setBarcodePrompt({ productData, original: modal.data });
-      return;
-    }
-
-    // Optimistic UI: Close modal and show notification immediately
     closeModal();
 
-    if (isEdit) {
-      // Update = Yellow (Warning style)
-      warning(`Product "${productName}" updated successfully!`, "Updated");
-    } else {
-      // Create = Green (Success style)
-      success(`Product "${productName}" added successfully!`, "Added");
-    }
-
     let result;
+    try {
     if (isEdit) {
       const newPrice = Number.parseFloat(productData.price);
       const updateData = {
@@ -787,18 +670,20 @@ export default function ProductManagement() {
         price: newPrice,
         unit: productData.unit,
         description: productData.description,
-        barcode: newBarcode,
         sku: productData.sku || "",
         brand: productData.brand || "",
         category: productData.category || "",
         purchasePrice: productData.purchasePrice || "",
-        minStockLevel: productData.minStockLevel || "",
         imageUrl: productData.imageUrl || "",
+        gstRate: Number.isFinite(Number(productData.gstRate)) ? Number(productData.gstRate) : 18,
+        cessRate: Number(productData.cessRate) || 0,
+        trackBatches: Boolean(productData.trackBatches),
+        openingStock: productData.openingStock === "" || productData.openingStock === undefined ? "" : Number(productData.openingStock),
       };
 
       // Check if price changed to update oldPrice
       // modal.data.price is formatted string e.g. "₹1,200", we need to parse it
-      const previousPriceString = modal.data.price || "";
+      const previousPriceString = String(modal.data.price ?? "");
       const previousPrice = Number.parseFloat(previousPriceString.replace(/[^0-9.-]+/g, ""));
 
       if (!isNaN(previousPrice) && previousPrice !== newPrice) {
@@ -820,19 +705,29 @@ export default function ProductManagement() {
         price: Number.parseFloat(productData.price),
         unit: productData.unit,
         description: productData.description,
-        barcode: newBarcode,
         sku: productData.sku || "",
         brand: productData.brand || "",
         category: productData.category || "",
         purchasePrice: productData.purchasePrice || "",
-        minStockLevel: productData.minStockLevel || "",
         imageUrl: productData.imageUrl || "",
+        gstRate: Number.isFinite(Number(productData.gstRate)) ? Number(productData.gstRate) : 18,
+        cessRate: Number(productData.cessRate) || 0,
+        trackBatches: Boolean(productData.trackBatches),
+        openingStock: productData.openingStock === "" || productData.openingStock === undefined ? "" : Number(productData.openingStock),
       });
     }
 
-    // Handle failure
-    if (!result.success) {
-      showError(`Failed to ${isEdit ? "update" : "add"} product: ${result.error}`, "Error");
+    } catch (err) {
+      result = { success: false, error: err.message };
+    }
+
+    // Report the real outcome only after the save finished.
+    if (!result?.success) {
+      showError(`Failed to ${isEdit ? "update" : "add"} product: ${result?.error || "unknown error"}`, "Error");
+    } else if (isEdit) {
+      warning(`Product "${productName}" updated successfully!`, "Updated");
+    } else {
+      success(`Product "${productName}" added successfully!`, "Added");
     }
   };
 
@@ -944,10 +839,6 @@ export default function ProductManagement() {
               </p>
             </div>
             <div className="flex items-center gap-2 mt-3 sm:mt-0">
-              <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} data-testid="show-inactive" />
-                Show inactive
-              </label>
               <div className="relative">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                 <input
@@ -1031,14 +922,6 @@ export default function ProductManagement() {
         </>
       )}
 
-      {barcodePrompt && (
-        <AssignBarcodeModal
-          productData={barcodePrompt.productData}
-          godowns={godowns}
-          onConfirm={handleConfirmBarcodeStock}
-          onCancel={() => setBarcodePrompt(null)}
-        />
-      )}
     </>
   );
 }

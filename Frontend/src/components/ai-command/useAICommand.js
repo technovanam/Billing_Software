@@ -1,4 +1,4 @@
-// State for one AI draft conversation on the invoice or POS page: send commands,
+// State for one AI draft conversation on the invoice page: send commands,
 // resolve ambiguous matches, and record what the user corrected.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseCommand, saveProductAlias, updateAiLogs } from "../../services/aiCommandService";
@@ -49,7 +49,7 @@ export default function useAICommand({ context, addProduct }) {
   const submit = useCallback(
     async (commandText) => {
       const value = (commandText ?? text).trim();
-      if (!value || loading) return;
+      if (!value || loading) return null;
       setLoading(true);
       setError(null);
       try {
@@ -59,8 +59,10 @@ export default function useAICommand({ context, addProduct }) {
         setMessages(res.messages || []);
         if (res.logId) setLogIds((prev) => [...prev, res.logId]);
         setText("");
+        return res;
       } catch (err) {
         setError(err.message);
+        return { error: err.message };
       } finally {
         setLoading(false);
       }

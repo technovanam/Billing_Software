@@ -51,7 +51,6 @@ export const isInCurrentFY = (date) => {
 
 // Archive invoices from previous FY
 export const archivePreviousFYInvoices = () => {
-    const currentFY = getCurrentFinancialYear();
     const invoices = JSON.parse(localStorage.getItem('stub_invoices') || '[]');
     const payments = JSON.parse(localStorage.getItem('stub_payments') || '[]');
 

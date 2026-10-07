@@ -1,9 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { X, Calendar, CreditCard, Hash, ChevronLeft, ChevronRight } from 'lucide-react';
 import { usePayments } from '../../hooks/useFirestore';
 import PropTypes from 'prop-types';
 
-const TransactionHistoryModal = ({ isOpen, onClose, invoiceId, invoiceNo, totalAmount }) => {
+const TransactionHistoryModal = ({ isOpen, onClose, invoiceId, invoiceNo }) => {
     const { payments: allTransactions, error } = usePayments(invoiceId);
 
     if (!isOpen) return null;

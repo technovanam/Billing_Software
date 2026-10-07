@@ -10,19 +10,22 @@ import {
   X,
   Edit,
   Filter,
-  Calendar,
   ChevronDown,
 } from "lucide-react";
-import { useInvoices, useAllPayments, usePayments, useCustomers } from "../../hooks/useFirestore";
+import { useInvoices, useAllPayments, usePayments, useCustomers, useAccounts } from "../../hooks/useFirestore";
 import { AuthContext } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import PropTypes from "prop-types";
+import { inrFactor } from "../../utils/gst.js";
 import TransactionHistoryModal from "./TransactionHistoryModal";
 import Pagination from "../../components/Pagination";
 
 // CHANGE: Updated modal to handle transaction ID
-const PaymentMethodModal = ({ isOpen, onClose, onConfirm, existingTds = 0 }) => {
+const PaymentMethodModal = ({ isOpen, onClose, onConfirm, existingTds = 0, currency = "INR", invoiceRate = 1 }) => {
   const [method, setMethod] = useState("UPI");
+  const [receiptRate, setReceiptRate] = useState("");
+  const { moneyAccounts } = useAccounts();
+  const [account, setAccount] = useState("");
   const [transactionId, setTransactionId] = useState("");
   const [tdsAmount, setTdsAmount] = useState("");
   const { error: showError } = useToast();
@@ -46,7 +49,7 @@ const PaymentMethodModal = ({ isOpen, onClose, onConfirm, existingTds = 0 }) => 
       return;
     }
 
-    onConfirm(method, transactionId, tds);
+    onConfirm(method, transactionId, tds, account, Number(receiptRate) || 0);
   };
 
   // Clear transaction ID when switching to Cash
@@ -124,6 +127,34 @@ const PaymentMethodModal = ({ isOpen, onClose, onConfirm, existingTds = 0 }) => 
             <span className="heading-subsection">Cash</span>
           </label>
         </div>
+
+        {currency !== "INR" && (
+          <label className="block mt-4">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Exchange rate on receipt (₹ per {currency})</span>
+            <input
+              type="number"
+              min="0"
+              step="0.0001"
+              value={receiptRate}
+              onChange={(e) => setReceiptRate(e.target.value)}
+              placeholder={`Invoice rate ${invoiceRate}`}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md"
+            />
+            <span className="block text-xs text-gray-500 mt-1">The difference from the invoice rate is booked as forex gain / loss.</span>
+          </label>
+        )}
+
+        {moneyAccounts.length > 0 && (
+          <label className="block mt-4">
+            <span className="block text-sm font-medium text-gray-700 mb-1">Deposit to</span>
+            <select value={account} onChange={(e) => setAccount(e.target.value)} className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md">
+              <option value="">{method === "Cash" ? "Cash" : "Bank"} (default)</option>
+              {moneyAccounts.map((a) => (
+                <option key={a}>{a}</option>
+              ))}
+            </select>
+          </label>
+        )}
 
         {/* TDS Amount Input - Only show if no TDS recorded yet */}
         {existingTds > 0 ? (
@@ -718,7 +749,7 @@ const PaymentsPage = () => {
     editInvoice,
   } = useInvoices();
 
-  const { payments: allPayments = [], error: paymentsError, refetch: refetchPayments } = useAllPayments();
+  const { payments: allPayments = [], refetch: refetchPayments } = useAllPayments();
   const { addPayment } = usePayments();
   const { customers } = useCustomers();
 
@@ -766,7 +797,8 @@ const PaymentsPage = () => {
     if (invoice.status === "Draft" || invoice.status === "draft") return "Draft";
 
     const received = Number(invoice.paidAmount || invoice.received || 0);
-    const total = Number(invoice.total || invoice.amount || 0);
+    // Credit notes against the invoice reduce what the customer owes.
+    const total = Number(invoice.total || invoice.amount || 0) - Number(invoice.creditedAmount || 0) - Number(invoice.advanceAdjusted || 0);
     const tds = Number(invoice.tdsAmount || 0);
 
     if (total > 0 && (received + tds >= total || Math.abs(total - (received + tds)) < 1)) {
@@ -801,7 +833,7 @@ const PaymentsPage = () => {
         inv.customerName ||
         inv.customer ||
         "Unknown Client";
-      const amount = Number.parseFloat(inv.total || inv.amount || 0) || 0;
+      const amount = (Number.parseFloat(inv.total || inv.amount || 0) || 0) - (Number(inv.creditedAmount) || 0) - (Number(inv.advanceAdjusted) || 0);
 
       // Calculate received amount - use paidAmount from invoice as primary source
       let received = 0;
@@ -928,7 +960,7 @@ const PaymentsPage = () => {
       );
 
       if (invoiceToUpdate) {
-        const invoiceAmount = Number.parseFloat(invoiceToUpdate.total || invoiceToUpdate.amount || invoiceToUpdate.totalAmount) || 0;
+        const invoiceAmount = (Number.parseFloat(invoiceToUpdate.total || invoiceToUpdate.amount || invoiceToUpdate.totalAmount) || 0) - (Number(invoiceToUpdate.creditedAmount) || 0) - (Number(invoiceToUpdate.advanceAdjusted) || 0);
 
         // Determine paid amount based on status
         let paidAmount;
@@ -965,7 +997,7 @@ const PaymentsPage = () => {
   };
 
   // Function handles both Full and Partial Payment Confirmations
-  const confirmMarkAsPaid = async (method, transactionId, tdsAmountInput = 0) => {
+  const confirmMarkAsPaid = async (method, transactionId, tdsAmountInput = 0, account = "", receiptRate = 0) => {
     try {
       const today = new Date().toLocaleDateString("en-GB");
 
@@ -979,7 +1011,7 @@ const PaymentsPage = () => {
       );
 
       if (invoiceToUpdate) {
-        const invoiceAmount = Number.parseFloat(invoiceToUpdate.total || invoiceToUpdate.amount || invoiceToUpdate.totalAmount) || 0;
+        const invoiceAmount = (Number.parseFloat(invoiceToUpdate.total || invoiceToUpdate.amount || invoiceToUpdate.totalAmount) || 0) - (Number(invoiceToUpdate.creditedAmount) || 0) - (Number(invoiceToUpdate.advanceAdjusted) || 0);
         const currentPaid = Number.parseFloat(invoiceToUpdate.paidAmount || 0) || 0;
         const currentTds = Number.parseFloat(invoiceToUpdate.tdsAmount || 0) || 0;
 
@@ -1031,12 +1063,18 @@ const PaymentsPage = () => {
           newStatus = "Partial";
         }
 
+        // Export receipts: realised rate vs invoice rate -> forex gain (+) / loss (-) in INR.
+        const invoiceRate = inrFactor(invoiceToUpdate);
+        const forexGain = invoiceRate !== 1 && receiptRate > 0 ? Math.round(amountToRecord * (receiptRate / invoiceRate - 1) * 100) / 100 : 0;
+
         // Update Invoice
         const updateData = {
           status: newStatus,
           paidAmount: newPaidAmount,
           tdsAmount: newTdsAmount,
           paymentMethod: method,
+          ...(account ? { paymentAccount: account } : {}),
+          ...(forexGain ? { forexGain: Math.round(((Number(invoiceToUpdate.forexGain) || 0) + forexGain) * 100) / 100 } : {}),
           paymentDate: today,
         };
 
@@ -1051,13 +1089,14 @@ const PaymentsPage = () => {
             invoiceId: invoiceToUpdate.id,
             amount: amountToRecord,
             method: method,
+            ...(account ? { account } : {}),
+            ...(forexGain ? { forexGain, receiptRate, bankAmount: Math.round((amountToRecord + forexGain) * 100) / 100 } : {}),
             transactionId: transactionId,
             paymentDate: today,
             status: "completed",
           });
         }
 
-        const clientName = invoiceToUpdate.client?.name || invoiceToUpdate.customerName || "Client";
         success(`Payment recorded: ₹${amountToRecord.toLocaleString('en-IN')} (TDS: ₹${tdsForDisplay}) via ${method}`, "Success");
 
         // Refresh payments data
@@ -1068,105 +1107,6 @@ const PaymentsPage = () => {
     } finally {
       setPaymentToMarkPaid(null);
       setEditingPaymentId(null);
-    }
-  };
-
-  const handleSavePayment = async (invoiceNo, paidAmountStr, tdsAmountStr) => {
-    const enteredPaidAmount = Number.parseFloat(paidAmountStr);
-    const enteredTdsAmount = Number.parseFloat(tdsAmountStr) || 0;
-
-    if (Number.isNaN(enteredPaidAmount) || enteredPaidAmount <= 0) {
-      // Allow 0 paid amount only if there is TDS amount? No, generally prompt for at least *some* action. 
-      // But user might want to just record TDS? Let's assume paid amount can be 0 if TDS > 0, but user said "if i going to make as paid or enter the amount it needs to ask for tds amount"
-      // Let's stick to positive paid amount for "Partial Payment" logic unless TDS covers the rest?
-      // For simplicity/safety, require paid amount > 0 OR TDS > 0 to proceed
-      if (enteredPaidAmount <= 0 && enteredTdsAmount <= 0) {
-        showError("Please enter a valid paid amount or TDS amount.");
-        return;
-      }
-    }
-
-    // Safety check for negative input
-    if (enteredPaidAmount < 0 || enteredTdsAmount < 0) {
-      showError("Amounts cannot be negative.");
-      return;
-    }
-
-    try {
-      const today = new Date().toLocaleDateString("en-GB");
-
-      // Find the invoice to update
-      const invoiceToUpdate = allInvoices.find(
-        (inv) => inv.invoiceNumber === invoiceNo
-      );
-
-      if (!invoiceToUpdate) {
-        showError("Invoice not found.");
-        return;
-      }
-
-      const invoiceAmount = Number.parseFloat(invoiceToUpdate.total || invoiceToUpdate.amount || invoiceToUpdate.totalAmount) || 0;
-      const currentPaidAmount = Number.parseFloat(invoiceToUpdate.paidAmount || 0) || 0;
-      const currentTdsAmount = Number.parseFloat(invoiceToUpdate.tdsAmount || 0) || 0;
-
-      const newTotalPaidAmount = currentPaidAmount + enteredPaidAmount;
-      // Only add TDS if currentTdsAmount is 0 (first time TDS is being recorded)
-      // TDS should only be deducted once per invoice, not on every partial payment
-      const newTotalTdsAmount = currentTdsAmount === 0 ? enteredTdsAmount : currentTdsAmount;
-
-      const totalCovered = newTotalPaidAmount + newTotalTdsAmount;
-
-      // Validation: Total Paid + Total TDS cannot exceed Invoice Total (approx, allowing for small float errors or user override if really needed?)
-      // User said: "Mainly the amount should no go to minus" (Pending amount)
-      if (totalCovered > invoiceAmount) {
-        // Warning but maybe allow? Or block? Safe to block for now to prevent negative pending.
-        showError(`Total paid + TDS (₹${totalCovered}) exceeds Invoice amount (₹${invoiceAmount}).`);
-        return;
-      }
-
-      // Determine new status based on payment amount
-      let newStatus;
-      if (Math.abs(invoiceAmount - totalCovered) < 1) { // Floating point safety
-        newStatus = "Paid"; // Fully paid
-      } else if (newTotalPaidAmount > 0 || (enteredTdsAmount > 0 && totalCovered < invoiceAmount)) {
-        newStatus = "Partial"; // Partially paid
-      } else {
-        newStatus = "Unpaid"; // Not paid (shouldn't really happen here if inputs are validated)
-      }
-
-      // Update invoice with new payment information
-      const updateData = {
-        paidAmount: newTotalPaidAmount,
-        tdsAmount: newTotalTdsAmount,
-        status: newStatus,
-        paymentDate: today,
-      };
-
-      // Only set paymentDate if invoice is fully paid
-      if (newStatus === "Paid") {
-        updateData.paymentDate = today;
-      }
-
-      await editInvoice(invoiceToUpdate.id, updateData);
-
-      // Create a payment record for this partial payment IF amount > 0
-      if (enteredPaidAmount > 0) {
-        await addPayment({
-          invoiceId: invoiceToUpdate.id,
-          amount: enteredPaidAmount,
-          method: "Partial Payment", // We can enhance this later with a method selection
-          transactionId: `PARTIAL-${Date.now()}`, // Generate a unique ID for partial payments
-          paymentDate: today,
-          status: "completed",
-        });
-      }
-
-      const clientName = invoiceToUpdate.client?.name || invoiceToUpdate.customerName || "Client";
-      success(`Partial payment recorded. Paid: ₹${enteredPaidAmount}, TDS: ₹${enteredTdsAmount}`, "Payment Recorded");
-      setEditingPaymentId(null);
-
-    } catch (error) {
-      showError("Error recording payment: " + error.message);
     }
   };
 
@@ -1539,6 +1479,9 @@ const PaymentsPage = () => {
     );
   }
 
+  const markPaidNo = paymentToMarkPaid?.invoiceNo || paymentToMarkPaid;
+  const markPaidInvoice = markPaidNo ? allInvoices.find((inv) => inv.invoiceNumber === markPaidNo) : null;
+
   return (
     <div className="min-h-screen text-slate-800 font-mazzard">
       <PaymentMethodModal
@@ -1546,6 +1489,8 @@ const PaymentsPage = () => {
         onClose={() => setPaymentToMarkPaid(null)}
         onConfirm={confirmMarkAsPaid}
         existingTds={paymentToMarkPaid?.currentTds || 0}
+        currency={markPaidInvoice?.currency || "INR"}
+        invoiceRate={markPaidInvoice ? inrFactor(markPaidInvoice) : 1}
       />
       <TransactionHistoryModal
         isOpen={!!viewingHistoryFor}

@@ -1,41 +1,63 @@
 import React, { createContext, useEffect, useState } from "react";
 import { onAuthStateChanged, signOut as firebaseSignOut, updateEmail, updatePassword, updateProfile, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import axios from "axios";
-import { auth } from "../lib/firebase/config";
+import { collection, getDocs } from "firebase/firestore";
+import { auth, db } from "../lib/firebase/config";
+import { clearDataCaches } from "../lib/dataCache";
 
 export const AuthContext = createContext();
 
-// Role and business from the verified token. Cashiers sign in with a
-// backend-issued custom token carrying role/businessUid/cashierId claims.
-async function withClaims(u) {
-    let claims = {};
-    try {
-        claims = (await u.getIdTokenResult()).claims || {};
-    } catch (_) {}
-    const isCashier = claims.role === "cashier" && claims.businessUid && claims.cashierId;
-    const email = String(u.email || "").toLowerCase();
+// On the website a person is the owner of their own business, or a team member
+// (accountant / viewer) working in another business's books (Settings -> Team).
+// businessUid is whose data every screen reads and writes. POS cashiers and
+// "wh." warehouse accounts use the separate POS app.
+function withRole(u, ws = null) {
     return {
         ...u,
         uid: u.uid,
         email: u.email,
-        displayName: isCashier ? claims.cashierName || claims.cashierId : u.displayName,
-        role: isCashier ? "cashier" : email.startsWith("wh.") ? "warehouse" : "owner",
-        businessUid: isCashier ? claims.businessUid : u.uid,
-        cashierId: isCashier ? claims.cashierId : null,
-        cashierName: isCashier ? claims.cashierName || claims.cashierId : null,
-        counter: isCashier ? claims.counter || null : null,
-        deviceId: isCashier ? claims.deviceId || null : null,
+        displayName: u.displayName,
+        role: ws ? ws.role : "owner",
+        businessUid: ws ? ws.ownerUid : u.uid,
+        businessName: ws?.businessName || "",
     };
 }
 
-// Revoked cashier sessions fail this refresh, which signs them out.
-const CASHIER_SESSION_CHECK_MS = 2 * 60 * 1000;
+const workspaceKey = (uid) => `kd.workspace:${uid}`;
+
+// Businesses that added this (verified) email to their team.
+async function loadMemberships(u) {
+    if (!u?.email || !u.emailVerified) return [];
+    try {
+        const snap = await getDocs(collection(db, "teamInvites", u.email.toLowerCase(), "owners"));
+        return snap.docs.map((d) => ({ ownerUid: d.id, ...d.data() })).filter((m) => m.active !== false && m.ownerUid !== u.uid);
+    } catch (_) {
+        return [];
+    }
+}
 
 import PropTypes from 'prop-types';
 
 export const AuthProvider = ({ children }) => {
-    const [user, setUser] = useState(null);
+    const [rawUser, setUser] = useState(null);
+    const [memberships, setMemberships] = useState([]);
+    const [workspaceUid, setWorkspaceUid] = useState(null);
     const [authInitialized, setAuthInitialized] = useState(false);
+    const workspace = memberships.find((m) => m.ownerUid === workspaceUid) || null;
+    const user = React.useMemo(() => (rawUser ? withRole(rawUser, workspace) : null), [rawUser, workspace]);
+
+    const switchWorkspace = (ownerUid) => {
+        if (!rawUser) return;
+        try {
+            if (ownerUid) localStorage.setItem(workspaceKey(rawUser.uid), ownerUid);
+            else localStorage.removeItem(workspaceKey(rawUser.uid));
+        } catch (_) {
+            // storage unavailable (private mode)
+        }
+        clearDataCaches();
+        setWorkspaceUid(ownerUid || null);
+        window.location.assign("/dashboard");
+    };
 
     const [isSessionTimeoutEnabled, setIsSessionTimeoutEnabled] = useState(() => {
         const saved = localStorage.getItem('sessionTimeoutEnabled');
@@ -76,24 +98,27 @@ export const AuthProvider = ({ children }) => {
         // Clear any stale localStorage auth keys from previous builds.
         // Auth state is now managed exclusively by Firebase SDK.
         localStorage.removeItem("admin_auth_user");
+        // Old builds cached lists under shared keys; drop them.
+        localStorage.removeItem("store_customers_cache");
+        localStorage.removeItem("store_invoices_cache");
 
-        let sessionTimer = null;
         const unsubscribe = onAuthStateChanged(auth, async (u) => {
-            clearInterval(sessionTimer);
             if (u) {
-                const next = await withClaims(u);
-                setUser(next);
-                if (next.role === "cashier") {
-                    // A cashier must never fall back to a cached owner session.
-                    sessionTimer = setInterval(() => {
-                        u.getIdToken(true).catch(() => {
-                            firebaseSignOut(auth).catch(() => {});
-                            localStorage.removeItem("pos_cashier_session");
-                        });
-                    }, CASHIER_SESSION_CHECK_MS);
-                }
+                const list = await loadMemberships(u);
+                let saved = null;
+                try {
+                    saved = localStorage.getItem(workspaceKey(u.uid));
+                } catch (_) {
+            // storage unavailable (private mode)
+        }
+                setMemberships(list);
+                setWorkspaceUid(list.some((m) => m.ownerUid === saved) ? saved : null);
+                setUser(u);
             } else {
                 // Firebase says no signed-in user. Never fall back to localStorage.
+                clearDataCaches();
+                setMemberships([]);
+                setWorkspaceUid(null);
                 setUser(null);
             }
             setAuthInitialized(true);
@@ -101,7 +126,6 @@ export const AuthProvider = ({ children }) => {
 
         return () => {
             unsubscribe();
-            clearInterval(sessionTimer);
             axios.interceptors.request.eject(interceptor);
         };
     }, []);
@@ -109,9 +133,11 @@ export const AuthProvider = ({ children }) => {
     const signOut = async () => {
         try {
             await firebaseSignOut(auth);
-        } catch (_) {}
+        } catch (_) {
+            // storage unavailable (private mode)
+        }
         localStorage.removeItem("admin_auth_user");
-        localStorage.removeItem("pos_cashier_session");
+        clearDataCaches();
         setUser(null);
     };
 
@@ -165,6 +191,8 @@ export const AuthProvider = ({ children }) => {
     const value = React.useMemo(() => ({
         user,
         setUser,
+        memberships,
+        switchWorkspace,
         authInitialized,
         signOut,
         updateUserEmail,
@@ -174,7 +202,7 @@ export const AuthProvider = ({ children }) => {
         toggleSessionTimeout,
         sessionTimeoutMinutes,
         setSessionTimeoutMinutes
-    }), [user, authInitialized, isSessionTimeoutEnabled, sessionTimeoutMinutes]);
+    }), [user, memberships, authInitialized, isSessionTimeoutEnabled, sessionTimeoutMinutes]); // eslint-disable-line react-hooks/exhaustive-deps
 
     return (
         <AuthContext.Provider value={value}>

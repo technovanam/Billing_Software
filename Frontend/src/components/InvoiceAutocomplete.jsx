@@ -171,7 +171,7 @@ export const ProductAutocomplete = ({
   }, [isFocused]);
 
   useEffect(() => {
-    setSearchTerm(value);
+    setSearchTerm(value || "");
   }, [value]);
 
   useEffect(() => {

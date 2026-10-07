@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Calculator, Edit, FileText, Plus, ReceiptIndianRupee, Trash2, Upload, X, Check, ChevronDown } from "lucide-react";
-import { useExpenses, useCustomers } from "../../hooks/useFirestore";
+import { useExpenses, useCustomers, useCostCentres, useAccounts } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
 
 const emptyExpense = {
@@ -54,7 +54,9 @@ const selectClass =
   "w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-colors cursor-pointer appearance-none pr-10";
 
 export default function Expenses() {
-  const { expenses, loading, error, addExpense, editExpense, removeExpense } = useExpenses();
+  const { names: costCentreNames } = useCostCentres();
+  const { moneyAccounts } = useAccounts();
+  const { expenses, loading, addExpense, editExpense, removeExpense } = useExpenses();
   const { allCustomers } = useCustomers();
   const { success, error: showError } = useToast();
   const [showForm, setShowForm] = useState(false);
@@ -208,6 +210,46 @@ export default function Expenses() {
                       </select>
                       <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-600" />
                     </div>
+                  </div>
+
+                  {/* Paid through + cost centre (used by the books) */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="expense-paid-through" className="block text-sm font-semibold text-slate-800 mb-1.5">
+                        Paid through
+                      </label>
+                      <select id="expense-paid-through" value={form.paymentMethod || "Cash"} onChange={(e) => update("paymentMethod", e.target.value)} className={selectClass}>
+                        {["Cash", "Bank Transfer", "UPI", "Card", "Cheque"].map((m) => (
+                          <option key={m}>{m}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {moneyAccounts.length > 0 && (
+                      <div>
+                        <label htmlFor="expense-account" className="block text-sm font-semibold text-slate-800 mb-1.5">
+                          From account
+                        </label>
+                        <select id="expense-account" value={form.paymentAccount || ""} onChange={(e) => update("paymentAccount", e.target.value)} className={selectClass}>
+                          <option value="">Default</option>
+                          {moneyAccounts.map((a) => (
+                            <option key={a}>{a}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                    {costCentreNames.length > 0 && (
+                      <div>
+                        <label htmlFor="expense-cost-centre" className="block text-sm font-semibold text-slate-800 mb-1.5">
+                          Cost centre
+                        </label>
+                        <select id="expense-cost-centre" value={form.costCentre || ""} onChange={(e) => update("costCentre", e.target.value)} className={selectClass}>
+                          <option value="">None</option>
+                          {costCentreNames.map((c) => (
+                            <option key={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
 
                   {/* Itemize Checkbox */}

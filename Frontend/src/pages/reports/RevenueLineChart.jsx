@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useContext } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   ChevronDown,
   TrendingUp,
@@ -8,7 +8,6 @@ import {
   Printer,
   ChevronLeft,
   ChevronRight,
-  UserCheck,
   IndianRupee,
   X,
   Search,
@@ -25,11 +24,12 @@ import {
   useAllPayments,
 } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
-import { AuthContext } from "../../context/AuthContext";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import html2canvas from "html2canvas";
 import { generateInvoiceHTML } from "../../utils/invoiceGenerator";
+import { invoiceTotals, sellerAddressLines } from "../../utils/gst.js";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
 
 
 
@@ -97,27 +97,13 @@ const GSTSummary = ({ invoices = [], getDynamicInvoiceStatus }) => {
     let totalIGST = 0;
 
     paidInvoices.forEach((inv) => {
-      // Use the GST amounts directly from the invoice if available
-      // Note: cgst/sgst/igst are percentages, cgstAmount/sgstAmount/igstAmount are the actual amounts
-      if (inv.cgstAmount !== undefined || inv.sgstAmount !== undefined || inv.igstAmount !== undefined) {
-        totalCGST += Number(inv.cgstAmount) || 0;
-        totalSGST += Number(inv.sgstAmount) || 0;
-        totalIGST += Number(inv.igstAmount) || 0;
-      } else {
-        // Fallback: Calculate from items/products if GST amounts not stored
-        const items = inv.items || inv.products || [];
-        const subtotal = items.reduce((sum, item) => {
-          return sum + (item.total || item.amount || (item.quantity || 0) * (item.price || item.rate || 0));
-        }, 0);
-
-        const cgstPercent = inv.cgst || 9; // Default 9%
-        const sgstPercent = inv.sgst || 9; // Default 9%
-        const igstPercent = inv.igst || 0;
-
-        totalCGST += (subtotal * cgstPercent) / 100;
-        totalSGST += (subtotal * sgstPercent) / 100;
-        totalIGST += (subtotal * igstPercent) / 100;
-      }
+      // Stored amounts first; otherwise the shared GST engine (honours GST off / IGST bills).
+      const t = inv.cgstAmount !== undefined || inv.sgstAmount !== undefined || inv.igstAmount !== undefined
+        ? { cgstAmount: Number(inv.cgstAmount) || 0, sgstAmount: Number(inv.sgstAmount) || 0, igstAmount: Number(inv.igstAmount) || 0 }
+        : invoiceTotals(inv);
+      totalCGST += t.cgstAmount;
+      totalSGST += t.sgstAmount;
+      totalIGST += t.igstAmount;
     });
 
     const total = totalCGST + totalSGST + totalIGST;
@@ -268,6 +254,7 @@ GSTSummary.propTypes = {
 };
 
 const PDFExportModal = ({ isOpen, onClose, invoices, customers, payments, stats, onExport }) => {
+  const { companyProfile } = useCompanyProfile();
   const [step, setStep] = useState("type-selection"); // type-selection, client-selection, client-options, date-selection
   const [reportType, setReportType] = useState(""); // client, monthly, yearly
   const [clientReportType, setClientReportType] = useState(""); // monthly, yearly
@@ -285,7 +272,7 @@ const PDFExportModal = ({ isOpen, onClose, invoices, customers, payments, stats,
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
-  const { error: toastError, warning } = useToast();
+  const { error: toastError } = useToast();
 
   useEffect(() => {
     if (isOpen) {
@@ -381,7 +368,8 @@ const PDFExportModal = ({ isOpen, onClose, invoices, customers, payments, stats,
         selectedClient,
         clientReportType,
         selectedMonth,
-        selectedYear
+        selectedYear,
+        companyProfile
       );
 
       if (result.success) {
@@ -641,8 +629,8 @@ PDFExportModal.propTypes = {
 };
 
 const ReportsAnalytics = () => {
-  const [activeTab, setActiveTab] = useState("Overview");
   const currentYear = new Date().getFullYear();
+  const { companyProfile } = useCompanyProfile();
   // Default to Yearly Report for the current financial year
   const [reportType, setReportType] = useState("Yearly Report");
   const [timePeriod, setTimePeriod] = useState(currentYear.toString());
@@ -650,16 +638,8 @@ const ReportsAnalytics = () => {
   const [filterMonth, setFilterMonth] = useState(new Date().getMonth());
   const [filterYear, setFilterYear] = useState(new Date().getFullYear());
 
-  const [showFromCalendar, setShowFromCalendar] = useState(false);
-  const [showToCalendar, setShowToCalendar] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-  // New state for the new charts
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-
-  const [revenueYear, setRevenueYear] = useState(new Date().getFullYear());
-
 
   // PDF Modal State
   const [showPDFModal, setShowPDFModal] = useState(false);
@@ -670,9 +650,6 @@ const ReportsAnalytics = () => {
   const exportDropdownRef = useRef(null);
   const filterDropdownRef = useRef(null);
 
-  // Get authentication context
-  const { user } = useContext(AuthContext);
-  const { error: toastError, warning } = useToast();
 
   // Use data hooks
   const { stats, error: statsError } = useDashboard();
@@ -711,7 +688,6 @@ const ReportsAnalytics = () => {
   const getFilteredInvoices = () => {
     if (!invoices || invoices.length === 0) return [];
 
-    const now = new Date();
     let startDate, endDate;
 
     switch (timePeriod) {
@@ -1183,7 +1159,7 @@ const ReportsAnalytics = () => {
             setIsGeneratingPDF(true);
             // Use setTimeout to allow UI to update with loading state
             setTimeout(async () => {
-              await exportToPDF(inv, cust, pay, st, title, subtitle);
+              await exportToPDF(inv, cust, pay, st, title, subtitle, companyProfile);
               setIsGeneratingPDF(false);
             }, 100);
           }}
@@ -1218,7 +1194,7 @@ const ReportsAnalytics = () => {
 };
 
 // Export functions
-const exportToPDF = async (invoices, customers, payments, stats, title = "Business Report", subtitle = "") => {
+const exportToPDF = async (invoices, customers, payments, stats, title = "Business Report", subtitle = "", seller = null) => {
   // If it's a specific bill request (Client/Monthly/Yearly), generate actual invoices
   if (title.includes("Bill")) {
     try {
@@ -1238,7 +1214,7 @@ const exportToPDF = async (invoices, customers, payments, stats, title = "Busine
 
         // Create temp div
         const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = generateInvoiceHTML(invoice, {});
+        tempDiv.innerHTML = generateInvoiceHTML(invoice, {}, seller);
         tempDiv.style.position = "absolute";
         tempDiv.style.left = "-9999px";
         tempDiv.style.width = "800px"; // Fixed width for consistent rendering
@@ -1412,7 +1388,7 @@ const exportToPDF = async (invoices, customers, payments, stats, title = "Busine
   doc.save(`business_report_${new Date().toISOString().split("T")[0]}.pdf`);
 };
 
-const exportClientSummaryReport = (invoices, selectedClient, filterType, filterMonth, filterYear) => {
+const exportClientSummaryReport = (invoices, selectedClient, filterType, filterMonth, filterYear, seller = null) => {
   if (!invoices || invoices.length === 0) {
     return { success: false, message: "No bills found to generate summary report." };
   }
@@ -1427,18 +1403,20 @@ const exportClientSummaryReport = (invoices, selectedClient, filterType, filterM
   doc.setFont('helvetica');
 
   // Company Header (Centered at top)
+  const pageW = doc.internal.pageSize.getWidth();
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(139, 0, 0); // Dark red color
-  doc.text("ESA ENGINEERING WORKS", doc.internal.pageSize.getWidth() / 2, 15, { align: 'center' });
+  doc.text((seller?.companyName || "Your Business").toUpperCase(), pageW / 2, 15, { align: 'center' });
 
   doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'normal');
-  doc.text("All Kinds of Lathe and Milling Works", doc.internal.pageSize.getWidth() / 2, 21, { align: 'center' });
-  doc.text("Specialist in: Press Tools, Die Casting Tools, Precision Components", doc.internal.pageSize.getWidth() / 2, 26, { align: 'center' });
-  doc.text("1/100, Chettipalayam Road, E.B. Compound, Malumichampatti, CBE - 641 050", doc.internal.pageSize.getWidth() / 2, 31, { align: 'center' });
-  doc.text("E-Mail: esaengineeringworks@gmail.com | GSTIN: 33AMWPB2116Q1ZS", doc.internal.pageSize.getWidth() / 2, 36, { align: 'center' });
+  const headerLines = [
+    ...sellerAddressLines(seller),
+    [seller?.email && `E-Mail: ${seller.email}`, seller?.gstin && `GSTIN: ${seller.gstin}`].filter(Boolean).join(" | "),
+  ].filter(Boolean);
+  headerLines.slice(0, 3).forEach((line, i) => doc.text(line, pageW / 2, 21 + i * 5, { align: 'center' }));
 
   // Client Details (Left side)
   doc.setFontSize(11);
@@ -1604,42 +1582,6 @@ const exportClientSummaryReport = (invoices, selectedClient, filterType, filterM
   doc.save(fileName);
 
   return { success: true };
-};
-
-const exportDetailed = (invoices, customers, payments, stats) => {
-  // This will export a comprehensive JSON with all data
-  const detailedData = {
-    reportInfo: {
-      generatedAt: new Date().toISOString(),
-      reportType: "Detailed Business Report",
-      totalRecords: {
-        invoices: invoices?.length || 0,
-        customers: customers?.length || 0,
-        payments: payments?.length || 0,
-      },
-    },
-    summary: {
-      totalRevenue: stats?.totalRevenue || 0,
-      totalInvoices: stats?.totalInvoices || 0,
-      totalCustomers: stats?.totalCustomers || 0,
-      paidInvoices: stats?.paidInvoices || 0,
-      unpaidInvoices: stats?.unpaidInvoices || 0,
-      paymentRate: stats?.paymentRate || 0,
-    },
-    invoices: invoices || [],
-    customers: customers || [],
-    payments: payments || [],
-  };
-
-  const blob = new Blob([JSON.stringify(detailedData, null, 2)], {
-    type: "application/json",
-  });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `detailed_report_${new Date().toISOString().split("T")[0]}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
 };
 
 ReportsAnalytics.propTypes = {

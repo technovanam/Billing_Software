@@ -1,4 +1,4 @@
-import React, { useMemo, memo } from "react";
+import React, { useMemo, memo, useContext } from "react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import {
@@ -8,7 +8,6 @@ import {
   CreditCard,
   Package,
   UserCheck,
-  FileEdit,
   ArrowUpRight,
   ArrowDownRight,
   Coins,
@@ -16,7 +15,6 @@ import {
   BadgePercent,
 } from "lucide-react";
 import {
-  useDashboard,
   useInvoices,
   useAllPayments,
   useExpenses,
@@ -25,6 +23,9 @@ import {
 } from "../../hooks/useFirestore";
 // Chart Components
 import InvoiceStatus from "./InvoiceStatus";
+import { AuthContext } from "../../context/AuthContext";
+import { financialYear, inPeriod, toDate } from "../../chatbot/dates.js";
+import { invoiceBalance, invoiceDate, invoiceStatus, invoiceTotal, salesInvoices, settledAmount, gstSummary, num } from "../../chatbot/analytics.js";
 
 // Main Dashboard Component
 const Dashboard = () => {
@@ -34,104 +35,41 @@ const Dashboard = () => {
   const { allProducts } = useProducts(); // Get all products, not just paginated view
   const { allCustomers } = useCustomers(); // Get all customers, not just paginated view
 
-  // Calculate stats dynamically from allInvoices
+  // Current financial year figures, using the same rules as the assistant
+  // (src/chatbot/analytics.js): drafts are not bills, TDS counts as settled,
+  // a partly paid invoice owes only its balance.
   const stats = useMemo(() => {
     if (!allInvoices) return null;
-
-    const activeInvoices = allInvoices.filter(i => i.status !== 'Cancelled');
-    const validInvoices = activeInvoices.filter(i => (i.status || '').toLowerCase() !== 'draft');
-
-    // Total invoices now includes ALL active invoices (including drafts)
-    const totalInvoices = activeInvoices.length;
-
-    // Revenue = Sum of all amounts actually received (paidAmount or received field)
-    // This represents actual money received, not invoiced amounts
-    const totalRevenue = activeInvoices.reduce((sum, inv) => {
-      const received = Number(inv.paidAmount || inv.received || 0);
-      return sum + received;
-    }, 0);
-
-    const totalExpenses = (expenses || []).reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
-
-    const paidInvoices = activeInvoices.filter(i => (i.status || '').toLowerCase() === 'paid').length;
-    const draftInvoices = activeInvoices.filter(i => (i.status || '').toLowerCase() === 'draft').length;
-
-    // Calculate overdue invoices
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const overdueInvoices = activeInvoices.filter(i => {
-      const s = (i.status || '').toLowerCase();
-      if (s === 'paid' || s === 'draft' || s === 'partial') return false;
-      const dueDate = i.dueDate ? new Date(i.dueDate) : null;
-      if (dueDate) dueDate.setHours(0, 0, 0, 0);
-      return dueDate && today > dueDate;
-    }).length;
-
-    // Unpaid includes invoices that are not paid, not draft, and not overdue
-    const unpaidInvoices = activeInvoices.filter(i => {
-      const s = (i.status || '').toLowerCase();
-      if (s === 'paid' || s === 'draft' || s === 'partial') return false;
-      const dueDate = i.dueDate ? new Date(i.dueDate) : null;
-      if (dueDate) dueDate.setHours(0, 0, 0, 0);
-      const isOverdue = dueDate && today > dueDate;
-      return !isOverdue;
-    }).length;
-
-    const paymentRate = (paidInvoices + unpaidInvoices + draftInvoices + overdueInvoices) > 0
-      ? (paidInvoices / (paidInvoices + unpaidInvoices + draftInvoices + overdueInvoices)) * 100
-      : 0;
-
-    // Total Customers - count from actual customers collection
-    const totalCustomers = allCustomers ? allCustomers.length : 0;
-
-    // Total Bill Amount - sum of all invoice totals (what was billed)
-    const totalBillAmount = validInvoices.reduce((sum, inv) => {
-      const amount = Number(inv.total || inv.amount || inv.totalAmount || 0);
-      return sum + amount;
-    }, 0);
-
-    // Total Amount to Receive - outstanding amounts (bill amount - received)
-    const totalOutstanding = activeInvoices.reduce((sum, inv) => {
-      const total = Number(inv.total || inv.amount || inv.totalAmount || 0);
-      const received = Number(inv.paidAmount || inv.received || 0);
-      const outstanding = Math.max(0, total - received);
-      return sum + outstanding;
-    }, 0);
-
-    // GST Collected - sum of SGST, CGST, IGST from paid and partial invoices
-    let totalSGST = 0;
-    let totalCGST = 0;
-    let totalIGST = 0;
-    
-    activeInvoices.forEach(inv => {
-      const status = (inv.status || '').toLowerCase();
-      // Only count GST for paid or partial invoices (when payment is received)
-      if (status === 'paid' || status === 'partial') {
-        totalSGST += Number(inv.sgst || 0);
-        totalCGST += Number(inv.cgst || 0);
-        totalIGST += Number(inv.igst || 0);
-      }
+    const now = new Date();
+    const fy = financialYear(now);
+    const active = allInvoices.filter((i) => i.status !== "Cancelled" && inPeriod(invoiceDate(i), fy));
+    const bills = salesInvoices(active);
+    const counts = { Paid: 0, Unpaid: 0, Partial: 0, Overdue: 0, Draft: 0 };
+    active.forEach((inv) => {
+      counts[invoiceStatus(inv, now)] += 1;
     });
-
-    const totalGST = totalSGST + totalCGST + totalIGST;
+    const unpaidInvoices = counts.Unpaid + counts.Partial;
+    const counted = counts.Paid + unpaidInvoices + counts.Draft + counts.Overdue;
+    const gst = gstSummary(bills);
 
     return {
-      totalInvoices,
-      totalRevenue,
-      paidInvoices,
+      totalInvoices: active.length,
+      // Money actually received (TDS is settled but not received).
+      totalRevenue: bills.reduce((sum, inv) => sum + Math.max(0, settledAmount(inv) - num(inv.tdsAmount)), 0),
+      paidInvoices: counts.Paid,
       unpaidInvoices,
-      draftInvoices,
-      overdueInvoices,
-      paymentRate, // Percentage of Paid vs Total
-      totalExpenses,
-      totalCustomers,
-      totalBillAmount,
-      totalOutstanding,
-      totalGST,
-      totalSGST,
-      totalCGST,
-      totalIGST,
-      financialYearLabel: 'Current FY' // Placeholder
+      draftInvoices: counts.Draft,
+      overdueInvoices: counts.Overdue,
+      paymentRate: counted > 0 ? (counts.Paid / counted) * 100 : 0,
+      totalExpenses: (expenses || []).reduce((sum, expense) => sum + num(expense.amount), 0),
+      totalCustomers: allCustomers ? allCustomers.length : 0,
+      totalBillAmount: bills.reduce((sum, inv) => sum + invoiceTotal(inv), 0),
+      totalOutstanding: bills.reduce((sum, inv) => sum + invoiceBalance(inv), 0),
+      totalGST: gst.total,
+      totalSGST: gst.sgst,
+      totalCGST: gst.cgst,
+      totalIGST: gst.igst,
+      financialYearLabel: fy.label,
     };
   }, [allInvoices, allCustomers, expenses]);
 
@@ -166,6 +104,8 @@ const Dashboard = () => {
 // Header Section
 const Header = () => {
   const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
+  const firstName = String(user?.displayName || "").trim().split(/\s+/)[0];
 
   const handleCreateInvoice = () => {
     navigate("/invoices", { state: { action: "create" } });
@@ -175,7 +115,7 @@ const Header = () => {
     <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-2">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, Admin!
+          Welcome back{firstName ? `, ${firstName}` : ""}!
         </h1>
         <p className="text-sm text-gray-600 mt-1">
           Here's what's happening with your business today.
@@ -502,21 +442,21 @@ const RecentActivity = memo(({ invoices = [], payments = [] }) => {
         // Get activity date for invoice A
         let dateA;
         if (a.status === "Paid" || a.status === "paid") {
-          dateA = new Date(a.paymentDate || a.updatedAt?.toDate?.() || a.updatedAt || a.createdAt?.toDate?.() || a.createdAt || a.invoiceDate || 0);
+          dateA = toDate(a.paymentDate || a.updatedAt?.toDate?.() || a.updatedAt || a.createdAt?.toDate?.() || a.createdAt || a.invoiceDate || 0);
         } else if (a.status === "Draft" || a.status === "draft") {
-          dateA = new Date(a.updatedAt?.toDate?.() || a.updatedAt || a.createdAt?.toDate?.() || a.createdAt || a.invoiceDate || 0);
+          dateA = toDate(a.updatedAt?.toDate?.() || a.updatedAt || a.createdAt?.toDate?.() || a.createdAt || a.invoiceDate || 0);
         } else {
-          dateA = new Date(a.createdAt?.toDate?.() || a.createdAt || a.invoiceDate || 0);
+          dateA = toDate(a.createdAt?.toDate?.() || a.createdAt || a.invoiceDate || 0);
         }
 
         // Get activity date for invoice B
         let dateB;
         if (b.status === "Paid" || b.status === "paid") {
-          dateB = new Date(b.paymentDate || b.updatedAt?.toDate?.() || b.updatedAt || b.createdAt?.toDate?.() || b.createdAt || b.invoiceDate || 0);
+          dateB = toDate(b.paymentDate || b.updatedAt?.toDate?.() || b.updatedAt || b.createdAt?.toDate?.() || b.createdAt || b.invoiceDate || 0);
         } else if (b.status === "Draft" || b.status === "draft") {
-          dateB = new Date(b.updatedAt?.toDate?.() || b.updatedAt || b.createdAt?.toDate?.() || b.createdAt || b.invoiceDate || 0);
+          dateB = toDate(b.updatedAt?.toDate?.() || b.updatedAt || b.createdAt?.toDate?.() || b.createdAt || b.invoiceDate || 0);
         } else {
-          dateB = new Date(b.createdAt?.toDate?.() || b.createdAt || b.invoiceDate || 0);
+          dateB = toDate(b.createdAt?.toDate?.() || b.createdAt || b.invoiceDate || 0);
         }
 
         return dateB - dateA;
@@ -530,21 +470,26 @@ const RecentActivity = memo(({ invoices = [], payments = [] }) => {
 
       if (inv.status === "Paid" || inv.status === "paid") {
         // For paid invoices, use the payment date (when it was marked as paid)
-        activityDate = new Date(
+        // paymentDate on the invoice has no time of day; the latest payment record does.
+        const lastPayment = safePayments
+          .filter((p) => p.invoiceId === inv.id && p.createdAt)
+          .map((p) => toDate(p.createdAt))
+          .sort((a, b) => b - a)[0];
+        activityDate = lastPayment || toDate(
           inv.paymentDate || inv.updatedAt?.toDate?.() || inv.updatedAt || inv.createdAt?.toDate?.() || inv.createdAt || inv.invoiceDate
         );
         action = "marked as paid";
         color = "bg-green-500";
       } else if (inv.status === "Draft" || inv.status === "draft") {
         // For drafts, use the last updated date (when it was saved/modified)
-        activityDate = new Date(
+        activityDate = toDate(
           inv.updatedAt?.toDate?.() || inv.updatedAt || inv.createdAt?.toDate?.() || inv.createdAt || inv.invoiceDate
         );
         action = "saved as draft";
         color = "bg-yellow-500";
       } else {
         // For created/unpaid invoices, use the creation date
-        activityDate = new Date(
+        activityDate = toDate(
           inv.createdAt?.toDate?.() || inv.createdAt || inv.invoiceDate
         );
         action = "created";
@@ -566,10 +511,10 @@ const RecentActivity = memo(({ invoices = [], payments = [] }) => {
     // Add recent payments
     const recentPayments = [...safePayments]
       .sort((a, b) => {
-        const dateA = new Date(
+        const dateA = toDate(
           a.createdAt?.toDate?.() || a.createdAt || a.paymentDate || 0
         );
-        const dateB = new Date(
+        const dateB = toDate(
           b.createdAt?.toDate?.() || b.createdAt || b.paymentDate || 0
         );
         return dateB - dateA;
@@ -577,7 +522,7 @@ const RecentActivity = memo(({ invoices = [], payments = [] }) => {
       .slice(0, 3);
 
     recentPayments.forEach((payment) => {
-      const paymentDate = new Date(
+      const paymentDate = toDate(
         payment.createdAt?.toDate?.() ||
         payment.createdAt ||
         payment.paymentDate ||

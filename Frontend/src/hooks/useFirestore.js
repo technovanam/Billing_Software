@@ -4,8 +4,6 @@ import {
   doc,
   getDocs,
   getDoc,
-  query,
-  where,
   addDoc,
   setDoc,
   updateDoc,
@@ -13,35 +11,19 @@ import {
   onSnapshot,
   serverTimestamp,
   Timestamp,
+  writeBatch,
 } from "firebase/firestore";
-import { auth, db } from "../lib/firebase/config";
+import { db, auth } from "../lib/firebase/config";
 import { AuthContext } from "../context/AuthContext";
-import { listCashierStatus, setCashierPin, setCashierActive, removeCashierAccess } from "../services/posService";
+import { cacheKeyFor, readCache, writeCache } from "../lib/dataCache";
+import { DATED_COLLECTIONS, lockViolation } from "../utils/yearEnd.js";
 
-// Cashier PINs live only as hashes on the backend; never store them here.
-const stripPins = (list) => (Array.isArray(list) ? list.map(({ pin, ...c }) => c) : []);
-
-// Get store owner UID: from Firebase Auth user, or from cashier's businessUid token claim.
-// Returns null when no real session exists. Never falls back to localStorage-guessed UIDs.
+// Signed-in business owner's UID, or null when no real session exists.
+// Never falls back to localStorage-guessed UIDs.
 function useUserId() {
   const { user } = useContext(AuthContext);
-  // Cashiers act on their business's data, not their own uid.
-  if (user?.role === "cashier" && user.businessUid) return user.businessUid;
-  if (user?.uid) return user.uid;
-
-  // Cashier session written by posService.cashierLogin() — safe, tied to a real device token.
-  try {
-    const sessionStr = localStorage.getItem("pos_cashier_session");
-    if (sessionStr) {
-      const session = JSON.parse(sessionStr);
-      if (session?.ownerUid) return session.ownerUid;
-    }
-  } catch (err) {
-    console.warn("useUserId cashier session read error:", err);
-  }
-
-  // No authenticated session — return null so callers guard correctly.
-  return null;
+  // The business whose books are open: your own, or one you work on as a team member.
+  return user?.businessUid || user?.uid || null;
 }
 
 // Firestore doc snapshot -> plain object with id; convert Timestamps to string dates for UI consistency
@@ -52,7 +34,7 @@ function docToItem(d) {
   for (const [k, v] of Object.entries(data)) {
     if (v && typeof v.toDate === "function") {
       const dVal = v.toDate();
-      if (["invoiceDate", "dueDate", "poDate", "dcDate", "startOn", "endsOn", "nextRunDate", "lastRunDate"].includes(k)) {
+      if (["invoiceDate", "dueDate", "poDate", "dcDate", "challanDate", "expenseDate", "startOn", "endsOn", "nextRunDate", "lastRunDate", "voucherDate", "linkedDate", "supplierBillDate", "paidDate"].includes(k)) {
         const year = dVal.getFullYear();
         const month = String(dVal.getMonth() + 1).padStart(2, "0");
         const day = String(dVal.getDate()).padStart(2, "0");
@@ -69,6 +51,112 @@ function docToItem(d) {
 function snapshotToItems(snapshot) {
   if (!snapshot?.docs) return [];
   return snapshot.docs.map((d) => docToItem(d)).filter(Boolean);
+}
+
+// ── Audit trail (edit log) ───────────────────────────────────────────────
+// Every create / update / delete made through these hooks is appended to
+// users/{uid}/auditTrail (append-only in Firestore rules), with who, when and
+// the before/after values — the edit log required for company books since
+// April 2023. Logging never blocks or fails the actual save.
+const AUDIT_COLLECTION = "auditTrail";
+
+function auditSafe(value) {
+  if (value == null) return null;
+  const json = JSON.stringify(value, (k, v) => {
+    if (v && typeof v === "object" && typeof v.toDate === "function") return v.toDate().toISOString();
+    if (v && typeof v === "object" && v._methodName) return "(server time)";
+    if (v === undefined) return null;
+    return v;
+  });
+  // Keep log entries small; very large documents keep their field names only.
+  if (json.length > 200000) return { _truncated: true, fields: Object.keys(value) };
+  return JSON.parse(json);
+}
+
+function auditSummary(data) {
+  if (!data) return "";
+  return String(data.invoiceNumber || data.voucherNumber || data.challanNumber || data.profileName || data.name || data.title || data.category || data.companyName || "").slice(0, 120);
+}
+
+async function writeAudit(uid, action, collectionName, docId, { before = null, after = null } = {}) {
+  if (!uid || collectionName === AUDIT_COLLECTION) return;
+  try {
+    const actor = auth.currentUser;
+    await addDoc(collection(db, "users", uid, AUDIT_COLLECTION), {
+      at: serverTimestamp(),
+      clientAt: new Date().toISOString(),
+      by: actor?.uid || uid,
+      byEmail: actor?.email || "",
+      action,
+      collection: collectionName,
+      docId: String(docId || ""),
+      summary: auditSummary(after || before),
+      before: auditSafe(before),
+      after: auditSafe(after),
+    });
+  } catch (err) {
+    console.warn("Audit log entry skipped:", err.message || err);
+  }
+}
+
+async function readForAudit(uid, collectionName, id) {
+  try {
+    const snap = await getDoc(doc(db, "users", uid, collectionName, id));
+    return snap.exists() ? snap.data() : null;
+  } catch {
+    return null;
+  }
+}
+
+// Year-end lock (settings/booksLock.lockedUpTo): vouchers dated in a closed
+// year can't be added, changed or deleted until the year is reopened.
+const LOCK_DOC = "booksLock";
+const lockCache = new Map();
+async function lockedUpTo(uid) {
+  const hit = lockCache.get(uid);
+  if (hit && Date.now() - hit.at < 30000) return hit.value;
+  let value = "";
+  try {
+    const snap = await getDoc(doc(db, "users", uid, "settings", LOCK_DOC));
+    value = snap.exists() ? snap.data().lockedUpTo || "" : "";
+  } catch {
+    value = hit?.value || "";
+  }
+  lockCache.set(uid, { at: Date.now(), value });
+  return value;
+}
+async function guardLock(uid, collectionName, change) {
+  if (!DATED_COLLECTIONS.has(collectionName)) return;
+  const why = lockViolation(await lockedUpTo(uid), collectionName, change);
+  if (why) throw new Error(why);
+}
+
+async function addDocA(uid, collectionName, data) {
+  await guardLock(uid, collectionName, { after: data });
+  const ref = await addDoc(collection(db, "users", uid, collectionName), data);
+  writeAudit(uid, "create", collectionName, ref.id, { after: data });
+  return ref;
+}
+
+async function updateDocA(uid, collectionName, id, patch) {
+  const before = await readForAudit(uid, collectionName, id);
+  await guardLock(uid, collectionName, { before, patch });
+  await updateDoc(doc(db, "users", uid, collectionName, id), patch);
+  writeAudit(uid, "update", collectionName, id, { before, after: { ...(before || {}), ...patch } });
+}
+
+async function deleteDocA(uid, collectionName, id) {
+  const before = await readForAudit(uid, collectionName, id);
+  await guardLock(uid, collectionName, { before });
+  await deleteDoc(doc(db, "users", uid, collectionName, id));
+  writeAudit(uid, "delete", collectionName, id, { before });
+}
+
+async function setDocA(uid, collectionName, id, data) {
+  const before = await readForAudit(uid, collectionName, id);
+  await guardLock(uid, collectionName, { before, after: data });
+  await setDoc(doc(db, "users", uid, collectionName, id), data);
+  writeAudit(uid, before ? "update" : "create", collectionName, id, { before, after: data });
 }
 
 // Optional: convert date-like fields to Firestore Timestamp when writing (store as-is for simplicity)
@@ -177,93 +265,68 @@ export const useDashboard = () => {
   return { stats, error: null, refetch };
 };
 
-// Customers — stored in users/{uid}/customers (separate "db" per user)
-export const useCustomers = (options = {}) => {
+// Live list of users/{uid}/{name}. Every hook instance sees writes made
+// anywhere in the app (another page, the chat) without a reload. With
+// { cache: true } the list is also kept in a per-user localStorage cache so it
+// shows instantly on reload. An empty snapshot is a real answer and replaces
+// the cache (e.g. after deleting the last item).
+function useLiveCollection(name, { cache = false } = {}) {
   const uid = useUserId();
-  // Live listeners need a real Firebase login; Firestore rules reject cached/fallback uids
-  const isSignedIn = Boolean(useContext(AuthContext).user?.uid);
-  const [all, setAll] = useState(() => {
-    try {
-      const cached = localStorage.getItem("store_customers_cache");
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
+  const key = cache ? cacheKeyFor(name, uid) : null;
+  const [all, setAll] = useState(() => readCache(key));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const refetch = useCallback(async () => {
     if (!uid) {
+      setAll([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const snap = await getDocs(collection(db, "users", uid, "customers"));
-      const list = snapshotToItems(snap);
-      if (list.length > 0) {
-        setAll(list);
-        localStorage.setItem("store_customers_cache", JSON.stringify(list));
-      }
+      const list = snapshotToItems(await getDocs(collection(db, "users", uid, name)));
+      setAll(list);
+      writeCache(key, list);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [uid]);
+  }, [uid, name, key]);
 
-  // Real-time live synchronization for Customers
   useEffect(() => {
-    // Listen for local custom customer update events
-    const handleLocalUpdate = (e) => {
-      try {
-        const cached = localStorage.getItem("store_customers_cache");
-        if (cached) {
-          setAll(JSON.parse(cached));
-        } else if (e.detail?.customer) {
-          setAll((prev) => {
-            if (prev.some((c) => c.id === e.detail.customer.id)) return prev;
-            return [...prev, e.detail.customer];
-          });
-        }
-      } catch (_) {}
-    };
-    window.addEventListener("store_customer_added", handleLocalUpdate);
-    window.addEventListener("storage", handleLocalUpdate);
-
-    if (!uid || !isSignedIn) {
+    // Account switched: drop whatever the previous account had on screen.
+    setAll(readCache(key));
+    if (!uid) {
       setLoading(false);
-      return () => {
-        window.removeEventListener("store_customer_added", handleLocalUpdate);
-        window.removeEventListener("storage", handleLocalUpdate);
-      };
+      return undefined;
     }
-
     setLoading(true);
     const unsubscribe = onSnapshot(
-      collection(db, "users", uid, "customers"),
+      collection(db, "users", uid, name),
       (snapshot) => {
         const list = snapshotToItems(snapshot);
-        if (list.length > 0) {
-          setAll(list);
-          localStorage.setItem("store_customers_cache", JSON.stringify(list));
-        }
+        setAll(list);
+        writeCache(key, list);
         setLoading(false);
       },
       (err) => {
-        console.warn("Real-time customers listener warning:", err);
+        console.warn(`Real-time ${name} listener warning:`, err);
         setError(err.message);
         setLoading(false);
       }
     );
-    return () => {
-      unsubscribe();
-      window.removeEventListener("store_customer_added", handleLocalUpdate);
-      window.removeEventListener("storage", handleLocalUpdate);
-    };
-  }, [uid, isSignedIn]);
+    return unsubscribe;
+  }, [uid, name, key]);
+
+  return { uid, all, setAll, loading, error, refetch };
+}
+
+// Customers — stored in users/{uid}/customers (separate "db" per user)
+export const useCustomers = (options = {}) => {
+  const { uid, all, setAll, loading, error, refetch } = useLiveCollection("customers", { cache: true });
 
   const { data, pagination } = applyListView(all, options);
   const [view, setView] = useState(data);
@@ -275,47 +338,21 @@ export const useCustomers = (options = {}) => {
     setPageInfo(res.pagination);
   }, [all, options.search, options.page, options.limit, options.sortBy, options.sortDirection, options.status]);
 
+  // Reports failure instead of pretending the customer was saved.
   const addCustomer = useCallback(
     async (payload) => {
+      if (!uid) return { success: false, error: "You are signed out. Please sign in again." };
       const nextSerialNumber = String(all.length + 1).padStart(2, "0");
-      const cleanPayload = sanitizeForFirestore(payload);
-      const newCustObj = {
-        id: `cust_${Date.now()}`,
-        serialNumber: nextSerialNumber,
-        ...payload,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Always update local cache & state first for immediate UI reactivity
-      setAll((prev) => {
-        const updated = [...prev, newCustObj];
-        try {
-          localStorage.setItem("store_customers_cache", JSON.stringify(updated));
-        } catch (_) {}
-        return updated;
-      });
-
-      // Dispatch custom event across app
-      window.dispatchEvent(
-        new CustomEvent("store_customer_added", { detail: { customer: newCustObj } })
-      );
-
-      if (!uid) return { success: true, id: newCustObj.id };
-
       try {
-        const data = {
+        const ref = await addDocA(uid, "customers", {
           serialNumber: nextSerialNumber,
-          ...cleanPayload,
+          ...sanitizeForFirestore(payload),
           createdAt: serverTimestamp(),
-        };
-        const ref = await addDoc(collection(db, "users", uid, "customers"), data);
-        setAll((prev) =>
-          prev.map((c) => (c.id === newCustObj.id ? { ...c, id: ref.id } : c))
-        );
+        });
         return { success: true, id: ref.id };
       } catch (err) {
-        console.warn("useFirestore addCustomer online error (cached locally):", err);
-        return { success: true, id: newCustObj.id, offline: true };
+        console.error("addCustomer failed:", err);
+        return { success: false, error: err.message };
       }
     },
     [uid, all.length]
@@ -324,31 +361,31 @@ export const useCustomers = (options = {}) => {
   const editCustomer = useCallback(
     async (id, patch) => {
       if (!uid) return { success: false };
-      await updateDoc(doc(db, "users", uid, "customers", id), patch);
+      await updateDocA(uid, "customers", id, patch);
       setAll((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
       return { success: true };
     },
-    [uid]
+    [uid, setAll]
   );
 
+  // Delete and renumber in one atomic batch, so a failure leaves nothing half done.
   const removeCustomer = useCallback(
     async (id) => {
       if (!uid) return { success: false };
-      await deleteDoc(doc(db, "users", uid, "customers", id));
-      const filtered = all.filter((c) => c.id !== id);
-      const renumbered = filtered.map((c, index) => ({
-        ...c,
-        serialNumber: String(index + 1).padStart(2, "0"),
-      }));
-      for (let i = 0; i < renumbered.length; i++) {
-        await updateDoc(doc(db, "users", uid, "customers", renumbered[i].id), {
-          serialNumber: renumbered[i].serialNumber,
-        });
-      }
+      const renumbered = all
+        .filter((c) => c.id !== id)
+        .map((c, index) => ({ ...c, serialNumber: String(index + 1).padStart(2, "0") }));
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "users", uid, "customers", id));
+      writeAudit(uid, "delete", "customers", id, { before: (all || []).find((c) => c.id === id) || null });
+      renumbered.forEach((c) => {
+        batch.update(doc(db, "users", uid, "customers", c.id), { serialNumber: c.serialNumber });
+      });
+      await batch.commit();
       setAll(renumbered);
       return { success: true };
     },
-    [uid, all]
+    [uid, all, setAll]
   );
 
   return { customers: view, allCustomers: all, loading, error, pagination: pageInfo, addCustomer, editCustomer, removeCustomer, refetch };
@@ -356,98 +393,7 @@ export const useCustomers = (options = {}) => {
 
 // Invoices — users/{uid}/invoices
 export const useInvoices = (options = {}) => {
-  const uid = useUserId();
-  // Live listeners need a real Firebase login; Firestore rules reject cached/fallback uids
-  const authUser = useContext(AuthContext).user;
-  const isSignedIn = Boolean(authUser?.uid);
-  // Cashiers may read POS bills only (Firestore rules); query and cache accordingly.
-  const isCashier = authUser?.role === "cashier";
-  const cacheKey = isCashier ? "store_invoices_cache_pos" : "store_invoices_cache";
-  const invoicesSource = (id) =>
-    isCashier
-      ? query(collection(db, "users", id, "invoices"), where("source", "==", "POS Counter Terminal"))
-      : collection(db, "users", id, "invoices");
-  const [all, setAll] = useState(() => {
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      return cached ? JSON.parse(cached) : [];
-    } catch {
-      return [];
-    }
-  });
-  const [loading, setLoading] = useState(true);
-  const [invError, setInvError] = useState(null);
-
-  const refetch = useCallback(async () => {
-    if (!uid) {
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setInvError(null);
-    try {
-      const snap = await getDocs(invoicesSource(uid));
-      const list = snapshotToItems(snap);
-      if (list.length > 0) {
-        setAll(list);
-        localStorage.setItem(cacheKey, JSON.stringify(list));
-      }
-    } catch (err) {
-      setInvError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [uid]);
-
-  // Real-time live synchronization for Invoices
-  useEffect(() => {
-    const handleLocalInvUpdate = (e) => {
-      try {
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          setAll(JSON.parse(cached));
-        } else if (e.detail?.invoice) {
-          setAll((prev) => {
-            if (prev.some((i) => i.id === e.detail.invoice.id)) return prev;
-            return [e.detail.invoice, ...prev];
-          });
-        }
-      } catch (_) {}
-    };
-    window.addEventListener("store_invoice_added", handleLocalInvUpdate);
-    window.addEventListener("storage", handleLocalInvUpdate);
-
-    if (!uid || !isSignedIn) {
-      setLoading(false);
-      return () => {
-        window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
-        window.removeEventListener("storage", handleLocalInvUpdate);
-      };
-    }
-
-    setLoading(true);
-    const unsubscribe = onSnapshot(
-      invoicesSource(uid),
-      (snapshot) => {
-        const list = snapshotToItems(snapshot);
-        if (list.length > 0) {
-          setAll(list);
-          localStorage.setItem(cacheKey, JSON.stringify(list));
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.warn("Real-time invoices listener warning:", err);
-        setInvError(err.message);
-        setLoading(false);
-      }
-    );
-    return () => {
-      unsubscribe();
-      window.removeEventListener("store_invoice_added", handleLocalInvUpdate);
-      window.removeEventListener("storage", handleLocalInvUpdate);
-    };
-  }, [uid, isSignedIn, isCashier]);
+  const { uid, all, setAll, loading, error: invError, refetch } = useLiveCollection("invoices", { cache: true });
 
   const fyInvoices = useMemo(() => {
     return all.filter((inv) => isInCurrentFY(inv.invoiceDate || inv.createdAt));
@@ -508,42 +454,21 @@ export const useInvoices = (options = {}) => {
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   };
 
+  // Never writes to a placeholder store; reports failure to the caller.
   const addInvoice = useCallback(
     async (payload) => {
-      const targetUid = uid || "default_store";
+      if (!uid) return { success: false, error: "You are signed out. Please sign in again." };
       const token = payload.paymentToken || generateToken();
-      const payloadWithMeta = { ...payload, userId: targetUid, paymentToken: token };
-      const cleanPayload = sanitizeForFirestore(payloadWithMeta);
-      const newInvObj = {
-        id: `inv_${Date.now()}`,
-        ...payloadWithMeta,
-        createdAt: new Date().toISOString(),
-      };
-
-      // 1. Immediately update state and storage for instant reactivity
-      setAll((prev) => {
-        const updated = [newInvObj, ...prev];
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify(updated));
-        } catch (_) {}
-        return updated;
-      });
-
-      // 2. Dispatch event across app
-      window.dispatchEvent(
-        new CustomEvent("store_invoice_added", { detail: { invoice: newInvObj } })
-      );
-
-      // 3. Save to Firestore — throws on failure so the caller can queue it
-      const data = {
-        ...cleanPayload,
-        createdAt: serverTimestamp(),
-      };
-      const ref = await addDoc(collection(db, "users", targetUid, "invoices"), data);
-      setAll((prev) =>
-        prev.map((i) => (i.id === newInvObj.id ? { ...i, id: ref.id } : i))
-      );
-      return { success: true, id: ref.id };
+      try {
+        const ref = await addDocA(uid, "invoices", {
+          ...sanitizeForFirestore({ ...payload, userId: uid, paymentToken: token }),
+          createdAt: serverTimestamp(),
+        });
+        return { success: true, id: ref.id };
+      } catch (err) {
+        console.error("addInvoice failed:", err);
+        return { success: false, error: err.message };
+      }
     },
     [uid]
   );
@@ -555,21 +480,21 @@ export const useInvoices = (options = {}) => {
       const token = patch.paymentToken || existing?.paymentToken || generateToken();
       const patchWithMeta = { ...patch, userId: uid, paymentToken: token };
       const data = sanitizeForFirestore(patchWithMeta);
-      await updateDoc(doc(db, "users", uid, "invoices", id), data);
+      await updateDocA(uid, "invoices", id, data);
       setAll((prev) => prev.map((i) => (i.id === id ? { ...i, ...patchWithMeta } : i)));
       return { success: true };
     },
-    [uid, all]
+    [uid, all, setAll]
   );
 
   const removeInvoice = useCallback(
     async (id) => {
       if (!uid) return { success: false };
-      await deleteDoc(doc(db, "users", uid, "invoices", id));
+      await deleteDocA(uid, "invoices", id);
       setAll((prev) => prev.filter((i) => i.id !== id));
       return { success: true };
     },
-    [uid]
+    [uid, setAll]
   );
 
   return { invoices: view, allInvoices: all, loading, error: invError, pagination: pageInfo, addInvoice, editInvoice, removeInvoice, refetch };
@@ -634,7 +559,7 @@ export const useChallans = (options = {}) => {
     async (payload) => {
       if (!uid) return { success: false };
       const data = sanitizeForFirestore(payload);
-      const ref = await addDoc(collection(db, "users", uid, "deliveryChallans"), { ...data, createdAt: serverTimestamp() });
+      const ref = await addDocA(uid, "deliveryChallans", { ...data, createdAt: serverTimestamp() });
       setAll((prev) => [{ id: ref.id, ...payload }, ...prev]);
       return { success: true, id: ref.id };
     },
@@ -645,7 +570,7 @@ export const useChallans = (options = {}) => {
     async (id, patch) => {
       if (!uid) return { success: false };
       const data = sanitizeForFirestore(patch);
-      await updateDoc(doc(db, "users", uid, "deliveryChallans", id), data);
+      await updateDocA(uid, "deliveryChallans", id, data);
       setAll((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
       return { success: true };
     },
@@ -655,7 +580,7 @@ export const useChallans = (options = {}) => {
   const removeChallan = useCallback(
     async (id) => {
       if (!uid) return { success: false };
-      await deleteDoc(doc(db, "users", uid, "deliveryChallans", id));
+      await deleteDocA(uid, "deliveryChallans", id);
       setAll((prev) => prev.filter((c) => c.id !== id));
       return { success: true };
     },
@@ -665,127 +590,190 @@ export const useChallans = (options = {}) => {
   return { challans: view, allChallans: all, loading, error, pagination: pageInfo, addChallan, editChallan, removeChallan, refetch };
 };
 
-// Payments — users/{uid}/payments
+// Payments — users/{uid}/payments (live)
 export const usePayments = (invoiceId) => {
-  const uid = useUserId();
-  const [all, setAll] = useState([]);
-  const [payments, setPayments] = useState([]);
-
-  const refetch = useCallback(async () => {
-    if (!uid) {
-      setAll([]);
-      setPayments([]);
-      return;
-    }
-    try {
-      const snap = await getDocs(collection(db, "users", uid, "payments"));
-      const list = snapshotToItems(snap);
-      setAll(list);
-      setPayments(invoiceId ? list.filter((p) => p.invoiceId === invoiceId) : list);
-    } catch {
-      setAll([]);
-      setPayments([]);
-    }
-  }, [uid, invoiceId]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
+  const { uid, all, refetch } = useLiveCollection("payments");
+  const payments = useMemo(() => (invoiceId ? all.filter((p) => p.invoiceId === invoiceId) : all), [all, invoiceId]);
 
   const addPayment = useCallback(
     async (payload) => {
       if (!uid) return { success: false };
       const data = sanitizeForFirestore(payload);
-      const ref = await addDoc(collection(db, "users", uid, "payments"), { ...data, createdAt: serverTimestamp() });
-      const item = { id: ref.id, ...payload };
-      setAll((prev) => [item, ...prev]);
-      if (!invoiceId || payload.invoiceId === invoiceId) setPayments((prev) => [item, ...prev]);
+      const ref = await addDocA(uid, "payments", { ...data, createdAt: serverTimestamp() });
       return { success: true, id: ref.id };
     },
-    [uid, invoiceId]
+    [uid]
   );
 
   return { payments, error: null, addPayment, refetch };
 };
 
+// Current financial year's payments (live).
 export const useAllPayments = () => {
-  const uid = useUserId();
-  const [payments, setPayments] = useState([]);
-
-  const refetch = useCallback(async () => {
-    if (!uid) {
-      setPayments([]);
-      return;
-    }
-    try {
-      const snap = await getDocs(collection(db, "users", uid, "payments"));
-      const list = snapshotToItems(snap);
-      setPayments(list.filter((p) => isInCurrentFY(p.paymentDate || p.createdAt)));
-    } catch {
-      setPayments([]);
-    }
-  }, [uid]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
+  const { all, refetch } = useLiveCollection("payments");
+  const payments = useMemo(() => all.filter((p) => isInCurrentFY(p.paymentDate || p.createdAt)), [all]);
   return { payments, error: null, refetch };
 };
 
-// Expenses - users/{uid}/expenses
-export const useExpenses = () => {
-  const uid = useUserId();
-  const [expenses, setExpenses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const refetch = useCallback(async () => {
-    if (!uid) {
-      setExpenses([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setError(null);
-    try {
-      const snap = await getDocs(collection(db, "users", uid, "expenses"));
-      setExpenses(snapshotToItems(snap).filter((expense) => isInCurrentFY(expense.expenseDate || expense.createdAt)));
-    } catch (err) {
-      setError(err.message);
-      setExpenses([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [uid]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
+// Expenses - users/{uid}/expenses (live)
+// Current financial year only, unless { allYears: true } (the chatbot compares years).
+export const useExpenses = (options = {}) => {
+  const { uid, all, loading, error, refetch } = useLiveCollection("expenses");
+  const expenses = useMemo(
+    () => (options.allYears ? all : all.filter((expense) => isInCurrentFY(expense.expenseDate || expense.createdAt))),
+    [all, options.allYears]
+  );
 
   const addExpense = useCallback(async (payload) => {
     if (!uid) return { success: false };
     const data = sanitizeForFirestore(payload);
-    const ref = await addDoc(collection(db, "users", uid, "expenses"), { ...data, createdAt: serverTimestamp() });
-    setExpenses((prev) => [{ id: ref.id, ...payload }, ...prev]);
+    const ref = await addDocA(uid, "expenses", { ...data, createdAt: serverTimestamp() });
     return { success: true, id: ref.id };
   }, [uid]);
 
   const editExpense = useCallback(async (id, patch) => {
     if (!uid) return { success: false };
-    await updateDoc(doc(db, "users", uid, "expenses", id), sanitizeForFirestore(patch));
-    setExpenses((prev) => prev.map((expense) => (expense.id === id ? { ...expense, ...patch } : expense)));
+    await updateDocA(uid, "expenses", id, sanitizeForFirestore(patch));
     return { success: true };
   }, [uid]);
 
   const removeExpense = useCallback(async (id) => {
     if (!uid) return { success: false };
-    await deleteDoc(doc(db, "users", uid, "expenses", id));
-    setExpenses((prev) => prev.filter((expense) => expense.id !== id));
+    await deleteDocA(uid, "expenses", id);
     return { success: true };
   }, [uid]);
 
   return { expenses, loading, error, addExpense, editExpense, removeExpense, refetch };
+};
+
+// GST vouchers (credit notes, purchases, debit notes), journals and
+// suppliers — users/{uid}/{collectionName}, live. See utils/vouchers.js.
+// Patch a document in any of the user's collections (e.g. mark an order converted).
+export const usePatchDoc = () => {
+  const uid = useUserId();
+  return useCallback(
+    async (collectionName, id, patch) => {
+      if (!uid || !collectionName || !id) return { success: false, error: "Nothing to update" };
+      try {
+        await updateDocA(uid, collectionName, id, { ...sanitizeForFirestore(patch), updatedAt: serverTimestamp() });
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    },
+    [uid]
+  );
+};
+
+export const useVouchers = (collectionName) => {
+  const { uid, all, loading, error, refetch } = useLiveCollection(collectionName);
+
+  const addVoucher = useCallback(async (payload) => {
+    if (!uid) return { success: false, error: "Not signed in" };
+    try {
+      const ref = await addDocA(uid, collectionName, {
+        ...sanitizeForFirestore(payload),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return { success: true, id: ref.id };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [uid, collectionName]);
+
+  const editVoucher = useCallback(async (id, patch) => {
+    if (!uid) return { success: false, error: "Not signed in" };
+    try {
+      await updateDocA(uid, collectionName, id, { ...sanitizeForFirestore(patch), updatedAt: serverTimestamp() });
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [uid, collectionName]);
+
+  const removeVoucher = useCallback(async (id) => {
+    if (!uid) return { success: false, error: "Not signed in" };
+    try {
+      await deleteDocA(uid, collectionName, id);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  }, [uid, collectionName]);
+
+  return { vouchers: all, loading, error, addVoucher, editVoucher, removeVoucher, refetch };
+};
+
+// Everything the books (Day Book, ledgers, Trial Balance, P&L, Balance Sheet)
+// and GST returns are built from — all years, live.
+export const useBooksData = () => {
+  const invoices = useLiveCollection("invoices");
+  const payments = useLiveCollection("payments");
+  const expenses = useLiveCollection("expenses");
+  const creditNotes = useLiveCollection("creditNotes");
+  const purchases = useLiveCollection("purchases");
+  const debitNotes = useLiveCollection("debitNotes");
+  const journals = useLiveCollection("journals");
+  const customers = useLiveCollection("customers");
+  const suppliers = useLiveCollection("suppliers");
+  const products = useLiveCollection("products");
+  const stockJournals = useLiveCollection("stockJournals");
+  const payrollRuns = useLiveCollection("payrollRuns");
+  const ledgers = useLiveCollection("ledgers");
+  const advances = useLiveCollection("advanceReceipts");
+  const parts = [ledgers, advances, invoices, payments, expenses, creditNotes, purchases, debitNotes, journals, customers, suppliers, products, stockJournals, payrollRuns];
+  return {
+    invoices: invoices.all,
+    payments: payments.all,
+    expenses: expenses.all,
+    creditNotes: creditNotes.all,
+    purchases: purchases.all,
+    debitNotes: debitNotes.all,
+    journals: journals.all,
+    customers: customers.all,
+    suppliers: suppliers.all,
+    products: products.all,
+    stockJournals: stockJournals.all,
+    payrollRuns: payrollRuns.all,
+    accounts: ledgers.all.filter((l) => l.kind === "account"),
+    advances: advances.all,
+    loading: parts.some((p) => p.loading),
+  };
+};
+
+// Godowns (stock locations). "Main Location" always exists.
+// Chart of accounts: ledger masters with group and opening balance
+// (users/{uid}/ledgers, kind "account"). `moneyAccounts` are bank / cash ledgers.
+export const useAccounts = () => {
+  const { vouchers, addVoucher, editVoucher, removeVoucher, ...rest } = useVouchers("ledgers");
+  const accounts = useMemo(() => vouchers.filter((v) => v.kind === "account").sort((a, b) => String(a.name).localeCompare(String(b.name))), [vouchers]);
+  const moneyAccounts = useMemo(() => accounts.filter((a) => a.group === "Bank Accounts" || a.group === "Cash-in-Hand").map((a) => a.name), [accounts]);
+  return { accounts, moneyAccounts, addAccount: (d) => addVoucher({ ...d, kind: "account" }), editAccount: editVoucher, removeAccount: removeVoucher, ...rest };
+};
+
+// Price lists (price levels): { name, discountPct, rates: { productId: rate } }.
+export const usePriceLists = () => {
+  const { vouchers, addVoucher, editVoucher, removeVoucher, ...rest } = useVouchers("priceLists");
+  const priceLists = useMemo(() => [...vouchers].sort((a, b) => String(a.name).localeCompare(String(b.name))), [vouchers]);
+  return { priceLists, addPriceList: addVoucher, editPriceList: editVoucher, removePriceList: removeVoucher, ...rest };
+};
+
+export const useGodowns = () => {
+  const { vouchers, addVoucher, removeVoucher, ...rest } = useVouchers("godowns");
+  const names = useMemo(() => ["Main Location", ...vouchers.map((g) => g.name).filter((x) => x && x !== "Main Location").sort((a, b) => a.localeCompare(b))], [vouchers]);
+  return { godowns: vouchers, names, addGodown: addVoucher, removeGodown: removeVoucher, ...rest };
+};
+
+export const useCostCentres = () => {
+  const { vouchers, addVoucher, removeVoucher, ...rest } = useVouchers("costCentres");
+  const names = useMemo(() => vouchers.map((c) => c.name).filter(Boolean).sort((a, b) => a.localeCompare(b)), [vouchers]);
+  return { costCentres: vouchers, names, addCostCentre: addVoucher, removeCostCentre: removeVoucher, ...rest };
+};
+
+export const useSuppliers = () => {
+  const { vouchers, addVoucher, editVoucher, removeVoucher, ...rest } = useVouchers("suppliers");
+  return { suppliers: vouchers, addSupplier: addVoucher, editSupplier: editVoucher, removeSupplier: removeVoucher, ...rest };
 };
 
 // Recurring invoices - users/{uid}/recurringInvoices
@@ -811,21 +799,21 @@ export const useRecurringInvoices = () => {
   const addRecurringInvoice = useCallback(async (payload) => {
     if (!uid) return { success: false };
     const data = sanitizeForFirestore(payload);
-    const ref = await addDoc(collection(db, "users", uid, "recurringInvoices"), { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    const ref = await addDocA(uid, "recurringInvoices", { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     setRecurringInvoices((prev) => [{ id: ref.id, ...payload }, ...prev]);
     return { success: true, id: ref.id };
   }, [uid]);
 
   const editRecurringInvoice = useCallback(async (id, patch) => {
     if (!uid) return { success: false };
-    await updateDoc(doc(db, "users", uid, "recurringInvoices", id), { ...sanitizeForFirestore(patch), updatedAt: serverTimestamp() });
+    await updateDocA(uid, "recurringInvoices", id, { ...sanitizeForFirestore(patch), updatedAt: serverTimestamp() });
     setRecurringInvoices((prev) => prev.map((item) => item.id === id ? { ...item, ...patch } : item));
     return { success: true };
   }, [uid]);
 
   const removeRecurringInvoice = useCallback(async (id) => {
     if (!uid) return { success: false };
-    await deleteDoc(doc(db, "users", uid, "recurringInvoices", id));
+    await deleteDocA(uid, "recurringInvoices", id);
     setRecurringInvoices((prev) => prev.filter((item) => item.id !== id));
     return { success: true };
   }, [uid]);
@@ -841,37 +829,11 @@ export const isProductActive = (p) => p?.isActive !== false;
 // Pickers get active products only; pass { includeInactive: true } for the
 // admin product list.
 export const useProducts = (options = {}) => {
-  const uid = useUserId();
-  const [everything, setAll] = useState([]);
+  const { uid, all: everything, setAll, loading, error: prodError, refetch } = useLiveCollection("products");
   const all = useMemo(
     () => (options.includeInactive ? everything : everything.filter(isProductActive)),
     [everything, options.includeInactive]
   );
-  const [loading, setLoading] = useState(true);
-  const [prodError, setProdError] = useState(null);
-
-  const refetch = useCallback(async () => {
-    if (!uid) {
-      setAll([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    setProdError(null);
-    try {
-      const snap = await getDocs(collection(db, "users", uid, "products"));
-      setAll(snapshotToItems(snap));
-    } catch (err) {
-      setProdError(err.message);
-      setAll([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [uid]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
 
   const { data, pagination } = applyListView(all, options);
   const [view, setView] = useState(data);
@@ -888,8 +850,7 @@ export const useProducts = (options = {}) => {
       if (!uid) return { success: false };
       const nextSerialNumber = String(everything.length + 1).padStart(2, "0");
       const data = { serialNumber: nextSerialNumber, isActive: true, ...payload };
-      const ref = await addDoc(collection(db, "users", uid, "products"), data);
-      setAll((prev) => [...prev, { id: ref.id, ...data }]);
+      const ref = await addDocA(uid, "products", data);
       return { success: true, id: ref.id };
     },
     [uid, everything.length]
@@ -898,11 +859,11 @@ export const useProducts = (options = {}) => {
   const editProduct = useCallback(
     async (id, patch) => {
       if (!uid) return { success: false };
-      await updateDoc(doc(db, "users", uid, "products", id), patch);
+      await updateDocA(uid, "products", id, patch);
       setAll((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
       return { success: true };
     },
-    [uid]
+    [uid, setAll]
   );
 
   // Deactivate / reactivate instead of deleting; serial numbers stay as they are.
@@ -910,11 +871,11 @@ export const useProducts = (options = {}) => {
     async (id, active) => {
       if (!uid) return { success: false };
       const patch = { isActive: Boolean(active), ...(active ? { reactivatedAt: new Date().toISOString() } : { deactivatedAt: new Date().toISOString() }) };
-      await updateDoc(doc(db, "users", uid, "products", id), patch);
+      await updateDocA(uid, "products", id, patch);
       setAll((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
       return { success: true };
     },
-    [uid]
+    [uid, setAll]
   );
   const deactivateProduct = useCallback((id) => setProductActive(id, false), [setProductActive]);
   const reactivateProduct = useCallback((id) => setProductActive(id, true), [setProductActive]);
@@ -924,6 +885,39 @@ export const useProducts = (options = {}) => {
 
 // Settings — single doc users/{uid}/settings/app
 const SETTINGS_DOC_ID = "app";
+
+// Year-end closing: { lockedUpTo, closedYears: [{ fy, closedAt, netProfit, closingStock }] }.
+export const useBooksLock = () => {
+  const uid = useUserId();
+  const [lock, setLock] = useState({ lockedUpTo: "", closedYears: [] });
+  useEffect(() => {
+    if (!uid) return undefined;
+    return onSnapshot(
+      doc(db, "users", uid, "settings", LOCK_DOC),
+      (snap) => {
+        const data = snap.exists() ? snap.data() : {};
+        const next = { lockedUpTo: data.lockedUpTo || "", closedYears: data.closedYears || [] };
+        lockCache.set(uid, { at: Date.now(), value: next.lockedUpTo });
+        setLock(next);
+      },
+      () => setLock({ lockedUpTo: "", closedYears: [] })
+    );
+  }, [uid]);
+  const save = useCallback(
+    async (next) => {
+      if (!uid) return { success: false, error: "Not signed in" };
+      try {
+        await setDocA(uid, "settings", LOCK_DOC, next);
+        lockCache.set(uid, { at: Date.now(), value: next.lockedUpTo || "" });
+        return { success: true };
+      } catch (err) {
+        return { success: false, error: err.message };
+      }
+    },
+    [uid]
+  );
+  return { lock, saveLock: save };
+};
 
 export const useSettings = () => {
   const uid = useUserId();
@@ -955,7 +949,7 @@ export const useSettings = () => {
     async (key, value, description) => {
       if (!uid) return { success: false };
       const next = { ...settings, [key]: { value, description } };
-      await setDoc(doc(db, "users", uid, "settings", SETTINGS_DOC_ID), next);
+      await setDocA(uid, "settings", SETTINGS_DOC_ID, next);
       setSettings(next);
       return { success: true };
     },
@@ -965,223 +959,9 @@ export const useSettings = () => {
   return { settings, error: null, updateSettings, refetch };
 };
 
-// Cashiers — stored inside users/{uid}/settings/app under 'cashiers' key (active in Firestore rules)
-export const useCashiers = (options = {}) => {
-  const uid = useUserId();
-  const cashierAuthUser = useContext(AuthContext).user;
-  const [pinStatus, setPinStatus] = useState({});
-  const refreshPinStatus = useCallback(() => {
-    if (cashierAuthUser?.role !== "owner" || !cashierAuthUser?.uid) return;
-    listCashierStatus()
-      .then((list) => setPinStatus(Object.fromEntries(list.map((c) => [c.cashierId, c]))))
-      .catch((err) => console.warn("Cashier PIN status unavailable:", err.message));
-  }, [cashierAuthUser?.role, cashierAuthUser?.uid]);
-  useEffect(() => {
-    refreshPinStatus();
-  }, [refreshPinStatus]);
-  const [all, setAll] = useState(() => {
-    try {
-      const local = uid ? localStorage.getItem(`store_cashiers_${uid}`) : null;
-      if (local) return JSON.parse(local);
-      const global = localStorage.getItem("registered_cashiers_list");
-      if (global) return JSON.parse(global);
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("store_cashiers_")) {
-          const list = JSON.parse(localStorage.getItem(k) || "[]");
-          if (Array.isArray(list) && list.length > 0) return list;
-        }
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
-  const [loading, setLoading] = useState(true);
-  const [cashierError, setCashierError] = useState(null);
-
-  const refetch = useCallback(async () => {
-    const currentUid = uid || auth.currentUser?.uid;
-    setLoading(true);
-    setCashierError(null);
-    try {
-      if (currentUid) {
-        const snap = await getDoc(doc(db, "users", currentUid, "settings", "app"));
-        if (snap.exists()) {
-          const appData = snap.data() || {};
-          const raw = appData.cashiers?.value || appData.cashiers;
-          const list = Array.isArray(raw) ? raw : [];
-          setAll(list);
-          localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(list));
-          localStorage.setItem("registered_cashiers_list", JSON.stringify(list));
-          setLoading(false);
-          return;
-        }
-      }
-      const local =
-        (currentUid ? localStorage.getItem(`store_cashiers_${currentUid}`) : null) ||
-        localStorage.getItem("registered_cashiers_list");
-      if (local) {
-        setAll(JSON.parse(local));
-      } else {
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith("store_cashiers_")) {
-            const list = JSON.parse(localStorage.getItem(k) || "[]");
-            if (Array.isArray(list) && list.length > 0) {
-              setAll(list);
-              break;
-            }
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("useCashiers load warning:", err);
-      const local =
-        (currentUid ? localStorage.getItem(`store_cashiers_${currentUid}`) : null) ||
-        localStorage.getItem("registered_cashiers_list");
-      if (local) setAll(JSON.parse(local));
-    } finally {
-      setLoading(false);
-    }
-  }, [uid]);
-
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
-
-  const filtered = useMemo(() => {
-    let res = Array.isArray(all) ? [...all] : [];
-    if (options.status && options.status !== "All") {
-      res = res.filter((c) => (c.status || "Active").toLowerCase() === options.status.toLowerCase());
-    }
-    return res;
-  }, [all, options.status]);
-
-  const { data, pagination } = applyListView(filtered, options);
-  const [view, setView] = useState(data);
-  const [pageInfo, setPageInfo] = useState(pagination);
-
-  useEffect(() => {
-    const res = applyListView(filtered, options);
-    setView(res.data);
-    setPageInfo(res.pagination);
-  }, [filtered, options.search, options.page, options.limit, options.sortBy, options.sortDirection]);
-
-  const persistCashiers = async (currentUid, items) => {
-    const newItems = stripPins(items);
-    localStorage.setItem(`store_cashiers_${currentUid}`, JSON.stringify(newItems));
-    localStorage.setItem("registered_cashiers_list", JSON.stringify(newItems));
-    setAll(newItems);
-    try {
-      const appRef = doc(db, "users", currentUid, "settings", "app");
-      const snap = await getDoc(appRef);
-      const currentData = snap.exists() ? snap.data() : {};
-      const updated = {
-        ...currentData,
-        cashiers: {
-          value: newItems,
-          description: "Staff cashier terminals list",
-          updatedAt: new Date().toISOString(),
-        },
-      };
-      await setDoc(appRef, updated, { merge: true });
-    } catch (err) {
-      console.warn("Firestore save cashiers warning:", err);
-    }
-  };
-
-  const addCashier = useCallback(
-    async (payload) => {
-      const currentUid = uid || auth.currentUser?.uid;
-      if (!currentUid) {
-        throw new Error("You must be signed in as store admin to add cashiers.");
-      }
-      const newId = `csh_${Date.now()}`;
-      const nextSerialNumber = String(all.length + 1).padStart(2, "0");
-      const newCashier = {
-        id: newId,
-        serialNumber: nextSerialNumber,
-        cashierId: payload.cashierId || `CSH-${String(all.length + 1).padStart(3, "0")}`,
-        name: payload.name || "Cashier Staff",
-        phone: payload.phone || "",
-        email: payload.email || "",
-        counter: payload.counter || "Counter 01",
-        status: payload.status || "Active",
-        createdAt: new Date().toISOString(),
-      };
-      const newItems = [...all, newCashier];
-      await persistCashiers(currentUid, newItems);
-      // PIN goes to the backend (hashed there); no default PIN.
-      if (payload.pin) await setCashierPin(newCashier.cashierId, payload.pin);
-      if (newCashier.status === "Inactive") await setCashierActive(newCashier.cashierId, false);
-      refreshPinStatus();
-      return { success: true, id: newId };
-    },
-    [uid, all]
-  );
-
-  const editCashier = useCallback(
-    async (id, patch) => {
-      const currentUid = uid || auth.currentUser?.uid;
-      if (!currentUid) throw new Error("Authentication required.");
-      const { pin, ...rest } = patch || {};
-      const before = all.find((c) => c.id === id);
-      const newItems = all.map((c) => (c.id === id ? { ...c, ...rest } : c));
-      await persistCashiers(currentUid, newItems);
-      const cashierId = rest.cashierId || before?.cashierId;
-      // PIN changes and deactivation also sign the cashier out (backend revokes).
-      if (pin) await setCashierPin(cashierId, pin);
-      if (before && rest.status && rest.status !== (before.status || "Active")) await setCashierActive(cashierId, rest.status !== "Inactive");
-      refreshPinStatus();
-      return { success: true };
-    },
-    [uid, all]
-  );
-
-  const removeCashier = useCallback(
-    async (id) => {
-      const currentUid = uid || auth.currentUser?.uid;
-      if (!currentUid) throw new Error("Authentication required.");
-      const target = all.find((c) => c.id === id);
-      const newItems = all.filter((c) => c.id !== id);
-      await persistCashiers(currentUid, newItems);
-      if (target?.cashierId) await removeCashierAccess(target.cashierId).catch((err) => console.warn("Cashier access removal:", err.message));
-      refreshPinStatus();
-      return { success: true };
-    },
-    [uid, all]
-  );
-
-  const toggleStatus = useCallback(
-    async (id) => {
-      const currentUid = uid || auth.currentUser?.uid;
-      if (!currentUid) throw new Error("Authentication required.");
-      const target = all.find((c) => c.id === id);
-      if (!target) return { success: false };
-      const nextStatus = target.status === "Inactive" ? "Active" : "Inactive";
-      const newItems = all.map((c) => (c.id === id ? { ...c, status: nextStatus } : c));
-      await persistCashiers(currentUid, newItems);
-      await setCashierActive(target.cashierId, nextStatus === "Active");
-      refreshPinStatus();
-      return { success: true, status: nextStatus };
-    },
-    [uid, all]
-  );
-
-  return {
-    pinStatus,
-    refreshPinStatus,
-    cashiers: view,
-    allCashiers: all,
-    loading,
-    error: cashierError,
-    pagination: pageInfo,
-    addCashier,
-    editCashier,
-    removeCashier,
-    toggleStatus,
-    refetch,
-  };
+// Stock on hand — users/{uid}/stock (one doc per product per godown, written by
+// the POS / warehouse app). Read-only here.
+export const useStockLevels = () => {
+  const { all, loading, error } = useLiveCollection("stock");
+  return { stock: all, loading, error };
 };
-

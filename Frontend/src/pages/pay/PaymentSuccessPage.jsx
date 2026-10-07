@@ -1,10 +1,9 @@
 import React from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
-import { CheckCircle2, FileText, Printer, ArrowLeft } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { CheckCircle2, Printer } from "lucide-react";
 
 export default function PaymentSuccessPage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
 
   const invoiceNumber = searchParams.get("invoice") || "N/A";
   const amount = searchParams.get("amount") || "0.00";

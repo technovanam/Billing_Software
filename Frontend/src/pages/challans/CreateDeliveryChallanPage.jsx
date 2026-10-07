@@ -4,6 +4,11 @@ import { useChallans, useCustomers, useProducts } from "../../hooks/useFirestore
 import { useToast } from "../../context/ToastContext";
 import CreateDeliveryChallanComponent from "./CreateDeliveryChallanComponent";
 import { ChallanPreview } from "./DeliveryChallanManagement";
+import { useSettings } from "../../hooks/useFirestore";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
+import { calculateInvoiceTotals } from "../../utils/invoiceTotals";
+import { invoiceTaxSettings } from "../../utils/invoiceFromDraft";
+import { ITEMWISE_DEFAULTS, newInvoiceItem, applyItemChange, applyProduct, withClient, prepareForEdit, invoiceForSave } from "../../utils/invoiceForm";
 
 export default function CreateDeliveryChallanPage() {
   const navigate = useNavigate();
@@ -55,9 +60,8 @@ export default function CreateDeliveryChallanPage() {
     clientId: "",
     client: null,
     items: [],
-    cgst: 9,
-    sgst: 9,
-    igst: 0,
+    ...ITEMWISE_DEFAULTS,
+    isGstEnabled: true,
     status: "Sent",
     declaration:
       "We declare that this delivery challan shows the actual price of the goods Described and that all Particulars are true and correct.",
@@ -67,6 +71,9 @@ export default function CreateDeliveryChallanPage() {
   });
 
   const [challanData, setChallanData] = useState(getInitialChallanData);
+  const { companyProfile } = useCompanyProfile();
+  const { settings } = useSettings();
+  const { defaultGstRate } = invoiceTaxSettings(settings);
   const [calculations, setCalculations] = useState({
     subtotal: 0,
     cgstAmount: 0,
@@ -80,7 +87,7 @@ export default function CreateDeliveryChallanPage() {
     if (isEditMode && allChallans && allChallans.length > 0) {
       const existing = allChallans.find((c) => c.id === id);
       if (existing) {
-        setChallanData(JSON.parse(JSON.stringify(existing)));
+        setChallanData(prepareForEdit(existing, companyProfile));
       }
     } else if (!isEditMode && allChallans && allChallans.length > 0) {
       const nextNum = generateNextChallanNumber();
@@ -93,66 +100,33 @@ export default function CreateDeliveryChallanPage() {
     }
   }, [id, isEditMode, allChallans]);
 
+  // Place of supply starts at the business's own state until a customer is picked.
   useEffect(() => {
-    const itemsArray = challanData.items || challanData.products || [];
-    const subtotal = itemsArray.reduce(
-      (sum, item) => sum + (item.quantity || 0) * (item.rate || item.price || 0),
-      0
-    );
-    const cgstAmount = (subtotal * (challanData.cgst || 0)) / 100;
-    const sgstAmount = (subtotal * (challanData.sgst || 0)) / 100;
-    const igstAmount = (subtotal * (challanData.igst || 0)) / 100;
-    let total = subtotal + cgstAmount + sgstAmount + igstAmount;
-    let roundOffAmount = 0;
-    if (challanData.isRoundOff) {
-      const roundedTotal = Math.round(total);
-      roundOffAmount = roundedTotal - total;
-      total = roundedTotal;
+    if (companyProfile && !challanData.placeOfSupply && !isEditMode) {
+      setChallanData((prev) => (prev.placeOfSupply ? prev : withClient(prev, prev.client, companyProfile)));
     }
-    setCalculations({
-      subtotal,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
-      roundOffAmount,
-      total,
-    });
-  }, [
-    challanData.items,
-    challanData.products,
-    challanData.cgst,
-    challanData.sgst,
-    challanData.igst,
-    challanData.isRoundOff,
-  ]);
+  }, [companyProfile, challanData.placeOfSupply, isEditMode]);
+
+  // Same GST engine as invoices.
+  useEffect(() => {
+    setCalculations(calculateInvoiceTotals(challanData));
+  }, [challanData]);
 
   const addItem = () => {
-    const newItem = {
-      id: Date.now(),
-      description: "",
-      hsnCode: "",
-      quantity: 1,
-      rate: 0,
-      amount: 0,
-    };
-    setChallanData((prev) => ({ ...prev, items: [...prev.items, newItem] }));
+    setChallanData((prev) => ({ ...prev, items: [...(prev.items || []), newInvoiceItem(defaultGstRate)] }));
   };
 
   const updateItem = (itemId, field, value) => {
     setChallanData((prev) => ({
       ...prev,
-      items: prev.items.map((item) => {
-        if (item.id === itemId) {
-          const updatedItem = { ...item, [field]: value };
-          if (field === "quantity" || field === "rate") {
-            updatedItem.amount =
-              (Number.parseFloat(updatedItem.quantity) || 0) *
-              (Number.parseFloat(updatedItem.rate) || 0);
-          }
-          return updatedItem;
-        }
-        return item;
-      }),
+      items: prev.items.map((item) => (item.id === itemId ? applyItemChange(item, field, value) : item)),
+    }));
+  };
+
+  const applyProductToItem = (itemId, product) => {
+    setChallanData((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.id === itemId ? applyProduct(item, product, defaultGstRate) : item)),
     }));
   };
 
@@ -164,16 +138,8 @@ export default function CreateDeliveryChallanPage() {
   };
 
   const handleClientSelect = (clientId) => {
-    if (clientId === null) {
-      setChallanData((prev) => ({ ...prev, clientId: "", client: null }));
-      return;
-    }
-    const selectedClient = (customers || []).find((c) => c.id === clientId);
-    setChallanData((prev) => ({
-      ...prev,
-      clientId: clientId,
-      client: selectedClient,
-    }));
+    const selectedClient = clientId === null ? null : (customers || []).find((c) => c.id === clientId) || null;
+    setChallanData((prev) => withClient(prev, selectedClient, companyProfile));
   };
 
   const handleAddNewProduct = async (productName, clientId) => {
@@ -209,11 +175,7 @@ export default function CreateDeliveryChallanPage() {
 
   const saveDraft = async () => {
     try {
-      const draftChallan = {
-        ...challanData,
-        status: "Draft",
-        amount: calculations.total,
-      };
+      const draftChallan = invoiceForSave(challanData, companyProfile, { status: "Draft" });
       const result = isEditMode
         ? await editChallan(id, draftChallan)
         : await addChallan(draftChallan);
@@ -232,11 +194,7 @@ export default function CreateDeliveryChallanPage() {
     if (!validateChallanForm()) return;
 
     try {
-      const newChallan = {
-        ...challanData,
-        amount: calculations.total,
-        status: challanData.status || "Sent",
-      };
+      const newChallan = invoiceForSave(challanData, companyProfile, { status: challanData.status || "Sent" });
       const result = isEditMode
         ? await editChallan(id, newChallan)
         : await addChallan(newChallan);
@@ -264,6 +222,7 @@ export default function CreateDeliveryChallanPage() {
         clients={customers || []}
         products={products || []}
         calculations={calculations}
+        applyProductToItem={applyProductToItem}
         addItem={addItem}
         updateItem={updateItem}
         removeItem={removeItem}

@@ -3,7 +3,9 @@
 import axios from "axios";
 import { auth } from "../lib/firebase/config";
 
-const BACKEND = "http://localhost:5000";
+import { BACKEND_URL } from "../lib/backend";
+
+const BACKEND = BACKEND_URL;
 
 async function authHeaders() {
   // After a reload Firebase restores the session asynchronously; wait for it

@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useInvoices, useCustomers, useProducts, useSettings } from "../../hooks/useFirestore";
+import { useNavigate, useLocation } from "react-router-dom";
+import { useInvoices, useCustomers, useProducts, usePriceLists, useSettings, usePatchDoc } from "../../hooks/useFirestore";
+import { priceListFor } from "../../utils/priceLists";
+import { invoicePatchFromOrder } from "../../utils/vouchers";
 import { useToast } from "../../context/ToastContext";
 import CreateInvoiceComponent from "./CreateInvoiceComponent";
 import { calculateInvoiceTotals } from "../../utils/invoiceTotals";
+import { nextInvoiceNumber, draftToInvoiceItems, invoiceTaxSettings } from "../../utils/invoiceFromDraft";
+import { ITEMWISE_DEFAULTS, newInvoiceItem, applyItemChange, applyProduct, withClient, invoiceForSave } from "../../utils/invoiceForm";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import AICommandBar from "../../components/ai-command/AICommandBar";
 import useAICommand from "../../components/ai-command/useAICommand";
 
@@ -17,35 +22,13 @@ export default function CreateInvoicePage() {
 
   const { customers } = useCustomers();
   const { products, addProduct } = useProducts();
+  const { priceLists } = usePriceLists();
   const { addInvoice, allInvoices } = useInvoices();
   const { settings, updateSettings } = useSettings();
+  const { companyProfile } = useCompanyProfile();
+  const { defaultGstRate } = invoiceTaxSettings(settings);
 
-  // Generate next invoice number based on allInvoices
-  const generateNextInvoiceNumber = () => {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    const financialYearStart = today.getMonth() >= 3 ? currentYear : currentYear - 1;
-    const financialYearEnd = financialYearStart + 1;
-    const financialYearString = `${financialYearStart}-${financialYearEnd.toString().slice(2)}`;
-
-    const invoicesInCurrentYear = (allInvoices || []).filter((inv) => {
-      return inv.invoiceNumber && inv.invoiceNumber.endsWith(`/${financialYearString}`);
-    });
-
-    if (invoicesInCurrentYear.length === 0) {
-      return `001/${financialYearString}`;
-    }
-
-    const maxNumber = invoicesInCurrentYear.reduce((max, invoice) => {
-      const match = invoice.invoiceNumber.match(/(\d+)\/\d{4}-\d{2}$/);
-      if (match && match[1]) {
-        return Math.max(Number.parseInt(match[1], 10), max);
-      }
-      return max;
-    }, 0);
-
-    return `${String(maxNumber + 1).padStart(3, "0")}/${financialYearString}`;
-  };
+  const generateNextInvoiceNumber = () => nextInvoiceNumber(allInvoices);
 
   const getInitialInvoiceData = () => ({
     invoiceNumber: generateNextInvoiceNumber(),
@@ -58,10 +41,7 @@ export default function CreateInvoicePage() {
     clientId: "",
     client: null,
     items: [],
-    cgst: 9,
-    sgst: 9,
-    igst: 0,
-    bankDetails: "State Bank Of India",
+    ...ITEMWISE_DEFAULTS,
     status: "Unpaid",
     declaration:
       "We declare that this invoice shows the actual price of the goods Described and that all Particulars are true and correct.",
@@ -73,6 +53,22 @@ export default function CreateInvoicePage() {
 
   const [invoiceData, setInvoiceData] = useState(getInitialInvoiceData);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const patchDoc = usePatchDoc();
+  const location = useLocation();
+
+  // "Convert to invoice" from a quotation / sales order.
+  const fromOrder = location.state?.fromOrder;
+  useEffect(() => {
+    if (!fromOrder || !companyProfile) return;
+    const client = (customers || []).find((c) => c.id === fromOrder.partyId) || fromOrder.party;
+    setInvoiceData((prev) => withClient({ ...prev, ...invoicePatchFromOrder(fromOrder) }, client, companyProfile));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [fromOrder, companyProfile]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const markOrderConverted = async (invoiceNumber) => {
+    const ref = invoiceData.orderRef;
+    if (ref?.id) await patchDoc(ref.collection, ref.id, { status: "Converted", convertedTo: { type: "invoice", number: invoiceNumber } });
+  };
   const [calculations, setCalculations] = useState({
     subtotal: 0,
     cgstAmount: 0,
@@ -96,9 +92,6 @@ export default function CreateInvoicePage() {
         isGstEnabled: isGst,
         isAutoInvoice: isAuto,
         invoiceNumber: isAuto ? generateNextInvoiceNumber() : prev.invoiceNumber,
-        cgst: isGst ? (prev.cgst || 9) : 0,
-        sgst: isGst ? (prev.sgst || 9) : 0,
-        igst: isGst ? (prev.igst || 0) : 0,
       }));
       setSettingsLoaded(true);
     }
@@ -117,27 +110,17 @@ export default function CreateInvoicePage() {
     }
   }, [allInvoices, invoiceData.isAutoInvoice]);
 
+  // Place of supply defaults to the business's own state until a customer is picked.
+  useEffect(() => {
+    if (companyProfile && !invoiceData.placeOfSupply) {
+      setInvoiceData((prev) => (prev.placeOfSupply ? prev : withClient(prev, prev.client, companyProfile)));
+    }
+  }, [companyProfile, invoiceData.placeOfSupply]);
+
   // Calculations Effect
   useEffect(() => {
-    setCalculations(
-      calculateInvoiceTotals({
-        items: invoiceData.items || invoiceData.products || [],
-        cgst: invoiceData.cgst,
-        sgst: invoiceData.sgst,
-        igst: invoiceData.igst,
-        isGstEnabled: invoiceData.isGstEnabled,
-        isRoundOff: invoiceData.isRoundOff,
-      })
-    );
-  }, [
-    invoiceData.items,
-    invoiceData.products,
-    invoiceData.cgst,
-    invoiceData.sgst,
-    invoiceData.igst,
-    invoiceData.isRoundOff,
-    invoiceData.isGstEnabled,
-  ]);
+    setCalculations(calculateInvoiceTotals(invoiceData));
+  }, [invoiceData]);
 
   // Bi-directional feature update helper to persist setting to SystemSettings in Firestore
   const updateSystemFeature = async (featureKey, newValue) => {
@@ -179,9 +162,6 @@ export default function CreateInvoicePage() {
     setInvoiceData((prev) => ({
       ...prev,
       isGstEnabled: newValue,
-      cgst: newValue ? 9 : 0,
-      sgst: newValue ? 9 : 0,
-      igst: 0,
     }));
     updateSystemFeature("gstCalculation", newValue);
   };
@@ -199,32 +179,20 @@ export default function CreateInvoicePage() {
   };
 
   const addItem = () => {
-    const newItem = {
-      id: Date.now(),
-      description: "",
-      hsnCode: "",
-      quantity: 1,
-      rate: 0,
-      amount: 0,
-    };
-    setInvoiceData((prev) => ({ ...prev, items: [...prev.items, newItem] }));
+    setInvoiceData((prev) => ({ ...prev, items: [...prev.items, newInvoiceItem(defaultGstRate)] }));
   };
 
   const updateItem = (itemId, field, value) => {
     setInvoiceData((prev) => ({
       ...prev,
-      items: prev.items.map((item) => {
-        if (item.id === itemId) {
-          const updatedItem = { ...item, [field]: value };
-          if (field === "quantity" || field === "rate") {
-            updatedItem.amount =
-              (Number.parseFloat(updatedItem.quantity) || 0) *
-              (Number.parseFloat(updatedItem.rate) || 0);
-          }
-          return updatedItem;
-        }
-        return item;
-      }),
+      items: prev.items.map((item) => (item.id === itemId ? applyItemChange(item, field, value) : item)),
+    }));
+  };
+
+  const applyProductToItem = (itemId, product) => {
+    setInvoiceData((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => (item.id === itemId ? applyProduct(item, product, defaultGstRate, priceListFor(prev.client, priceLists)) : item)),
     }));
   };
 
@@ -237,15 +205,11 @@ export default function CreateInvoicePage() {
 
   const handleClientSelect = (clientId) => {
     if (clientId === null) {
-      setInvoiceData((prev) => ({ ...prev, clientId: "", client: null }));
+      setInvoiceData((prev) => withClient(prev, null, companyProfile));
       return;
     }
     const selectedClient = (customers || []).find((c) => c.id === clientId);
-    setInvoiceData((prev) => ({
-      ...prev,
-      clientId: clientId,
-      client: selectedClient,
-    }));
+    setInvoiceData((prev) => withClient(prev, selectedClient, companyProfile));
   };
 
   const handleAddNewProduct = async (productName, clientId) => {
@@ -255,6 +219,7 @@ export default function CreateInvoicePage() {
         name: productName,
         hsn: "",
         price: 0,
+        gstRate: defaultGstRate,
         clientId: clientId || "",
       };
       await addProduct(newProduct);
@@ -282,11 +247,7 @@ export default function CreateInvoicePage() {
 
   const saveDraft = async () => {
     try {
-      const draftInvoice = {
-        ...invoiceData,
-        status: "Draft",
-        amount: calculations.total,
-      };
+      const draftInvoice = invoiceForSave(invoiceData, companyProfile, { status: "Draft" });
       const result = await addInvoice(draftInvoice);
       if (result.success) {
         ai.markSaved(result.id);
@@ -304,14 +265,11 @@ export default function CreateInvoicePage() {
     if (!validateInvoiceForm()) return;
 
     try {
-      const newInvoice = {
-        ...invoiceData,
-        amount: calculations.total,
-        status: invoiceData.status || "Unpaid",
-      };
+      const newInvoice = invoiceForSave(invoiceData, companyProfile, { status: invoiceData.status || "Unpaid" });
       const result = await addInvoice(newInvoice);
       if (result.success) {
         ai.markSaved(result.id);
+        await markOrderConverted(newInvoice.invoiceNumber);
         toastSuccess("Invoice created successfully!");
         navigate("/invoices");
       } else {
@@ -327,39 +285,15 @@ export default function CreateInvoicePage() {
   // AI command bar: builds a draft that is copied into this form on Confirm.
   const ai = useAICommand({ context: "invoice", addProduct });
 
-  // Same line shape the form uses when a product is picked manually.
-  const draftToInvoiceItems = (draft) =>
-    draft.items
-      .filter((it) => it.status === "matched" && it.qty > 0)
-      .map((it, idx) => {
-        const rate = it.product.pricePaise / 100;
-        return {
-          id: Date.now() + idx,
-          productId: it.product.id,
-          description: it.product.name,
-          hsnCode: it.product.hsn,
-          quantity: it.qty,
-          rate,
-          amount: it.qty * rate,
-        };
-      });
-
   const draftTotals = (() => {
-    const items = draftToInvoiceItems(ai.draft);
+    const items = draftToInvoiceItems(ai.draft, defaultGstRate);
     if (!items.length) return null;
-    const t = calculateInvoiceTotals({
-      items,
-      cgst: invoiceData.cgst,
-      sgst: invoiceData.sgst,
-      igst: invoiceData.igst,
-      isGstEnabled: invoiceData.isGstEnabled,
-      isRoundOff: invoiceData.isRoundOff,
-    });
-    const rows = [{ label: "Subtotal", value: money(t.subtotal) }];
+    const t = calculateInvoiceTotals({ ...invoiceData, items });
+    const rows = [{ label: "Taxable value", value: money(t.taxableAmount) }];
     if (invoiceData.isGstEnabled) {
-      if (invoiceData.cgst) rows.push({ label: `CGST (${invoiceData.cgst}%)`, value: money(t.cgstAmount) });
-      if (invoiceData.sgst) rows.push({ label: `SGST (${invoiceData.sgst}%)`, value: money(t.sgstAmount) });
-      if (invoiceData.igst) rows.push({ label: `IGST (${invoiceData.igst}%)`, value: money(t.igstAmount) });
+      if (t.cgstAmount) rows.push({ label: "CGST", value: money(t.cgstAmount) });
+      if (t.sgstAmount) rows.push({ label: "SGST", value: money(t.sgstAmount) });
+      if (t.igstAmount) rows.push({ label: "IGST", value: money(t.igstAmount) });
     }
     if (invoiceData.isRoundOff) rows.push({ label: "Round off", value: money(t.roundOffAmount) });
     rows.push({ label: "Draft total", value: money(t.total), strong: true });
@@ -367,7 +301,7 @@ export default function CreateInvoicePage() {
   })();
 
   const applyAiDraft = (draft) => {
-    const newItems = draftToInvoiceItems(draft);
+    const newItems = draftToInvoiceItems(draft, defaultGstRate);
     setInvoiceData((prev) => {
       const next = {
         ...prev,
@@ -406,6 +340,7 @@ export default function CreateInvoicePage() {
         handleToggleRoundOff={handleToggleRoundOff}
         handleToggleGst={handleToggleGst}
         handleToggleAutoInvoice={handleToggleAutoInvoice}
+        applyProductToItem={applyProductToItem}
       />
       {showPreview && (
         <InvoicePreview

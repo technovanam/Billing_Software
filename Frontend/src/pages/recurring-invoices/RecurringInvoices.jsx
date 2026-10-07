@@ -1,25 +1,26 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
-import { 
-  ArrowLeft, 
-  Edit, 
-  Pause, 
-  Play, 
-  Plus, 
-  Search, 
-  Trash2, 
-  FileText, 
-  Save, 
-  Calendar, 
-  Clock, 
-  Repeat, 
-  User, 
-  CheckCircle, 
-  AlertCircle,
+import { ITEMWISE_DEFAULTS, applyItemChange, applyProduct, withClient, withPlaceOfSupply } from "../../utils/invoiceForm";
+import { invoiceTotals, upgradeToItemwise, GST_RATES, STATES } from "../../utils/gst.js";
+import { invoiceTaxSettings } from "../../utils/invoiceFromDraft";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
+import { useSettings } from "../../hooks/useFirestore";
+import {
+  ArrowLeft,
+  Edit,
+  Pause,
+  Play,
+  Plus,
+  Search,
+  Trash2,
+  FileText,
+  Save,
+  Repeat,
+  User,
   Filter,
-  ChevronDown
+  ChevronDown,
 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useCustomers, useProducts, useRecurringInvoices, useSettings } from "../../hooks/useFirestore";
+import { useCustomers, useProducts, useRecurringInvoices } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
 import { ClientAutocomplete, ProductAutocomplete } from "../../components/InvoiceAutocomplete";
 
@@ -49,9 +50,18 @@ const emptyItem = {
   description: "",
   hsnCode: "",
   quantity: 1,
+  unit: "",
   rate: 0,
+  discount: 0,
+  gstRate: 18,
   amount: 0,
 };
+
+// The profile's bill-level discount % applies to every line, before GST.
+const withProfileDiscount = (form) => ({
+  ...form,
+  items: (form.items || []).map((it) => applyItemChange(it, "discount", Number(form.discount) || 0)),
+});
 
 const getInitialForm = () => ({
   profileName: "",
@@ -66,12 +76,9 @@ const getInitialForm = () => ({
   client: null,
   items: [{ ...emptyItem, id: `item_${Date.now()}` }],
   isGstEnabled: true,
-  cgst: 9,
-  sgst: 9,
-  igst: 0,
+  ...ITEMWISE_DEFAULTS,
   discount: 0,
   tds: 0,
-  adjustment: 0,
   isRoundOff: true,
   customerNotes: "Thanks for your business. Generated via recurring schedule.",
   termsAndConditions: "Payment is due according to the specified payment terms.",
@@ -118,18 +125,18 @@ function RecurringInvoiceForm({
   onCancel,
   addProduct,
 }) {
-  // Sync selected client
+  const { companyProfile } = useCompanyProfile();
+  const { settings } = useSettings();
+  const { defaultGstRate } = invoiceTaxSettings(settings);
+
+  // Sync selected client (and the place of supply that follows from it)
   const handleClientSelect = (clientId) => {
-    if (!clientId) {
-      setForm((prev) => ({ ...prev, customerId: "", client: null }));
-      return;
-    }
-    const found = customers.find((c) => c.id === clientId);
-    setForm((prev) => ({
-      ...prev,
-      customerId: clientId,
-      client: found || null,
-    }));
+    const found = clientId ? customers.find((c) => c.id === clientId) || null : null;
+    setForm((prev) => ({ ...withClient(prev, found, companyProfile), customerId: clientId || "" }));
+  };
+
+  const pickProduct = (itemId, product) => {
+    setForm((prev) => ({ ...prev, items: prev.items.map((it) => (it.id === itemId ? applyProduct(it, product, defaultGstRate) : it)) }));
   };
 
   // Add Item
@@ -138,7 +145,7 @@ function RecurringInvoiceForm({
       ...prev,
       items: [
         ...prev.items,
-        { ...emptyItem, id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 4)}` },
+        { ...emptyItem, gstRate: defaultGstRate, id: `item_${Date.now()}_${Math.random().toString(36).substr(2, 4)}` },
       ],
     }));
   };
@@ -147,16 +154,7 @@ function RecurringInvoiceForm({
   const updateItem = (itemId, field, value) => {
     setForm((prev) => ({
       ...prev,
-      items: prev.items.map((it) => {
-        if (it.id === itemId) {
-          const updated = { ...it, [field]: value };
-          const q = field === "quantity" ? Number(value) || 0 : Number(it.quantity) || 0;
-          const r = field === "rate" ? Number(value) || 0 : Number(it.rate) || 0;
-          updated.amount = q * r;
-          return updated;
-        }
-        return it;
-      }),
+      items: prev.items.map((it) => (it.id === itemId ? applyItemChange(it, field, value) : it)),
     }));
   };
 
@@ -192,41 +190,23 @@ function RecurringInvoiceForm({
     }
   };
 
-  // Dynamic Financial Calculations
+  // Totals from the shared GST engine (same maths as Create Invoice).
   const calculations = useMemo(() => {
-    const subtotal = form.items.reduce((sum, it) => sum + (Number(it.amount) || 0), 0);
-    
-    // Taxes
-    const isGst = form.isGstEnabled !== false;
-    const cgstAmount = isGst && form.cgst > 0 ? (subtotal * Number(form.cgst)) / 100 : 0;
-    const sgstAmount = isGst && form.sgst > 0 ? (subtotal * Number(form.sgst)) / 100 : 0;
-    const igstAmount = isGst && form.igst > 0 ? (subtotal * Number(form.igst)) / 100 : 0;
-    const taxTotal = cgstAmount + sgstAmount + igstAmount;
-
-    // Discount & TDS
-    const discountAmount = form.discount > 0 ? (subtotal * Number(form.discount)) / 100 : 0;
-    const tdsAmount = form.tds > 0 ? ((subtotal - discountAmount) * Number(form.tds)) / 100 : 0;
-    
-    const adjustmentAmount = Number(form.adjustment) || 0;
-    const rawTotal = subtotal + taxTotal - discountAmount - tdsAmount + adjustmentAmount;
-    
-    let roundOffAmount = 0;
-    let total = rawTotal;
-    if (form.isRoundOff) {
-      total = Math.round(rawTotal);
-      roundOffAmount = total - rawTotal;
-    }
-
+    const t = invoiceTotals(withProfileDiscount(form));
     return {
-      subtotal,
-      cgstAmount,
-      sgstAmount,
-      igstAmount,
-      taxTotal,
-      discountAmount,
-      tdsAmount,
-      roundOffAmount,
-      total,
+      grossAmount: t.grossAmount,
+      discountAmount: t.discountAmount,
+      subtotal: t.taxableAmount,
+      taxableAmount: t.taxableAmount,
+      cgstAmount: t.cgstAmount,
+      sgstAmount: t.sgstAmount,
+      igstAmount: t.igstAmount,
+      taxTotal: t.totalTax,
+      taxBreakup: t.taxBreakup,
+      roundOffAmount: t.roundOffAmount,
+      total: t.total,
+      // Deducted by the customer when paying; it does not reduce the bill.
+      tdsAmount: (t.taxableAmount * (Number(form.tds) || 0)) / 100,
     };
   }, [form]);
 
@@ -475,7 +455,8 @@ function RecurringInvoiceForm({
                       <th className="p-2 text-left w-[12%]">HSN</th>
                       <th className="p-2 text-left w-[12%]">Qty</th>
                       <th className="p-2 text-left w-[14%]">Rate (₹)</th>
-                      <th className="p-2 text-left w-[16%]">Amount (₹)</th>
+                      <th className="p-2 text-left w-[10%]">GST %</th>
+                      <th className="p-2 text-left w-[14%]">Amount (₹)</th>
                       <th className="p-2 text-center w-[6%]"></th>
                     </tr>
                   </thead>
@@ -487,12 +468,7 @@ function RecurringInvoiceForm({
                           <ProductAutocomplete
                             products={products}
                             value={item.description || item.name || ""}
-                            onSelect={(product) => {
-                              updateItem(item.id, "productId", product.id);
-                              updateItem(item.id, "description", product.name);
-                              updateItem(item.id, "hsnCode", product.hsn || "");
-                              updateItem(item.id, "rate", product.price || 0);
-                            }}
+                            onSelect={(product) => pickProduct(item.id, product)}
                             onChange={(val) => updateItem(item.id, "description", val)}
                             onAddNewProduct={handleAddNewProduct}
                             clientId={form.customerId}
@@ -526,6 +502,20 @@ function RecurringInvoiceForm({
                             onChange={(e) => updateItem(item.id, "rate", Number(e.target.value) || 0)}
                             className="w-full px-3 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none"
                           />
+                        </td>
+                        <td className="p-2 align-top">
+                          <select
+                            value={String(item.gstRate ?? 0)}
+                            onChange={(e) => updateItem(item.id, "gstRate", Number(e.target.value))}
+                            disabled={form.isGstEnabled === false}
+                            className="w-full px-2 py-2 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none disabled:opacity-50"
+                          >
+                            {GST_RATES.map((r) => (
+                              <option key={r} value={String(r)}>
+                                {r}%
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="p-2 align-top">
                           <input
@@ -614,42 +604,25 @@ function RecurringInvoiceForm({
                 </button>
               </div>
 
-              {/* GST Percentages */}
+              {/* Place of supply decides CGST+SGST or IGST */}
               {form.isGstEnabled !== false ? (
-                <div className="grid grid-cols-3 gap-3 mb-4">
-                  <div>
-                    <label className="block mb-1 text-xs font-medium text-gray-700">CGST (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={form.cgst}
-                      onChange={(e) => setForm((prev) => ({ ...prev, cgst: Number(e.target.value) || 0 }))}
-                      className="w-full px-2.5 py-1.5 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-1 text-xs font-medium text-gray-700">SGST (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={form.sgst}
-                      onChange={(e) => setForm((prev) => ({ ...prev, sgst: Number(e.target.value) || 0 }))}
-                      className="w-full px-2.5 py-1.5 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block mb-1 text-xs font-medium text-gray-700">IGST (%)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={form.igst}
-                      onChange={(e) => setForm((prev) => ({ ...prev, igst: Number(e.target.value) || 0 }))}
-                      className="w-full px-2.5 py-1.5 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none"
-                    />
-                  </div>
+                <div className="mb-4 space-y-2">
+                  <label className="block text-xs font-medium text-gray-700">Place of supply</label>
+                  <select
+                    value={form.placeOfSupply?.code || ""}
+                    onChange={(e) => setForm((prev) => withPlaceOfSupply(prev, e.target.value, companyProfile))}
+                    className="w-full px-2.5 py-1.5 text-sm bg-gray-100 border-0 rounded-lg focus:outline-none"
+                  >
+                    <option value="">Select state</option>
+                    {STATES.map((st) => (
+                      <option key={st.code} value={st.code}>
+                        {st.code} – {st.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className={`inline-block text-xs font-semibold px-2.5 py-1 rounded-full ${form.isInterState ? "bg-purple-50 text-purple-700" : "bg-emerald-50 text-emerald-700"}`}>
+                    {form.isInterState ? "Inter-state · IGST" : "Intra-state · CGST + SGST"}
+                  </span>
                 </div>
               ) : (
                 <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 font-medium">
@@ -710,57 +683,42 @@ function RecurringInvoiceForm({
 
               {/* Summary Calculations Box */}
               <div className="p-5 bg-gray-50 rounded-xl border border-gray-100 mt-4 space-y-2.5">
-                <div className="flex justify-between text-sm">
-                  <span className="text-slate-600">Subtotal:</span>
-                  <span className="font-semibold text-slate-900">
-                    ₹{calculations.subtotal.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-
-                {calculations.cgstAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">CGST ({form.cgst}%):</span>
-                    <span className="font-semibold text-slate-900">
-                      ₹{calculations.cgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
-
-                {calculations.sgstAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">SGST ({form.sgst}%):</span>
-                    <span className="font-semibold text-slate-900">
-                      ₹{calculations.sgstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
-
-                {calculations.igstAmount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-slate-600">IGST ({form.igst}%):</span>
-                    <span className="font-semibold text-slate-900">
-                      ₹{calculations.igstAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
-
                 {calculations.discountAmount > 0 && (
-                  <div className="flex justify-between text-sm text-green-700">
-                    <span>Discount ({form.discount}%):</span>
-                    <span className="font-semibold">
-                      -₹{calculations.discountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">Gross amount:</span>
+                      <span className="font-semibold text-slate-900">₹{calculations.grossAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-green-700">
+                      <span>Discount ({form.discount}%):</span>
+                      <span className="font-semibold">-₹{calculations.discountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </>
                 )}
-
-                {calculations.tdsAmount > 0 && (
-                  <div className="flex justify-between text-sm text-amber-700">
-                    <span>TDS ({form.tds}%):</span>
-                    <span className="font-semibold">
-                      -₹{calculations.tdsAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Taxable value:</span>
+                  <span className="font-semibold text-slate-900">₹{calculations.taxableAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                </div>
+                {form.isGstEnabled !== false &&
+                  calculations.taxBreakup.map((b) =>
+                    form.isInterState ? (
+                      <div key={`i${b.gstRate}`} className="flex justify-between text-sm">
+                        <span className="text-slate-600">IGST @ {b.gstRate}%:</span>
+                        <span className="font-semibold text-slate-900">₹{b.igst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ) : (
+                      <React.Fragment key={`c${b.gstRate}`}>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-600">CGST @ {b.gstRate / 2}%:</span>
+                          <span className="font-semibold text-slate-900">₹{b.cgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-slate-600">SGST @ {b.gstRate / 2}%:</span>
+                          <span className="font-semibold text-slate-900">₹{b.sgst.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </React.Fragment>
+                    )
+                  )}
 
                 {form.isRoundOff && calculations.roundOffAmount !== 0 && (
                   <div className="flex justify-between text-sm">
@@ -778,13 +736,18 @@ function RecurringInvoiceForm({
                     ₹{calculations.total.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
                   </span>
                 </div>
+                {calculations.tdsAmount > 0 && (
+                  <p className="text-xs text-amber-700">
+                    Customer may deduct TDS of about ₹{calculations.tdsAmount.toLocaleString("en-IN", { minimumFractionDigits: 2 })} ({form.tds}%) when paying — record it with the payment.
+                  </p>
+                )}
               </div>
 
               {/* Bottom Action Submit Button */}
               <div className="mt-6 flex flex-col gap-2">
                 <button
                   type="button"
-                  onClick={(e) => onSave(e, { ...form, ...calculations })}
+                  onClick={(e) => onSave(e, { ...withProfileDiscount(form), ...calculations, taxBreakup: calculations.taxBreakup })}
                   className="w-full flex items-center justify-center py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold text-sm shadow transition-colors"
                 >
                   <FileText className="w-4 h-4 mr-2" />
@@ -817,11 +780,9 @@ export default function RecurringInvoices() {
   const {
     recurringInvoices,
     loading,
-    error,
     addRecurringInvoice,
     editRecurringInvoice,
     removeRecurringInvoice,
-    refetch,
   } = useRecurringInvoices();
 
   const { allCustomers } = useCustomers();
@@ -867,11 +828,13 @@ export default function RecurringInvoices() {
 
   const openEdit = (item) => {
     setEditingId(item.id);
+    const upgraded = upgradeToItemwise(item);
     setForm({
       ...getInitialForm(),
-      ...item,
-      items: item.items?.length
-        ? item.items.map((it) => ({
+      ...upgraded,
+      isInterState: upgraded.isInterState ?? false,
+      items: upgraded.items?.length
+        ? upgraded.items.map((it) => ({
             ...it,
             id: it.id || `item_${Math.random().toString(36).substr(2, 6)}`,
             description: it.description || it.productName || it.name || "",

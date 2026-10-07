@@ -143,7 +143,29 @@ function ItemRow({ item, ai }) {
 
 ItemRow.propTypes = { item: PropTypes.object.isRequired, ai: PropTypes.object.isRequired };
 
-function CustomerRow({ customer, ai, customers }) {
+function AddCustomerButton({ customer, onAddCustomer }) {
+  const [saving, setSaving] = useState(false);
+  if (!onAddCustomer) return null;
+  return (
+    <button
+      type="button"
+      disabled={saving}
+      onClick={async () => {
+        setSaving(true);
+        await onAddCustomer(customer.spokenName || customer.name);
+        setSaving(false);
+      }}
+      className="mt-2 flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+    >
+      <UserPlus className="h-3.5 w-3.5" />
+      {saving ? "Adding…" : `Add "${customer.spokenName || customer.name}" as a new customer`}
+    </button>
+  );
+}
+
+AddCustomerButton.propTypes = { customer: PropTypes.object.isRequired, onAddCustomer: PropTypes.func };
+
+function CustomerRow({ customer, ai, customers, onAddCustomer }) {
   if (!customer) return null;
   if (customer.status === "matched") {
     return (
@@ -163,6 +185,7 @@ function CustomerRow({ customer, ai, customers }) {
       <div className="flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm" data-testid="ai-draft-customer" data-status="new">
         <UserPlus className="h-4 w-4 text-sky-600" />
         <span className="text-slate-900">New walk-in customer: <strong>{customer.name}</strong></span>
+        <AddCustomerButton customer={customer} onAddCustomer={onAddCustomer} />
       </div>
     );
   }
@@ -192,21 +215,25 @@ function CustomerRow({ customer, ai, customers }) {
           </option>
         ))}
       </select>
-      {!ambiguous && <p className="mt-1 text-[11px] text-slate-500">You can also pick the client on the form after confirming.</p>}
+      {!ambiguous && onAddCustomer && <AddCustomerButton customer={customer} onAddCustomer={onAddCustomer} />}
+      {!ambiguous && !onAddCustomer && <p className="mt-1 text-[11px] text-slate-500">You can also pick the client on the form after confirming.</p>}
     </div>
   );
 }
 
-CustomerRow.propTypes = { customer: PropTypes.object, ai: PropTypes.object.isRequired, customers: PropTypes.array.isRequired };
+CustomerRow.propTypes = { customer: PropTypes.object, ai: PropTypes.object.isRequired, customers: PropTypes.array.isRequired, onAddCustomer: PropTypes.func };
 
-export default function DraftPreviewPanel({ ai, customers, totals, onConfirm }) {
+// The chat passes confirmLabel, onAddCustomer and extraBlockers to save the
+// bill directly; the invoice page uses the defaults and fills its form.
+export default function DraftPreviewPanel({ ai, customers, totals, onConfirm, confirmLabel = "Confirm", onAddCustomer, extraBlockers = [], busy = false }) {
   const { draft } = ai;
   const hasContent = draft.items.length > 0 || draft.customer;
   if (!hasContent) return null;
+  const blockers = [...ai.blockers, ...extraBlockers];
 
   return (
     <div className="space-y-3" data-testid="ai-draft-preview">
-      <CustomerRow customer={draft.customer} ai={ai} customers={customers} />
+      <CustomerRow customer={draft.customer} ai={ai} customers={customers} onAddCustomer={onAddCustomer} />
 
       <ul className="space-y-2">
         {draft.items.map((item) => (
@@ -234,9 +261,9 @@ export default function DraftPreviewPanel({ ai, customers, totals, onConfirm }) 
         </dl>
       )}
 
-      {ai.blockers.length > 0 && (
+      {blockers.length > 0 && (
         <ul className="list-disc space-y-0.5 pl-5 text-[11px] text-amber-700">
-          {ai.blockers.map((b) => (
+          {blockers.map((b) => (
             <li key={b}>{b}</li>
           ))}
         </ul>
@@ -249,11 +276,11 @@ export default function DraftPreviewPanel({ ai, customers, totals, onConfirm }) 
         <button
           type="button"
           onClick={() => onConfirm(draft)}
-          disabled={!ai.canConfirm}
+          disabled={blockers.length > 0 || busy}
           className="flex-1 rounded-xl bg-blue-600 px-3 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
           data-testid="ai-confirm"
         >
-          Confirm
+          {busy ? "Saving…" : confirmLabel}
         </button>
       </div>
     </div>
@@ -265,4 +292,8 @@ DraftPreviewPanel.propTypes = {
   customers: PropTypes.array.isRequired,
   totals: PropTypes.arrayOf(PropTypes.shape({ label: PropTypes.string, value: PropTypes.string, strong: PropTypes.bool })),
   onConfirm: PropTypes.func.isRequired,
+  confirmLabel: PropTypes.string,
+  onAddCustomer: PropTypes.func,
+  extraBlockers: PropTypes.arrayOf(PropTypes.string),
+  busy: PropTypes.bool,
 };

@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
+import { GST_RATES, STATES } from "../../utils/gst.js";
+import { withPlaceOfSupply } from "../../utils/invoiceForm.js";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
 import { createPortal } from "react-dom";
-import { Plus, Trash2, Eye, Save, ArrowLeft, FileText, Settings, X } from "lucide-react";
+import { Plus, Trash2, Eye, Save, ArrowLeft, FileText, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { focusNextFormField } from "../../utils/keyboardNavigation";
 
@@ -316,7 +319,7 @@ const ProductAutocomplete = ({
   }, [isFocused]);
 
   useEffect(() => {
-    setSearchTerm(value);
+    setSearchTerm(value || "");
   }, [value]);
 
   useEffect(() => {
@@ -502,7 +505,8 @@ export default function CreateDeliveryChallanComponent({
   saveChallan,
   clients = [],
   products = [],
-  calculations = { subtotal: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0, roundOffAmount: 0, total: 0 },
+  calculations = { subtotal: 0, cgstAmount: 0, sgstAmount: 0, igstAmount: 0, roundOffAmount: 0, total: 0, taxBreakup: [] },
+  applyProductToItem,
   addItem,
   updateItem,
   removeItem,
@@ -511,6 +515,7 @@ export default function CreateDeliveryChallanComponent({
   onCancel,
   isEditMode = false,
 }) {
+  const { companyProfile } = useCompanyProfile();
   const [showPreferencesModal, setShowPreferencesModal] = useState(false);
   const [preferences, setPreferences] = useState({
     mode: "auto",
@@ -709,6 +714,7 @@ export default function CreateDeliveryChallanComponent({
                     <th className="py-2.5 px-3 w-28 text-center">HSN</th>
                     <th className="py-2.5 px-3 w-20 text-center">QTY</th>
                     <th className="py-2.5 px-3 w-28 text-right">RATE (₹)</th>
+                    <th className="py-2.5 px-3 w-24 text-center">GST %</th>
                     <th className="py-2.5 px-3 w-32 text-right">AMOUNT (₹)</th>
                     <th className="py-2.5 px-2 w-10"></th>
                   </tr>
@@ -727,9 +733,12 @@ export default function CreateDeliveryChallanComponent({
                           onAddNewProduct={handleAddNewProduct}
                           onChange={(val) => updateItem(item.id, "description", val)}
                           onSelect={(product) => {
-                            updateItem(item.id, "description", product.name);
-                            updateItem(item.id, "hsnCode", product.hsn || "");
-                            updateItem(item.id, "rate", product.price || 0);
+                            if (applyProductToItem) applyProductToItem(item.id, product);
+                            else {
+                              updateItem(item.id, "description", product.name);
+                              updateItem(item.id, "hsnCode", product.hsn || "");
+                              updateItem(item.id, "rate", product.price || 0);
+                            }
                           }}
                         />
                       </td>
@@ -761,8 +770,21 @@ export default function CreateDeliveryChallanComponent({
                           className="w-full px-2 py-1.5 text-sm bg-gray-100 border-0 rounded text-right focus:bg-white focus:ring-1 focus:ring-blue-500"
                         />
                       </td>
+                      <td className="py-2 px-3">
+                        <select
+                          value={String(item.gstRate ?? 0)}
+                          onChange={(e) => updateItem(item.id, "gstRate", Number(e.target.value))}
+                          className="w-full px-2 py-1.5 text-sm bg-gray-100 border-0 rounded text-center focus:bg-white focus:ring-1 focus:ring-blue-500"
+                        >
+                          {GST_RATES.map((r) => (
+                            <option key={r} value={String(r)}>
+                              {r}%
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="py-2 px-3 text-right font-medium text-gray-900">
-                        ₹{(item.amount || (item.quantity * (item.rate || 0))).toFixed(2)}
+                        ₹{Number(item.amount || 0).toFixed(2)}
                       </td>
                       <td className="py-2 px-2 text-center">
                         <button
@@ -778,7 +800,7 @@ export default function CreateDeliveryChallanComponent({
 
                   {challanData.items.length === 0 && (
                     <tr>
-                      <td colSpan="7" className="py-8 text-center text-gray-500">
+                      <td colSpan="8" className="py-8 text-center text-gray-500">
                         No items added yet. Click "+ Add Item" above to add items.
                       </td>
                     </tr>
@@ -807,24 +829,44 @@ export default function CreateDeliveryChallanComponent({
             <h3 className="text-md font-bold text-gray-900 border-b pb-2">Amount Summary</h3>
 
             <div className="flex justify-between text-sm py-1">
-              <span className="text-gray-600">Sub Total</span>
+              <span className="text-gray-600">Taxable value</span>
               <span className="font-semibold">₹{calculations.subtotal.toFixed(2)}</span>
             </div>
 
-            <div className="flex items-center justify-between text-sm py-1">
-              <span className="text-gray-600">CGST (9%)</span>
-              <span className="font-medium">₹{calculations.cgstAmount.toFixed(2)}</span>
-            </div>
-
-            <div className="flex items-center justify-between text-sm py-1">
-              <span className="text-gray-600">SGST (9%)</span>
-              <span className="font-medium">₹{calculations.sgstAmount.toFixed(2)}</span>
-            </div>
-
-            <div className="flex items-center justify-between text-sm py-1">
-              <span className="text-gray-600">IGST (0%)</span>
-              <span className="font-medium">₹{calculations.igstAmount.toFixed(2)}</span>
-            </div>
+            <label className="block text-sm">
+              <span className="block text-gray-600 mb-1">Place of supply</span>
+              <select
+                value={challanData.placeOfSupply?.code || ""}
+                onChange={(e) => setChallanData((prev) => withPlaceOfSupply(prev, e.target.value, companyProfile))}
+                className="w-full px-2 py-1.5 text-sm bg-gray-100 border-0 rounded focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">Select state</option>
+                {STATES.map((st) => (
+                  <option key={st.code} value={st.code}>
+                    {st.code} – {st.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(calculations.taxBreakup || []).map((b) =>
+              challanData.isInterState ? (
+                <div key={`i${b.gstRate}`} className="flex items-center justify-between text-sm py-1">
+                  <span className="text-gray-600">IGST @ {b.gstRate}%</span>
+                  <span className="font-medium">₹{b.igst.toFixed(2)}</span>
+                </div>
+              ) : (
+                <React.Fragment key={`c${b.gstRate}`}>
+                  <div className="flex items-center justify-between text-sm py-1">
+                    <span className="text-gray-600">CGST @ {b.gstRate / 2}%</span>
+                    <span className="font-medium">₹{b.cgst.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm py-1">
+                    <span className="text-gray-600">SGST @ {b.gstRate / 2}%</span>
+                    <span className="font-medium">₹{b.sgst.toFixed(2)}</span>
+                  </div>
+                </React.Fragment>
+              )
+            )}
 
             <div className="flex items-center justify-between text-sm py-1 border-t pt-2">
               <label className="flex items-center space-x-2 text-gray-700 font-medium cursor-pointer">

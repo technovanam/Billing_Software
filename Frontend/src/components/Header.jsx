@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useRef } from "react";
-import { useNavigate, NavLink } from "react-router-dom";
+import { useNavigate, NavLink, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext";
 import { useCompanyProfile } from "../context/CompanyProfileContext";
 import AIAssistantWidget from "./AIAssistantWidget";
@@ -16,36 +16,113 @@ import {
   Truck,
   Users,
   Package,
-  UserCheck,
   BarChart3,
   CreditCard,
   Receipt,
   Bot,
   Settings,
   Repeat,
-  Store,
-  Warehouse,
-} from "lucide-react";
+  ShoppingCart,
+  ShoppingBag,
+  FileMinus,
+  FilePlus,
+  Building2,
+  ChevronDown,
+  BookOpen,
+  Landmark, ClipboardList, ClipboardCheck, HandCoins, Tags, Factory } from "lucide-react";
 
-const billingNavItems = [
+// Sidebar: single links plus collapsible groups (Tally-style Sales / Purchases).
+// Only the group holding the current page is open, so the menu fits without scrolling.
+const billingNav = [
   { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-  { name: "Invoices", path: "/invoices", icon: FileText },
-  { name: "Delivery Challans", path: "/challans", icon: Truck },
-  { name: "Recurring Invoices", path: "/recurring-invoices", icon: Repeat },
-  { name: "Customers", path: "/clients", icon: Users },
-  { name: "Products", path: "/products", icon: Package },
-  { name: "Cashier Management", path: "/cashiers", icon: UserCheck },
-  { name: "Reports", path: "/reports", icon: BarChart3 },
-  { name: "Payments", path: "/payments", icon: CreditCard },
-  { name: "Expenses", path: "/expenses", icon: Receipt },
+  {
+    name: "Sales",
+    icon: ShoppingCart,
+    children: [
+      { name: "Quotations", path: "/quotations", icon: ClipboardList },
+      { name: "Sales Orders", path: "/sales-orders", icon: ClipboardCheck },
+      { name: "Invoices", path: "/invoices", icon: FileText },
+      { name: "Credit Notes", path: "/credit-notes", icon: FileMinus },
+      { name: "Delivery Challans", path: "/challans", icon: Truck },
+      { name: "Recurring Invoices", path: "/recurring-invoices", icon: Repeat },
+      { name: "Customers", path: "/clients", icon: Users },
+      { name: "Payments", path: "/payments", icon: CreditCard },
+      { name: "Advance Receipts", path: "/advance-receipts", icon: HandCoins },
+      { name: "Cheques", path: "/cheques", icon: Landmark },
+    ],
+  },
+  {
+    name: "Purchases",
+    icon: ShoppingBag,
+    children: [
+      { name: "Purchase Orders", path: "/purchase-orders", icon: ClipboardList },
+      { name: "Purchase Bills", path: "/purchases", icon: FilePlus },
+      { name: "Debit Notes", path: "/debit-notes", icon: FileMinus },
+      { name: "Suppliers", path: "/suppliers", icon: Building2 },
+      { name: "Expenses", path: "/expenses", icon: Receipt },
+    ],
+  },
+  {
+    name: "Inventory",
+    icon: Package,
+    children: [
+      { name: "Products", path: "/products", icon: Package },
+      { name: "Price Lists", path: "/price-lists", icon: Tags },
+      { name: "Manufacturing", path: "/manufacturing", icon: Factory },
+    ],
+  },
+  {
+    name: "Accounts",
+    icon: BookOpen,
+    children: [
+      { name: "Books & Statements", path: "/accounts", icon: Landmark },
+      { name: "GST Returns", path: "/gst-returns", icon: FileText },
+      { name: "Payroll", path: "/payroll", icon: Users },
+      { name: "Reports", path: "/reports", icon: BarChart3 },
+    ],
+  },
   { name: "AI Assistant", path: "/ai-assistant", icon: Bot },
   { name: "Settings", path: "/settings", icon: Settings },
 ];
 
-const portalShortcuts = [
-  { name: "POS Counter", path: "/pos/billing", icon: Store, badge: "POS" },
-  { name: "Warehouse Hub", path: "/warehouse", icon: Warehouse, badge: "Stock" },
-];
+const itemClass = (isActive, nested) =>
+  `flex items-center gap-3 rounded-xl ${nested ? "pl-9 pr-3.5" : "px-3.5"} py-2.5 [@media(max-height:820px)]:py-2 text-sm font-medium transition-all duration-200 ${
+    isActive ? "bg-blue-600 text-white shadow-sm font-semibold" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+  }`;
+
+function NavGroup({ group, open, onToggle, activePath }) {
+  const Icon = group.icon;
+  const containsActive = group.children.some((c) => activePath.startsWith(c.path));
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={`w-full flex items-center gap-3 rounded-xl px-3.5 py-2.5 [@media(max-height:820px)]:py-2 text-sm font-medium transition-all duration-200 ${
+          containsActive && !open ? "bg-blue-50 text-blue-700 font-semibold" : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+        }`}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="flex-1 truncate text-left">{group.name}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="mt-1 space-y-1">
+          {group.children.map((item) => {
+            const ChildIcon = item.icon;
+            return (
+              <NavLink key={item.path} to={item.path} className={({ isActive }) => itemClass(isActive, true)}>
+                <ChildIcon className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">{item.name}</span>
+              </NavLink>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getFYLabel() {
   const now = new Date();
@@ -59,7 +136,15 @@ export default function Header() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const dropdownRef = useRef(null);
+
+  // The group containing the current page opens automatically.
+  const activeGroup = billingNav.find((g) => g.children?.some((c) => pathname.startsWith(c.path)))?.name || null;
+  const [openGroup, setOpenGroup] = useState(activeGroup);
+  useEffect(() => {
+    if (activeGroup) setOpenGroup(activeGroup);
+  }, [activeGroup]);
   const navRef = useRef(null);
 
   const handleSidebarWheel = (e) => {
@@ -96,7 +181,7 @@ export default function Header() {
     .toUpperCase()
     .substring(0, 2);
   const headerLogo = companyProfile?.logoURL || "/Icon@4x-8.png";
-  const headerCompanyName = companyProfile?.companyName || "Techno Vanam";
+  const headerCompanyName = companyProfile?.companyName || "Kanakku Desk";
 
   return (
     <>
@@ -106,7 +191,7 @@ export default function Header() {
         onWheel={handleSidebarWheel}
         className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white shadow-sm z-40 flex flex-col"
       >
-        <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-200">
+        <div className="flex items-center gap-3 px-5 py-5 [@media(max-height:820px)]:py-4 border-b border-slate-200">
           <img
             src={headerLogo}
             alt={`${headerCompanyName} Logo`}
@@ -122,55 +207,33 @@ export default function Header() {
           ref={navRef}
           data-lenis-prevent="true"
           data-lenis-prevent-wheel="true"
-          className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto scrollbar-thin"
+          className="flex-1 min-h-0 px-3 py-4 space-y-1.5 [@media(max-height:820px)]:py-3 [@media(max-height:820px)]:space-y-1 overflow-y-auto overscroll-contain scrollbar-hide"
         >
           {/* ── Admin / Billing Navigation ── */}
-          {billingNavItems.map((item) => {
+          {billingNav.map((item) => {
+            if (item.children) {
+              return (
+                <NavGroup
+                  key={item.name}
+                  group={item}
+                  activePath={pathname}
+                  open={openGroup === item.name}
+                  onToggle={() => setOpenGroup((g) => (g === item.name ? null : item.name))}
+                />
+              );
+            }
             const Icon = item.icon;
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 ${
-                    isActive
-                      ? "bg-blue-600 text-white shadow-sm font-semibold"
-                      : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
-                  }`
-                }
-              >
+              <NavLink key={item.path} to={item.path} className={({ isActive }) => itemClass(isActive, false)}>
                 {Icon && <Icon className="h-4 w-4 shrink-0" />}
                 <span className="flex-1 truncate">{item.name}</span>
               </NavLink>
             );
           })}
-
-          {/* ── Switch Portals Section ── */}
-          <div className="pt-3 pb-1 border-t border-slate-100">
-            <p className="px-3.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Other Portals</p>
-            {portalShortcuts.map((portal) => {
-              const Icon = portal.icon;
-              return (
-                <NavLink
-                  key={portal.path}
-                  to={portal.path}
-                  className="flex items-center justify-between rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-blue-700 transition-all duration-200"
-                >
-                  <div className="flex items-center gap-2.5 truncate">
-                    {Icon && <Icon className="h-3.5 w-3.5 text-slate-500" />}
-                    <span className="truncate">{portal.name}</span>
-                  </div>
-                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100">
-                    {portal.badge}
-                  </span>
-                </NavLink>
-              );
-            })}
-          </div>
         </nav>
 
-        <div className="px-3 pb-4">
-          <div className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
+        <div className="px-3 pb-4 [@media(max-height:820px)]:pb-3">
+          <div className="mb-3 [@media(max-height:820px)]:mb-2 rounded-xl bg-blue-50 px-3 py-2 text-center text-xs font-semibold text-blue-700 border border-blue-100">
             {getFYLabel()}
           </div>
 

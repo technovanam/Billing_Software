@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   AlertCircle,
   CreditCard,
-  Building2,
   FileText,
   ShieldCheck,
   Loader2,
@@ -13,6 +12,8 @@ import {
   Printer,
 } from "lucide-react";
 import { loadRazorpayScript } from "../../utils/loadRazorpay";
+
+import { BACKEND_URL, backendUrl } from "../../lib/backend";
 
 export default function TokenPublicPayPage() {
   const { token } = useParams();
@@ -33,7 +34,7 @@ export default function TokenPublicPayPage() {
 
       try {
         setLoading(true);
-        const res = await fetch(`http://localhost:5000/api/public/payment/invoice/${token}`);
+        const res = await fetch(`${BACKEND_URL}/api/public/payment/invoice/${token}`);
         const result = await res.json();
 
         if (result.success) {
@@ -77,7 +78,7 @@ export default function TokenPublicPayPage() {
       }
 
       // 2. Request backend to create Razorpay Order (Server-calculated amount)
-      const res = await fetch("http://localhost:5000/api/public/payment/create-order", {
+      const res = await fetch(backendUrl("/api/public/payment/create-order"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
@@ -95,9 +96,9 @@ export default function TokenPublicPayPage() {
         key: orderResult.keyId,
         amount: orderResult.amount,
         currency: orderResult.currency || "INR",
-        name: data?.companyName || "ESA ENGINEERING WORKS",
+        name: data?.companyName || "Invoice payment",
         description: `Invoice ${data?.invoiceNumber}`,
-        image: data?.logoURL || "https://res.cloudinary.com/dnmvriw3e/image/upload/v1756868204/ESA_uggt8u.png",
+        image: data?.logoURL || undefined,
         order_id: orderResult.orderId,
         handler: async function (response) {
           const paymentId = response.razorpay_payment_id || "PAY_SUCCESS";
@@ -244,7 +245,7 @@ export default function TokenPublicPayPage() {
           {data?.logoURL && (
             <img src={data.logoURL} alt="Company Logo" className="h-12 w-auto mx-auto mb-2 object-contain" />
           )}
-          <h1 className="text-lg font-bold tracking-wide">{data?.companyName || "ESA ENGINEERING WORKS"}</h1>
+          <h1 className="text-lg font-bold tracking-wide">{data?.companyName || "Invoice"}</h1>
           <span className="inline-block mt-2 px-3 py-0.5 bg-blue-500/20 text-blue-300 text-xs font-semibold rounded-full border border-blue-400/30">
             Invoice Payment Portal
           </span>

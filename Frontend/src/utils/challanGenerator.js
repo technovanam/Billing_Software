@@ -1,3 +1,5 @@
+import { invoiceTotals, isItemwise, sellerFor, sellerAddressLines, stateName } from "./gst.js";
+
 export const convertToWords = (num) => {
   if (num === 0) return "Zero";
   const a = [
@@ -76,16 +78,23 @@ export const convertToWords = (num) => {
   return words.trim() + " Only";
 };
 
-export const generateChallanHTML = (challan, settings = null) => {
+export const generateChallanHTML = (challan, settings = null, profile = null) => {
   const itemsArray = challan.items || challan.products || [];
-  const subtotal = itemsArray.reduce((sum, item) => sum + (item.amount || item.total || 0), 0);
-
-  const cgstAmount = (subtotal * (challan.cgst || 0)) / 100;
-  const sgstAmount = (subtotal * (challan.sgst || 0)) / 100;
-  const igstAmount = (subtotal * (challan.igst || 0)) / 100;
-
-  const roundOffAmount = challan.isRoundOff ? Math.round(challan.amount) - challan.amount : 0;
-  const finalTotal = challan.amount || (subtotal + cgstAmount + sgstAmount + igstAmount + roundOffAmount);
+  // Same GST engine as invoices (older single-rate challans keep their maths).
+  const t = invoiceTotals(challan);
+  const subtotal = t.taxableAmount;
+  const cgstAmount = t.cgstAmount;
+  const sgstAmount = t.sgstAmount;
+  const igstAmount = t.igstAmount;
+  const roundOffAmount = t.roundOffAmount;
+  const finalTotal = t.total;
+  const rateLabel = (pct, key) => {
+    if (!isItemwise(challan)) return `${pct || 0}%`;
+    const rates = (t.taxBreakup || []).filter((b) => b[key] > 0).map((b) => (key === "igst" ? b.gstRate : b.gstRate / 2));
+    return rates.length === 1 ? `${rates[0]}%` : rates.length ? "mixed" : "0%";
+  };
+  const seller = sellerFor(challan, profile);
+  const escHtml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
   const amountInWords = convertToWords(Math.floor(finalTotal));
 
@@ -161,21 +170,14 @@ export const generateChallanHTML = (challan, settings = null) => {
     </head>
     <body>
       <div class="container">
-        <div class="header-top">
-          <div>☎ 98432 94464</div>
-          <div>☎ 96984 87096</div>
-        </div>
-
         <div class="header-main">
           <div class="logo-section">
-            <img src="https://res.cloudinary.com/dnmvriw3e/image/upload/v1756868204/ESA_uggt8u.png" alt="ESA Logo" class="logo-img">
+            ${seller.logoURL ? `<img src="${escHtml(seller.logoURL)}" alt="logo" class="logo-img">` : ""}
             <div class="company-info">
-                <h1 class="company-name">ESA ENGINEERING WORKS</h1>
+                <h1 class="company-name">${escHtml(seller.companyName || "Your Business Name")}</h1>
                 <div class="company-details">
-                  <p>All Kinds of Lathe and Milling Works</p>
-                  <p>Specialist in : Press Tools, Die Casting Tools, Precision Components</p>
-                  <p>1/100, Chettipalayam Road, E.B. Compound, Malumichampatti, CBE - 641 050.</p>
-                  <p>E-Mail : esaengineeringworks@gmail.com | GSTIN : 33AMWPB2116Q1ZS</p>
+                  ${sellerAddressLines(seller).map((l) => `<p>${escHtml(l)}</p>`).join("")}
+                  <p>${[seller.phone && `Phone : ${escHtml(seller.phone)}`, seller.email && `E-Mail : ${escHtml(seller.email)}`, seller.gstin && `GSTIN : ${escHtml(seller.gstin)}`].filter(Boolean).join(" | ")}${seller.stateCode ? ` | State : ${escHtml(stateName(seller.stateCode))} (${seller.stateCode})` : ""}</p>
                 </div>
             </div>
           </div>
@@ -261,15 +263,15 @@ export const generateChallanHTML = (challan, settings = null) => {
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${subtotal.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="border-bottom: 1px solid black; padding: 4px;">CGST <span style="margin-left: 10px;">${challan.cgst || 0}%</span></td>
+                       <td style="border-bottom: 1px solid black; padding: 4px;">CGST <span style="margin-left: 10px;">${rateLabel(challan.cgst, "cgst")}</span></td>
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${cgstAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="border-bottom: 1px solid black; padding: 4px;">SGST <span style="margin-left: 10px;">${challan.sgst || 0}%</span></td>
+                       <td style="border-bottom: 1px solid black; padding: 4px;">SGST <span style="margin-left: 10px;">${rateLabel(challan.sgst, "sgst")}</span></td>
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${sgstAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
-                       <td style="border-bottom: 1px solid black; padding: 4px;">IGST <span style="margin-left: 10px;">${challan.igst || 0}%</span></td>
+                       <td style="border-bottom: 1px solid black; padding: 4px;">IGST <span style="margin-left: 10px;">${rateLabel(challan.igst, "igst")}</span></td>
                        <td style="border-bottom: 1px solid black; padding: 4px; text-align: right;">${igstAmount.toFixed(2)}</td>
                    </tr>
                    <tr>
@@ -290,7 +292,7 @@ export const generateChallanHTML = (challan, settings = null) => {
                 <div style="font-size: 11px;">${challan.declaration || "We declare that this delivery challan shows the actual price of the goods Described and that all Particulars are true and correct"}</div>
              </td>
              <td style="vertical-align: bottom; text-align: right; padding: 5px;">
-                <div style="font-weight: bold; color: #d00000; margin-bottom: 40px; text-align: center;">For ESA Engineering Works</div>
+                <div style="font-weight: bold; color: #d00000; margin-bottom: 40px; text-align: center;">For ${escHtml(seller.companyName || "Your Business")}</div>
                 <div style="text-align: center;">Authorized Signatory</div>
              </td>
           </tr>

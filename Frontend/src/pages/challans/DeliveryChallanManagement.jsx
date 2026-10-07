@@ -9,16 +9,17 @@ import {
   X,
   Printer,
   Trash2,
-  FileText,
   Filter,
-  Calendar,
   ChevronDown,
   Edit,
 } from "lucide-react";
 import { useChallans, useCustomers } from "../../hooks/useFirestore";
 import { useToast } from "../../context/ToastContext";
 import { generateChallanHTML } from "../../utils/challanGenerator";
-import PropTypes from "prop-types";
+import { useCompanyProfile } from "../../context/CompanyProfileContext";
+import { authJsonHeaders } from "../../lib/authHeaders";
+
+import { backendUrl } from "../../lib/backend";
 
 const ConfirmationModal = ({
   isOpen,
@@ -59,12 +60,12 @@ const ConfirmationModal = ({
 export const ChallanPreview = ({
   challan,
   challanData,
-  calculations,
   setShowPreview,
   embedded = false,
   autoDownload = false,
   onDownloadComplete,
 }) => {
+  const { companyProfile } = useCompanyProfile();
   const { error: toastError } = useToast();
 
   useEffect(() => {
@@ -77,63 +78,6 @@ export const ChallanPreview = ({
   }, [embedded]);
 
   const previewData = challanData || challan;
-  const previewCalcs = challanData
-    ? calculations
-    : (() => {
-        const itemsArray = challan.items || challan.products || [];
-        const subtotal = itemsArray.reduce((sum, item) => sum + (item.amount || item.total || 0), 0);
-        return {
-          subtotal: subtotal,
-          cgstAmount: (subtotal * (challan.cgst || 0)) / 100,
-          sgstAmount: (subtotal * (challan.sgst || 0)) / 100,
-          igstAmount: (subtotal * (challan.igst || 0)) / 100,
-          roundOffAmount: challan.isRoundOff
-            ? Math.round(challan.amount) - challan.amount
-            : 0,
-          total: challan.isRoundOff ? Math.round(challan.amount) : challan.amount,
-        };
-      })();
-
-  const convertToWords = (amount) => {
-    const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"];
-    const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
-    const teens = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-
-    const convertHundreds = (num) => {
-      let result = "";
-      if (num >= 100) {
-        result += ones[Math.floor(num / 100)] + " Hundred ";
-        num %= 100;
-      }
-      if (num >= 20) {
-        result += tens[Math.floor(num / 10)] + " ";
-        num %= 10;
-      } else if (num >= 10) {
-        result += teens[num - 10] + " ";
-        return result;
-      }
-      if (num > 0) {
-        result += ones[num] + " ";
-      }
-      return result;
-    };
-
-    if (amount === 0) return "Zero";
-    const crores = Math.floor(amount / 10000000);
-    const lakhs = Math.floor((amount % 10000000) / 100000);
-    const thousands = Math.floor((amount % 100000) / 1000);
-    const hundreds = amount % 1000;
-
-    let words = "";
-    if (crores > 0) words += convertHundreds(crores) + "Crore ";
-    if (lakhs > 0) words += convertHundreds(lakhs) + "Lakh ";
-    if (thousands > 0) words += convertHundreds(thousands) + "Thousand ";
-    if (hundreds > 0) words += convertHundreds(hundreds);
-
-    return words.trim() + " Only";
-  };
-
-  const amountInWords = convertToWords(Math.floor(previewCalcs.total));
 
   const handleSaveAsPDF = async () => {
     try {
@@ -148,9 +92,9 @@ export const ChallanPreview = ({
         .map((style) => style.outerHTML)
         .join("\n");
 
-      const response = await fetch("http://localhost:5000/generate-pdf", {
+      const response = await fetch(backendUrl("/generate-pdf"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: await authJsonHeaders(),
         body: JSON.stringify({
           html: element.outerHTML,
           css: styles,
@@ -306,7 +250,7 @@ export const ChallanPreview = ({
             >
               <div
                 dangerouslySetInnerHTML={{
-                  __html: generateChallanHTML(previewData),
+                  __html: generateChallanHTML(previewData, null, companyProfile),
                 }}
               />
             </div>
@@ -326,7 +270,7 @@ export default function DeliveryChallanManagement() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const { challans = [], loading, error, removeChallan } = useChallans();
+  const { challans = [], loading, removeChallan } = useChallans();
   const { customers = [] } = useCustomers();
 
   const [selectedChallan, setSelectedChallan] = useState(null);

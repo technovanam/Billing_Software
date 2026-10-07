@@ -5,11 +5,10 @@ import DraftPreviewPanel from "./DraftPreviewPanel";
 
 const EXAMPLES = {
   invoice: "Ravi Traders ku 10 bag cement, 5 kg nails, 15 days credit",
-  pos: "2 Parle-G, 1 litre Aavin milk, cash",
 };
 
-// Opens with the page's shortcut (F2 on invoices, Ctrl+K on POS) or the floating
-// button. Hidden entirely when offline; manual billing is untouched.
+// Opens with the page's shortcut (F2 on invoices). Hidden entirely when
+// offline; manual billing is untouched.
 export default function AICommandBar({ ai, shortcut, shortcutLabel, customers, totals, onConfirm }) {
   const inputRef = useRef(null);
 
@@ -35,17 +34,6 @@ export default function AICommandBar({ ai, shortcut, shortcutLabel, customers, t
 
   return (
     <>
-      {!ai.isOpen && (
-        <button
-          type="button"
-          onClick={ai.open}
-          className="fixed bottom-24 right-6 z-40 inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-lg hover:bg-slate-800"
-          data-testid="ai-command-open"
-        >
-          <Sparkles className="h-4 w-4 text-amber-300" /> AI bill <span className="rounded bg-white/15 px-1.5 text-[10px]">{shortcutLabel}</span>
-        </button>
-      )}
-
       {ai.isOpen && (
         <aside
           className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl"
@@ -56,6 +44,7 @@ export default function AICommandBar({ ai, shortcut, shortcutLabel, customers, t
           <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
             <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
               <Sparkles className="h-4 w-4 text-amber-500" /> AI bill draft
+              <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-medium text-slate-500" title={`Press ${shortcutLabel} to open or close`}>{shortcutLabel}</kbd>
             </h2>
             <button type="button" onClick={ai.close} className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label="Close AI command bar">
               <X className="h-4 w-4" />
