@@ -1,80 +1,90 @@
-import { useState, useEffect, useContext, useCallback } from "react";
+import { useEffect, useContext } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import {
+  Receipt,
+  Truck,
+  Repeat,
+  Users,
+  Package,
+  Wallet,
+  Coins,
+  BarChart3,
+  Archive,
+  Sparkles,
+  ShieldCheck,
+  Lock,
+  Timer,
+  Link2,
+  CreditCard,
+  FileText,
+  Download,
+  ArrowRight,
+  Plus,
+  TrendingUp,
+  BadgePercent,
+  Bot,
+  Send,
+  UserCheck,
+  CheckCircle2,
+} from "lucide-react";
 import { AuthContext } from "../../context/AuthContext";
-
-// Smooth-scroll to a section using Lenis (falls back to native scroll)
-function scrollTo(id) {
-  const lenis = window.__lenis;
-  const el = document.querySelector(id);
-  if (!el) return;
-  if (lenis) {
-    lenis.scrollTo(el, { offset: -72, duration: 1.4 });
-  } else {
-    el.scrollIntoView({ behavior: "smooth" });
-  }
-}
-
-const LOGO_ICON = "/Icon@4x-8.png";
-const LOGO_FULL = "/logo@4x-8.png";
+import { CONTAINER, MarketingLayout, IconChip, Badge, SectionHeader } from "./marketing";
+import { PricingPlans, ContactSalesSection, usePublicPlans, useContactSales } from "./sales";
+import { FaqSection } from "./faq";
 
 /* ─── Data ──────────────────────────────────────────────────────────────── */
 
 const features = [
   {
-    icon: (
-      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-      </svg>
-    ),
+    icon: FileText,
+    tone: "blue",
     title: "Smart Invoice Generation",
-    desc: "Create professional GST-compliant invoices in seconds. Customize templates, add your logo, and send with one click.",
+    desc: "Create professional GST-compliant invoices in seconds with client picker, product autocomplete and HSN codes.",
   },
   {
-    icon: (
-      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2z" />
-      </svg>
-    ),
+    icon: CreditCard,
+    tone: "emerald",
     title: "Payment Tracking",
-    desc: "Track every rupee — outstanding, partially paid, and settled. Get real-time visibility into your cash flow.",
+    desc: "Record full or partial payments including TDS. See outstanding, partly paid and settled bills at a glance.",
   },
   {
-    icon: (
-      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-      </svg>
-    ),
+    icon: Users,
+    tone: "indigo",
     title: "Customer Management",
-    desc: "Store all customer details, billing history, and transaction records in one organised, searchable place.",
+    desc: "Keep GSTIN, address and contact details with per-client totals for invoices, revenue and outstanding amount.",
   },
   {
-    icon: (
-      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
-      </svg>
-    ),
+    icon: Package,
+    tone: "purple",
     title: "Product & Service Catalogue",
-    desc: "Maintain a rich catalogue of products and services with HSN codes, pricing, and tax rates ready to add to any invoice.",
+    desc: "Maintain products with HSN codes, GST rates, units and price history, ready to add to any bill.",
   },
   {
-    icon: (
-      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
+    icon: BarChart3,
+    tone: "orange",
     title: "Revenue Reports",
-    desc: "Visualise monthly and yearly revenue with interactive charts. Export detailed PDF reports for accounting.",
+    desc: "Revenue charts, CGST / SGST / IGST breakdowns and month-wise or full financial year bill downloads.",
   },
   {
-    icon: (
-      <svg className="w-7 h-7" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-      </svg>
-    ),
+    icon: Download,
+    tone: "rose",
     title: "PDF Export & Print",
-    desc: "Download pixel-perfect invoice PDFs, print them instantly, or share via email — all from the same screen.",
+    desc: "Print-ready invoice layouts with the amount in words. Download PDFs or print instantly from the same screen.",
   },
 ];
+
+const modules = [
+  { icon: Receipt, tone: "blue", title: "Invoices", desc: "GST bills, drafts, round-off and TDS" },
+  { icon: Truck, tone: "indigo", title: "Delivery Challans", desc: "Reference numbers, items and print" },
+  { icon: Repeat, tone: "purple", title: "Recurring Invoices", desc: "Auto-generated and emailed on schedule" },
+  { icon: UserCheck, tone: "emerald", title: "Clients", desc: "Profiles, GSTIN and per-client totals" },
+  { icon: Package, tone: "amber", title: "Products", desc: "Catalogue, price history, stock alerts" },
+  { icon: Wallet, tone: "green", title: "Payments", desc: "Partial payments, history and Razorpay" },
+  { icon: Coins, tone: "orange", title: "Expenses", desc: "Categories and receipt uploads" },
+  { icon: Archive, tone: "rose", title: "FY Archives", desc: "Past financial years with yearly totals" },
+];
+
+const aiPrompts = ["Today's Sales", "Monthly Profit", "Top Product", "Who Owes Money?", "Customer Insights", "GST Tax", "Validate GSTIN"];
 
 const steps = [
   { number: "01", title: "Add Your Clients", desc: "Register your clients with their GST, address, and contact details once." },
@@ -84,458 +94,357 @@ const steps = [
 ];
 
 const stats = [
-  { value: "500+", label: "Invoices Generated" },
-  { value: "100%", label: "GST Compliant" },
-  { value: "< 1 min", label: "To Create an Invoice" },
-  { value: "Zero", label: "Setup Cost" },
+  { value: "500+", label: "Invoices Generated", icon: Receipt, tone: "blue" },
+  { value: "100%", label: "GST Compliant", icon: BadgePercent, tone: "purple" },
+  { value: "< 1 min", label: "To Create an Invoice", icon: Timer, tone: "emerald" },
+  { value: "Zero", label: "Setup Cost", icon: Wallet, tone: "orange" },
 ];
 
-/* ─── Sub-components ─────────────────────────────────────────────────────── */
+const securityPoints = [
+  { icon: Lock, tone: "blue", title: "Secure sign-in", desc: "Firebase authentication with each business's data kept separate." },
+  { icon: Timer, tone: "amber", title: "Auto logout", desc: "Inactive sessions sign out automatically after a timeout you choose." },
+  { icon: Link2, tone: "indigo", title: "Secure pay links", desc: "Generate, regenerate or disable an online payment link per invoice." },
+  { icon: ShieldCheck, tone: "green", title: "Online payments", desc: "Accept invoice payments through Razorpay, including refunds." },
+];
 
-function Navbar({ onGetStarted }) {
-  const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+/* ─── Hero ───────────────────────────────────────────────────────────────── */
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener("scroll", onScroll);
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
-
-  const navLinks = [
-    { label: "Features", target: "#features" },
-    { label: "How It Works", target: "#how-it-works" },
-    { label: "About", target: "#about" },
-    { label: "Contact", target: "#contact" },
+// A static replica of the business dashboard, built from the same card styles
+function DashboardPreview() {
+  const now = new Date();
+  const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const fyLabel = `FY ${fyStart}-${String(fyStart + 1).slice(-2)}`;
+  const cards = [
+    { title: "Total Bill Amount", value: "₹5,17,400.00", icon: TrendingUp, color: "text-blue-500" },
+    { title: "Amount to Receive", value: "₹32,400.00", icon: TrendingUp, color: "text-red-500" },
+    { title: "Revenue [Received]", value: "₹4,85,000.00", icon: TrendingUp, color: "text-green-500" },
+  ];
+  const activity = [
+    { dot: "bg-green-500", text: "INV-0142 marked as paid", time: "2m ago" },
+    { dot: "bg-blue-500", text: "INV-0143 created", time: "18m ago" },
+    { dot: "bg-yellow-500", text: "INV-0144 saved as draft", time: "1h ago" },
   ];
 
-  const handleNav = useCallback((e, target) => {
-    e.preventDefault();
-    setMobileOpen(false);
-    scrollTo(target);
-  }, []);
-
   return (
-    <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled ? "bg-white shadow-md" : "bg-white/80 backdrop-blur-md"
-      }`}
-    >
-      <div className="w-full px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 md:h-18">
-          {/* Left — Logo + Nav */}
-          {/* Left — Logo */}
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            <img src={LOGO_ICON} alt="Techno Vanam Logo" className="h-9 w-auto object-contain" />
-            <div className="leading-tight">
-              <span className="block text-base md:text-lg font-bold text-gray-900">Techno Vanam</span>
-              <span className="block text-[10px] font-semibold text-blue-600 uppercase tracking-widest -mt-0.5">Billing</span>
-            </div>
-          </div>
-
-          {/* Center — Nav */}
-          <nav className="hidden md:flex items-center gap-6 absolute left-1/2 -translate-x-1/2">
-            {navLinks.map((link) => (
-              <a
-                key={link.target}
-                href={link.target}
-                onClick={(e) => handleNav(e, link.target)}
-                className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
-              >
-                {link.label}
-              </a>
-            ))}
-          </nav>
-
-          {/* Right — Sign In + Get Started */}
-          <div className="hidden md:flex items-center gap-3">
-            <Link
-              to="/signin"
-              className="text-sm font-medium text-gray-700 hover:text-blue-600 transition-colors px-4 py-2"
-            >
-              Sign In
-            </Link>
-            <button
-              onClick={onGetStarted}
-              className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-colors shadow-sm"
-            >
-              Get Started
-            </button>
-          </div>
-
-          {/* Mobile menu button */}
-          <button
-            className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
-            onClick={() => setMobileOpen(!mobileOpen)}
-          >
-            {mobileOpen ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            )}
-          </button>
+    <div className="relative">
+      <div className="absolute -inset-3 bg-blue-100/60 rounded-2xl rotate-1 hidden sm:block" aria-hidden="true" />
+      <div className="relative bg-slate-50 rounded-xl border border-gray-200 shadow-xl overflow-hidden text-left">
+        <div className="flex items-center gap-1.5 px-4 py-2.5 bg-white border-b border-gray-200">
+          <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+          <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
+          <span className="ml-3 text-[11px] text-gray-400 font-medium">Dashboard</span>
         </div>
+        <div className="p-4 sm:p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Welcome back!</p>
+              <p className="text-xs text-gray-500">Here&apos;s what&apos;s happening with your business today.</p>
+            </div>
+            <span className="hidden sm:inline-flex items-center gap-1 bg-blue-600 text-white text-xs font-medium px-3 py-1.5 rounded-lg">
+              <Plus className="w-3.5 h-3.5" /> Create Invoice
+            </span>
+          </div>
 
-        {/* Mobile menu */}
-        {mobileOpen && (
-          <div className="md:hidden border-t border-gray-100 py-3 space-y-1">
-            {navLinks.map((link) => (
-              <a
-                key={link.target}
-                href={link.target}
-                onClick={(e) => handleNav(e, link.target)}
-                className="block px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-colors"
-              >
-                {link.label}
-              </a>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            {cards.map(({ title, value, icon: Icon, color }) => (
+              <div key={title} className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+                <div className="flex justify-between items-start mb-1.5">
+                  <h3 className="text-xs font-medium text-gray-600">{title}</h3>
+                  <div className="p-1 bg-gray-50 rounded-md">
+                    <Icon className={`w-4 h-4 ${color}`} />
+                  </div>
+                </div>
+                <p className="text-base font-bold text-gray-900">{value}</p>
+                <span className="inline-block mt-1.5 bg-blue-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium">{fyLabel}</span>
+              </div>
             ))}
-            <div className="pt-2 border-t border-gray-100 flex flex-col gap-2 px-4 pb-2">
-              <Link to="/signin" className="w-full text-center py-2.5 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50">
-                Sign In
-              </Link>
-              <button
-                onClick={onGetStarted}
-                className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700"
-              >
-                Get Started
-              </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+              <div className="flex justify-between items-start mb-1.5">
+                <h3 className="text-xs font-medium text-gray-600">Payment Status</h3>
+                <div className="p-1 bg-gray-50 rounded-md">
+                  <CreditCard className="w-4 h-4 text-emerald-600" />
+                </div>
+              </div>
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-base font-bold text-gray-900">34</p>
+                  <p className="text-[10px] text-green-600">Paid (89.5%)</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold text-red-600">4</p>
+                  <p className="text-[10px] text-gray-500">Unpaid</p>
+                </div>
+              </div>
+              <div className="w-full h-2 rounded-full mt-2 overflow-hidden flex">
+                <div className="h-2 bg-green-500" style={{ width: "89.5%" }} />
+                <div className="h-2 bg-red-500 flex-1" />
+              </div>
+            </div>
+
+            <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm">
+              <h3 className="text-xs font-medium text-gray-600 mb-2">Recent Activity</h3>
+              <ul className="space-y-2">
+                {activity.map((a) => (
+                  <li key={a.text} className="flex items-center gap-2">
+                    <span className={`w-2 h-2 rounded-full ${a.dot}`} />
+                    <span className="text-xs text-gray-700 flex-1 truncate">{a.text}</span>
+                    <span className="text-[10px] text-gray-400">{a.time}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
-        )}
+        </div>
       </div>
-    </header>
+    </div>
   );
 }
 
 function HeroSection({ onGetStarted }) {
   return (
-    <section className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 pt-16">
-      {/* Background decorations */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-[600px] h-[600px] bg-blue-100 rounded-full opacity-40 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-[500px] h-[500px] bg-indigo-100 rounded-full opacity-40 blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-sky-50 rounded-full opacity-30 blur-3xl" />
+    <section id="top" className="relative min-h-screen flex flex-col bg-slate-50 border-b border-gray-200 pt-16 overflow-hidden">
+      {/* Faint dot grid, like a canvas behind the dashboard */}
+      <div
+        className="absolute inset-0 opacity-60 pointer-events-none"
+        style={{ backgroundImage: "radial-gradient(#cbd5e1 1px, transparent 1px)", backgroundSize: "22px 22px" }}
+        aria-hidden="true"
+      />
+      <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none" aria-hidden="true" />
+
+      <div className="relative flex-1 flex items-center">
+        <div className={`${CONTAINER} py-10 lg:py-12`}>
+          <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+            <div className="text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 bg-white border border-gray-200 text-gray-700 text-xs font-medium px-3 py-1.5 rounded-full mb-6 shadow-sm">
+                <span className="w-2 h-2 bg-green-500 rounded-full" />
+                GST-Compliant Billing Software
+              </div>
+
+              <h1 className="text-4xl sm:text-5xl xl:text-6xl font-bold text-gray-900 leading-[1.1] mb-5">
+                Billing made <span className="text-blue-600">simple</span> for your business
+              </h1>
+
+              <p className="text-base sm:text-lg text-gray-600 max-w-xl mx-auto lg:mx-0 mb-8 leading-relaxed">
+                Create GST invoices, manage clients, track payments and see your revenue — all in one clean dashboard.
+              </p>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 mb-8">
+                <button
+                  onClick={onGetStarted}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg shadow-sm transition-colors"
+                >
+                  Start Billing Now
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <Link
+                  to="/pricing"
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 font-medium px-6 py-3 rounded-lg border border-gray-200 transition-colors"
+                >
+                  View Pricing
+                </Link>
+              </div>
+
+              <ul className="flex flex-wrap items-center justify-center lg:justify-start gap-x-5 gap-y-2">
+                {["GST-ready invoices", "Online payment links", "AI Assistant built in"].map((t) => (
+                  <li key={t} className="flex items-center gap-1.5 text-sm text-gray-600">
+                    <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    {t}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <DashboardPreview />
+          </div>
+        </div>
       </div>
 
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 text-center">
-        {/* Badge */}
-        <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm">
-          <span className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-          GST-Compliant Billing Software
-        </div>
-
-        {/* Headline */}
-        <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-gray-900 leading-tight mb-6 max-w-4xl mx-auto">
-          Billing Made{" "}
-          <span className="relative inline-block pb-2">
-            <span className="relative z-10 text-blue-600">Simple</span>
-            <svg className="absolute -bottom-0 left-0 w-full overflow-visible" height="10" viewBox="0 0 200 10" preserveAspectRatio="none">
-              <path d="M0 7 Q50 2 100 7 Q150 12 200 7" stroke="#3b82f6" strokeWidth="3" fill="none" strokeLinecap="round" />
-            </svg>
-          </span>{" "}
-          for Your Business
-        </h1>
-
-        {/* Sub-headline */}
-        <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto mb-10 leading-relaxed">
-          Techno Vanam Billing lets you create GST invoices, manage clients, track payments, and generate revenue reports — all in one clean dashboard.
-        </p>
-
-        {/* CTA buttons */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-          <button
-            onClick={onGetStarted}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all text-base"
-          >
-            Start Billing Now
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </button>
-          <a
-            href="#features"
-            onClick={(e) => { e.preventDefault(); scrollTo("#features"); }}
-            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-white hover:bg-gray-50 text-gray-700 font-semibold px-8 py-3.5 rounded-xl border border-gray-200 shadow-sm transition-all text-base"
-          >
-            See Features
-          </a>
-        </div>
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 max-w-3xl mx-auto">
+      <div className={`relative ${CONTAINER} pb-8`}>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {stats.map((s) => (
-            <div key={s.label} className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 shadow-sm border border-white">
-              <div className="text-2xl font-bold text-blue-600">{s.value}</div>
-              <div className="text-xs text-gray-500 mt-0.5 font-medium">{s.label}</div>
+            <div key={s.label} className="bg-white p-3 sm:p-4 rounded-lg border border-gray-200 shadow-sm flex items-center gap-3">
+              <IconChip icon={s.icon} tone={s.tone} />
+              <div className="min-w-0">
+                <div className="text-lg sm:text-xl font-bold text-gray-900">{s.value}</div>
+                <div className="text-xs text-gray-500 truncate">{s.label}</div>
+              </div>
             </div>
           ))}
         </div>
       </div>
-
-      {/* Scroll indicator */}
-      <a href="#features" onClick={(e) => { e.preventDefault(); scrollTo("#features"); }} className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 text-gray-400 hover:text-blue-500 transition-colors">
-        <span className="text-xs font-medium">Scroll to explore</span>
-        <svg className="w-4 h-4 animate-bounce" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-        </svg>
-      </a>
     </section>
   );
 }
+
+/* ─── Content sections ───────────────────────────────────────────────────── */
 
 function FeaturesSection() {
   return (
-    <section id="features" className="py-24 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section header */}
-        <div className="text-center mb-16">
-          <span className="inline-block bg-blue-50 text-blue-700 text-xs font-semibold px-4 py-1.5 rounded-full mb-4 uppercase tracking-wider">
-            Everything You Need
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-            Powerful Features, Zero Complexity
-          </h2>
-          <p className="text-gray-500 text-lg max-w-2xl mx-auto">
-            From invoicing to reports, every tool your business needs is built-in and ready to use.
-          </p>
-        </div>
-
-        {/* Feature cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {features.map((f, i) => (
+    <section id="features" className="py-20 bg-white">
+      <div className={CONTAINER}>
+        <SectionHeader
+          badge="Everything You Need"
+          title="Powerful Features, Zero Complexity"
+          desc="From invoicing to reports, every tool your business needs is built-in and ready to use."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
+          {features.map((f) => (
             <div
-              key={i}
-              className="group relative p-6 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg hover:border-blue-100 transition-all duration-300"
+              key={f.title}
+              className="bg-white p-5 rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200"
             >
-              <div className="w-12 h-12 bg-blue-50 group-hover:bg-blue-600 text-blue-600 group-hover:text-white rounded-xl flex items-center justify-center mb-4 transition-all duration-300">
-                {f.icon}
-              </div>
-              <h3 className="text-base font-semibold text-gray-900 mb-2">{f.title}</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+              <IconChip icon={f.icon} tone={f.tone} />
+              <h3 className="text-base font-semibold text-gray-900 mt-4 mb-1.5">{f.title}</h3>
+              <p className="text-sm text-gray-600 leading-relaxed">{f.desc}</p>
             </div>
           ))}
         </div>
-      </div>
-    </section>
-  );
-}
-
-function HowItWorksSection() {
-  return (
-    <section id="how-it-works" className="py-24 bg-gradient-to-b from-slate-50 to-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <span className="inline-block bg-indigo-50 text-indigo-700 text-xs font-semibold px-4 py-1.5 rounded-full mb-4 uppercase tracking-wider">
-            Simple Workflow
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-            Up and Running in Minutes
-          </h2>
-          <p className="text-gray-500 text-lg max-w-2xl mx-auto">
-            No complicated setup. Just sign in and start billing your clients right away.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {steps.map((step, i) => (
-            <div key={i} className="relative">
-              {/* Connector line */}
-              {i < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-10 left-full w-full h-px bg-gradient-to-r from-blue-200 to-transparent z-0" style={{ width: "calc(100% - 2.5rem)", left: "calc(50% + 1.25rem)" }} />
-              )}
-              <div className="relative bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-md transition-shadow text-center">
-                <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 text-white font-bold text-lg rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-md">
-                  {step.number}
-                </div>
-                <h3 className="text-base font-semibold text-gray-900 mb-2">{step.title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{step.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AboutSection() {
-  return (
-    <section id="about" className="py-24 bg-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid lg:grid-cols-2 gap-12 items-center">
-          {/* Left — text */}
-          <div>
-            <span className="inline-block bg-green-50 text-green-700 text-xs font-semibold px-4 py-1.5 rounded-full mb-5 uppercase tracking-wider">
-              About Techno Vanam Billing
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-5 leading-tight">
-              Built for Indian Businesses, Powered by Modern Technology
-            </h2>
-            <p className="text-gray-600 text-base leading-relaxed mb-5">
-              Techno Vanam Billing is a purpose-built invoicing and billing platform designed for small and medium businesses in India. We understand the complexity of GST, the importance of professional invoices, and the need for clear financial visibility.
-            </p>
-            <p className="text-gray-600 text-base leading-relaxed mb-8">
-              Our platform combines a clean, intuitive interface with powerful features — giving you everything from invoice creation to revenue analytics without any learning curve.
-            </p>
-
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { icon: "✓", text: "GST Invoice Compliant" },
-                { icon: "✓", text: "Secure Firebase Auth" },
-                { icon: "✓", text: "Financial Year Reports" },
-                { icon: "✓", text: "PDF & Print Export" },
-                { icon: "✓", text: "Multi-client Support" },
-                { icon: "✓", text: "Real-time Dashboard" },
-              ].map((item, i) => (
-                <div key={i} className="flex items-center gap-2.5">
-                  <span className="w-5 h-5 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {item.icon}
-                  </span>
-                  <span className="text-sm font-medium text-gray-700">{item.text}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right — visual card stack */}
-          <div className="relative flex items-center justify-center h-80 lg:h-auto">
-            <div className="relative w-full max-w-sm mx-auto">
-              {/* Background card */}
-              <div className="absolute -top-4 -right-4 w-full h-full bg-indigo-100 rounded-3xl rotate-3" />
-              <div className="absolute -top-2 -right-2 w-full h-full bg-blue-100 rounded-3xl rotate-1" />
-
-              {/* Main card */}
-              <div className="relative bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-8 text-white shadow-2xl">
-                <div className="flex items-center gap-3 mb-6">
-                  <img src={LOGO_ICON} alt="Techno Vanam Logo" className="w-10 h-10 object-contain" />
-                  <div>
-                    <div className="font-bold text-sm">Techno Vanam</div>
-                    <div className="text-blue-200 text-xs">Billing Dashboard</div>
-                  </div>
-                </div>
-
-                <div className="space-y-3 mb-6">
-                  {[
-                    { label: "Total Revenue", value: "₹4,85,000" },
-                    { label: "Invoices This Month", value: "38" },
-                    { label: "Pending Payments", value: "₹32,400" },
-                  ].map((row, i) => (
-                    <div key={i} className="flex justify-between items-center bg-white/10 rounded-xl px-4 py-2.5">
-                      <span className="text-xs text-blue-100">{row.label}</span>
-                      <span className="text-sm font-bold">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex gap-2">
-                  <div className="flex-1 bg-white/20 rounded-lg py-2 text-center text-xs font-semibold">New Invoice</div>
-                  <div className="flex-1 bg-white rounded-lg py-2 text-center text-xs font-semibold text-blue-600">View Report</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function CtaBanner({ onGetStarted }) {
-  return (
-    <section className="py-20 bg-gradient-to-r from-blue-600 to-indigo-700">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-          Ready to Simplify Your Billing?
-        </h2>
-        <p className="text-blue-100 text-lg mb-10 max-w-xl mx-auto">
-          Join businesses that trust Techno Vanam Billing to manage their invoices and payments effortlessly.
-        </p>
-        <button
-          onClick={onGetStarted}
-          className="inline-flex items-center gap-2 bg-white hover:bg-blue-50 text-blue-700 font-bold px-10 py-4 rounded-xl text-base shadow-xl hover:shadow-2xl transition-all"
-        >
-          Sign In to Dashboard
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
-          </svg>
-        </button>
-      </div>
-    </section>
-  );
-}
-
-function Footer() {
-  const year = new Date().getFullYear();
-  return (
-    <footer id="contact" className="bg-gray-900 text-gray-400">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-10 mb-12">
-          {/* Brand */}
-          <div className="md:col-span-1">
-            <div className="flex items-center gap-3 mb-4">
-              <img src={LOGO_ICON} alt="Techno Vanam Logo" className="h-9 w-auto object-contain" />
-              <div>
-                <div className="text-white font-bold text-base">Techno Vanam</div>
-                <div className="text-blue-400 text-[10px] font-semibold uppercase tracking-widest">Billing</div>
-              </div>
-            </div>
-            <p className="text-sm leading-relaxed text-gray-500 max-w-xs">
-              Professional billing and invoicing software built for Indian businesses. Simple, fast, and GST-ready.
-            </p>
-          </div>
-
-          {/* Quick Links */}
-          <div>
-            <h4 className="text-white text-sm font-semibold mb-4 uppercase tracking-wider">Quick Links</h4>
-            <ul className="space-y-2.5">
-              {[
-                { label: "Features", href: "#features" },
-                { label: "How It Works", href: "#how-it-works" },
-                { label: "About Us", href: "#about" },
-                { label: "Sign In", href: "/signin" },
-              ].map((l) => (
-                <li key={l.label}>
-                  <a href={l.href} className="text-sm text-gray-500 hover:text-blue-400 transition-colors">
-                    {l.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Features list */}
-          <div>
-            <h4 className="text-white text-sm font-semibold mb-4 uppercase tracking-wider">Features</h4>
-            <ul className="space-y-2.5">
-              {["GST Invoice Generation", "Payment Tracking", "Client Management", "Revenue Reports", "PDF Export"].map((f) => (
-                <li key={f}>
-                  <span className="text-sm text-gray-500">{f}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Divider + copyright */}
-        <div className="border-t border-gray-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <p className="text-xs text-gray-600">
-            &copy; {year} Techno Vanam Billing. All rights reserved.
-          </p>
-          <a
-            href="https://www.technovanam.in"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-gray-600 hover:text-white transition-colors"
+        <div className="text-center mt-10">
+          <Link
+            to="/features"
+            className="inline-flex items-center gap-2 text-sm font-medium text-blue-600 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-5 py-2.5 rounded-lg transition-colors"
           >
-            Designed &amp; Developed by Techno Vanam
-          </a>
+            Explore all features <ArrowRight className="w-4 h-4" />
+          </Link>
         </div>
       </div>
-    </footer>
+    </section>
+  );
+}
+
+function ModulesSection() {
+  return (
+    <section id="modules" className="py-20 bg-slate-50 border-y border-gray-200">
+      <div className={CONTAINER}>
+        <SectionHeader
+          badge="Modules"
+          title="One Back Office for Your Whole Business"
+          desc="Every part of your billing workflow has its own workspace, all sharing the same clients, products and payments."
+        />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {modules.map((m) => (
+            <div key={m.title} className="p-4 rounded-xl bg-white border border-gray-200 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3">
+              <IconChip icon={m.icon} tone={m.tone} size="sm" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-gray-900">{m.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5">{m.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div id="how-it-works" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mt-12">
+          {steps.map((step) => (
+            <div key={step.number}>
+              <div className="flex items-center gap-3 mb-2">
+                <span className="w-9 h-9 bg-blue-600 text-white font-bold text-sm rounded-xl flex items-center justify-center flex-shrink-0">
+                  {step.number}
+                </span>
+                <h3 className="text-sm font-bold text-gray-900">{step.title}</h3>
+              </div>
+              <p className="text-sm text-gray-600 leading-relaxed">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AIAssistantSection() {
+  return (
+    <section id="ai-assistant" className="py-20 bg-white">
+      <div className={CONTAINER}>
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          <div>
+            <div className="mb-4">
+              <Badge icon={Sparkles}>AI Assistant</Badge>
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">Ask your billing data anything</h2>
+            <p className="text-sm sm:text-base text-gray-600 leading-relaxed mb-6">
+              The built-in assistant reads your live invoices, payments and products. Get answers in plain language instead of building reports by
+              hand.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {aiPrompts.map((p) => (
+                <span key={p} className="text-xs font-medium text-gray-700 bg-slate-50 border border-gray-200 px-3 py-1.5 rounded-full">
+                  {p}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-lg overflow-hidden">
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-slate-50">
+              <IconChip icon={Bot} tone="blue" size="sm" />
+              <div>
+                <p className="text-sm font-bold text-gray-900">Billing Assistant</p>
+                <p className="text-[10px] text-gray-500">Answers from your live data</p>
+              </div>
+            </div>
+            <div className="p-4 space-y-3">
+              <div className="flex justify-end">
+                <div className="bg-blue-600 text-white text-sm px-3.5 py-2 rounded-lg rounded-br-sm max-w-[80%]">Who owes money?</div>
+              </div>
+              <div className="flex">
+                <div className="bg-slate-50 border border-gray-200 text-sm text-gray-700 px-3.5 py-2.5 rounded-lg rounded-bl-sm max-w-[85%]">
+                  <p className="mb-2">3 clients have pending balances:</p>
+                  <ul className="space-y-1.5">
+                    {[
+                      ["Sri Lakshmi Traders", "₹18,200"],
+                      ["Kaveri Textiles", "₹9,650"],
+                      ["Arun Electricals", "₹4,550"],
+                    ].map(([name, amt]) => (
+                      <li key={name} className="flex justify-between gap-6 text-xs">
+                        <span className="text-gray-600">{name}</span>
+                        <span className="font-bold text-red-600">{amt}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-sm text-gray-400 flex-1">Ask about sales, GST, customers…</span>
+                <Send className="w-4 h-4 text-blue-600" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* About + security */}
+        <div id="about" className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-20">
+          {securityPoints.map((s) => (
+            <div key={s.title} className="p-4 rounded-xl bg-slate-50 border border-slate-100 flex items-start gap-3">
+              <IconChip icon={s.icon} tone={s.tone} size="sm" />
+              <div>
+                <p className="text-sm font-bold text-gray-900">{s.title}</p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PricingSection({ plans, loading, onContactSales }) {
+  return (
+    <section id="pricing" className="py-20 bg-slate-50 border-y border-gray-200">
+      <div className={CONTAINER}>
+        <SectionHeader badge="Pricing" title="Simple, Transparent Pricing" desc="Pick the plan that fits your business today and upgrade as you grow." />
+        <PricingPlans plans={plans} loading={loading} onContactSales={onContactSales} />
+        <div className="text-center mt-4">
+          <Link to="/pricing" className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-blue-600">
+            Compare all plan features <ArrowRight className="w-4 h-4" />
+          </Link>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -544,27 +453,25 @@ function Footer() {
 export default function LandingPage() {
   const navigate = useNavigate();
   const { user, authInitialized } = useContext(AuthContext);
+  const { plans, loading: plansLoading } = usePublicPlans();
+  const { selectedPlan, contactSales } = useContactSales();
 
   // If already signed in, redirect to respective dashboard
   useEffect(() => {
     if (authInitialized && user) {
-      const email = (user.email || "").toLowerCase();
-      const isWarehouse = email === "wh.demo@technovanam.in" || email.startsWith("wh.");
-      navigate(isWarehouse ? "/warehouse" : "/dashboard", { replace: true });
+      navigate("/dashboard", { replace: true });
     }
   }, [authInitialized, user, navigate]);
 
-  const handleGetStarted = () => navigate("/signup");
-
   return (
-    <div className="font-[Mazzard,sans-serif]">
-      <Navbar onGetStarted={handleGetStarted} />
-      <HeroSection onGetStarted={handleGetStarted} />
+    <MarketingLayout>
+      <HeroSection onGetStarted={() => navigate("/signup")} />
       <FeaturesSection />
-      <HowItWorksSection />
-      <AboutSection />
-      <CtaBanner onGetStarted={handleGetStarted} />
-      <Footer />
-    </div>
+      <ModulesSection />
+      <AIAssistantSection />
+      <PricingSection plans={plans} loading={plansLoading} onContactSales={contactSales} />
+      <FaqSection />
+      <ContactSalesSection plans={plans} selectedPlan={selectedPlan} />
+    </MarketingLayout>
   );
 }

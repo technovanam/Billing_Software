@@ -12,10 +12,6 @@ import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
 import AuthCollage from "../../components/AuthCollage";
 import { useToast } from "../../context/ToastContext";
 import { useSuperAdminAuth } from "../../context/SuperAdminAuthContext";
-import { cashierLogin } from "../../services/posService";
-
-// Cashier PINs are never cached in the browser.
-const stripPins = (list) => list.map(({ pin, ...c }) => c);
 
 export default function SignIn() {
   const navigate = useNavigate();
@@ -54,87 +50,63 @@ export default function SignIn() {
     const trimmedEmail = email.trim();
 
     if (!trimmedEmail) {
-      toastError("Please enter your email address or Cashier ID.");
+      toastError("Please enter your email address.");
       return;
     }
     if (!password) {
-      toastError("Please enter your password or 4-digit PIN.");
+      toastError("Please enter your password.");
       return;
     }
 
     setLoading(true);
 
     try {
-      // 1. Super Admin Portal — identified by email only; Firebase verifies the password.
-      //    No password literals are compared here.
-      if (trimmedEmail.toLowerCase() === "admin@technovanam.com") {
+      // 1. Platform admins are whoever has an adminUsers/{uid} doc; Firebase verifies
+      //    the password and the doc decides the portal. Business owners cannot
+      //    read adminUsers, so a denied read means "not an admin".
+      if (!trimmedEmail.toLowerCase().startsWith("wh.")) {
+        let isPlatformAdmin = false;
         try {
-          const res = await superAdminLogin(trimmedEmail, password, true);
-          if (res?.require2FA) {
-            navigate("/super-admin/2fa", { replace: true });
-          } else {
-            navigate("/super-admin/dashboard", { replace: true });
+          await setPersistence(auth, browserSessionPersistence);
+          const cred = await signInWithEmailAndPassword(auth, trimmedEmail, password);
+          const adminSnap = await getDoc(doc(db, "adminUsers", cred.user.uid));
+          isPlatformAdmin = adminSnap.exists();
+        } catch (_) {
+          // Wrong password etc.: the owner sign-in below shows the friendly error.
+        }
+        if (isPlatformAdmin) {
+          try {
+            const res = await superAdminLogin(trimmedEmail, password, true);
+            navigate(res?.require2FA ? "/super-admin/2fa" : "/super-admin/dashboard", { replace: true });
+          } catch (saErr) {
+            toastError(saErr.message || "Failed to sign into Super Admin Portal.");
           }
-          setLoading(false);
-          return;
-        } catch (saErr) {
-          toastError(saErr.message || "Failed to sign into Super Admin Portal.");
           setLoading(false);
           return;
         }
       }
 
-      // 2. Cashier ID (no "@"): PIN is checked by the backend on a registered POS device.
-      if (!trimmedEmail.includes("@")) {
-        try {
-          const session = await cashierLogin({ cashierId: trimmedEmail, pin: password.trim() });
-          toastSuccess(`Welcome ${session.cashierName} (${session.cashierId})! Opening POS terminal...`);
-          navigate("/pos", { replace: true });
-        } catch (cashierErr) {
-          toastError(cashierErr.message || "Cashier sign in failed.");
-        }
+      // Warehouse accounts belong to the separate POS app.
+      if (trimmedEmail.toLowerCase().startsWith("wh.")) {
+        toastError("Warehouse accounts sign in on the POS app, not the billing website.");
         setLoading(false);
         return;
       }
 
-      // 3. Standard Firebase login for owner / warehouse accounts.
+      // 2. Standard Firebase login for business owners.
       try {
         await setPersistence(auth, browserSessionPersistence);
         const userCred = await signInWithEmailAndPassword(auth, trimmedEmail, password);
         const loggedUser = userCred.user;
-        const userEmail = (loggedUser?.email || trimmedEmail).toLowerCase();
-        const isWarehouseUser = userEmail === "wh.demo@technovanam.in" || userEmail.startsWith("wh.");
-
-        // Sync registered cashiers into cache for subsequent cashier logins
-        if (loggedUser?.uid) {
-          try {
-            const appSnap = await getDoc(doc(db, "users", loggedUser.uid, "settings", "app"));
-            if (appSnap.exists()) {
-              const raw = appSnap.data()?.cashiers?.value || appSnap.data()?.cashiers;
-              if (Array.isArray(raw)) {
-                localStorage.setItem("registered_cashiers_list", JSON.stringify(stripPins(raw)));
-                localStorage.setItem(`store_cashiers_${loggedUser.uid}`, JSON.stringify(stripPins(raw)));
-              }
-            }
-          } catch (syncErr) {
-            console.warn("Cashier cache sync warning:", syncErr);
-          }
-        }
 
         // AuthContext onAuthStateChanged picks up the real Firebase user automatically.
         // No localStorage auth writes — Firebase SDK manages session persistence.
-        localStorage.removeItem("pos_cashier_session");
         if (typeof setUser === "function") {
           setUser(loggedUser);
         }
 
-        if (isWarehouseUser) {
-          toastSuccess("Warehouse operator signed in successfully!");
-          navigate("/warehouse", { replace: true });
-        } else {
-          toastSuccess("Admin signed in successfully!");
-          navigate("/dashboard", { replace: true });
-        }
+        toastSuccess("Admin signed in successfully!");
+        navigate("/dashboard", { replace: true });
       } catch (fbErr) {
         console.error("Firebase sign in error:", fbErr);
         toastError(
@@ -183,7 +155,7 @@ export default function SignIn() {
           <div className="mb-6">
             <h1 className="text-2xl font-bold text-gray-900 mb-1">
               Sign in to{" "}
-              <span className="text-blue-600">Techno Vanam</span>
+              <span className="text-blue-600">Kanakku Desk</span>
             </h1>
             <p className="text-sm text-gray-500">
               Welcome back, please enter your details below to sign in.
@@ -197,7 +169,7 @@ export default function SignIn() {
                 htmlFor="email"
                 className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1"
               >
-                Email Address or Cashier ID
+                Email Address
               </label>
               <input
                 id="email"
@@ -208,7 +180,7 @@ export default function SignIn() {
                 type="text"
                 autoComplete="username"
                 className="w-full rounded-xl border border-gray-300 px-4 py-3 text-sm placeholder:text-gray-400 focus:border-blue-500 transition-colors"
-                placeholder="name@company.com or CSH-001"
+                placeholder="name@company.com"
                 required
               />
             </div>
@@ -219,7 +191,7 @@ export default function SignIn() {
                 htmlFor="password"
                 className="block text-xs font-bold text-slate-700 uppercase tracking-wide mb-1"
               >
-                Password or 4-digit PIN
+                Password
               </label>
               <div className="relative">
                 <input
@@ -231,7 +203,7 @@ export default function SignIn() {
                   type={showPassword ? "text" : "password"}
                   autoComplete="current-password"
                   className="w-full rounded-xl border border-gray-300 px-4 py-3 pr-11 text-sm placeholder:text-gray-400 focus:border-blue-500 transition-colors"
-                  placeholder="Password or 4-digit PIN"
+                  placeholder="Password"
                   required
                 />
                 <button
@@ -273,8 +245,6 @@ export default function SignIn() {
                   </svg>
                   <span>Signing in…</span>
                 </>
-              ) : email.trim().toLowerCase().startsWith("wh.") ? (
-                "Sign In to Warehouse Portal →"
               ) : (
                 "Sign In to Admin Dashboard →"
               )}

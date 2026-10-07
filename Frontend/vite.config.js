@@ -30,7 +30,6 @@ export default defineConfig({
             if (id.includes('react')) return 'vendor-react';
             if (id.includes('nivo')) return 'vendor-nivo';
             if (id.includes('lucide-react')) return 'vendor-lucide';
-            if (id.includes('xlsx')) return 'vendor-xlsx';
             if (id.includes('jspdf')) return 'vendor-jspdf';
             if (id.includes('html2canvas')) return 'vendor-html2canvas';
             if (id.includes('firebase')) return 'vendor-firebase';

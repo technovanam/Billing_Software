@@ -201,6 +201,38 @@ optgroup {
   background-color: #94a3b8;
 }
 
+/* Extra-slim scrollbar for the sign-up form column. Chrome ignores the
+   ::-webkit-scrollbar rules whenever scrollbar-width/color are set (the global
+   rule above sets them), so reset those here and keep them for Firefox only. */
+.signup-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  overscroll-behavior: contain;
+}
+.signup-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.signup-scroll::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+}
+.signup-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.signup-scroll::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 9999px;
+}
+.signup-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+@supports not selector(::-webkit-scrollbar) {
+  .signup-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+  }
+}
+
 /* Modern, visible focus states for keyboard navigation and form inputs */
 input:focus,
 input:focus-visible,

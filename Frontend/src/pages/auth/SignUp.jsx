@@ -3,8 +3,6 @@ import { useNavigate, Link } from "react-router-dom";
 import {
   createUserWithEmailAndPassword,
   updateProfile,
-  setPersistence,
-  browserSessionPersistence,
 } from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -249,7 +247,11 @@ export default function SignUp() {
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-white">
       {/* Left — Sign Up Form */}
-      <div className="w-full lg:w-[45%] min-h-screen flex flex-col justify-between px-6 sm:px-10 lg:px-12 py-6 flex-shrink-0">
+      {/* On desktop this column scrolls on its own, with a slim scrollbar */}
+      <div
+        className="signup-scroll w-full lg:w-[45%] min-h-screen lg:h-screen lg:overflow-y-auto flex flex-col justify-between px-6 sm:px-10 lg:px-12 py-6 flex-shrink-0"
+        data-lenis-prevent
+      >
         <div className="flex items-center justify-between pb-4">
           <button
             onClick={() => (step === 0 ? navigate("/signin") : setStep(0))}
@@ -271,7 +273,6 @@ export default function SignUp() {
         <div className="w-full max-w-lg mx-auto my-auto py-4">
         {/* Logo + heading */}
         <div className="mb-6 text-center">
-          <img src="/logo@4x-8.png" alt="Techno Vanam Billing" className="mx-auto mb-3 h-9 object-contain" />
           <h1 className="text-xl font-bold text-gray-900">Create Your Account</h1>
           <p className="text-sm text-gray-500 mt-0.5">Set up your company billing profile</p>
         </div>
@@ -377,7 +378,7 @@ export default function SignUp() {
               id="companyName"
               label="Company Name"
               icon={BuildingOffice2Icon}
-              placeholder="e.g. Techno Vanam Engineering"
+              placeholder="e.g. Sri Lakshmi Traders"
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
             />
