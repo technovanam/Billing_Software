@@ -4,3 +4,11 @@ node_modules/
 Backend/serviceAccountKey.json
 Backend/.env
 Frontend/.env
+
+# POS app (standalone, see POS/README.md)
+POS/backend/serviceAccountKey.json
+POS/backend/.env
+POS/frontend/.env
+
+# Firebase CLI deploy cache
+.firebase/

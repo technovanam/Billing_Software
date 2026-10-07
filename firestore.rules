@@ -11,6 +11,25 @@ service cloud.firestore {
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
+    // Team members (Settings -> Team): users/{owner}/team/{email}. Only a
+    // verified email counts, so nobody can take over an invite by signing up
+    // with someone else's address. Accountants write, viewers only read.
+    function teamPath(userId) {
+      return /databases/$(database)/documents/users/$(userId)/team/$(request.auth.token.get('email', '').lower());
+    }
+    function isMember(userId) {
+      return isAuthenticated()
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '') != ''
+        && exists(teamPath(userId))
+        && get(teamPath(userId)).data.get('active', true) == true;
+    }
+    function canRead(userId) {
+      return isOwner(userId) || isMember(userId);
+    }
+    function canWrite(userId) {
+      return isOwner(userId) || (isMember(userId) && get(teamPath(userId)).data.role == 'accountant');
+    }
     function isValidString(s, maxLen) {
       return s is string && s.size() <= maxLen;
     }
@@ -18,17 +37,16 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     // Admin Role-Based Access Control (RBAC) Helpers
     // -------------------------------------------------------------------------
+    // Platform admins are exactly the documents in adminUsers/{uid}
+    // (created in the Firebase console or from the Admin Users page).
     function isAdmin() {
-      return isAuthenticated() && (
-        exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid)) ||
-        request.auth.token.email == "admin@technovanam.com"
-      );
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.get('status', 'Active') != 'Suspended';
     }
 
     function getAdminRole() {
-      return exists(/databases/$(database)/documents/adminUsers/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.role
-        : (request.auth.token.email == "admin@technovanam.com" ? "Super Admin" : "None");
+      return get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)).data.role;
     }
 
     function isSuperAdmin() {
@@ -76,7 +94,7 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     match /users/{userId} {
       // Cashiers read the business profile (name, logo) for receipts.
-      allow read: if isOwner(userId) || isAdmin() || isCashierOf(userId);
+      allow read: if canRead(userId) || isAdmin() || isCashierOf(userId);
       
       // Profile write only with validated fields (no arbitrary client data)
       allow create: if isOwner(userId)
@@ -103,42 +121,125 @@ service cloud.firestore {
       allow delete: if hasPermission('Delete Business');
 
       // Subcollections: tenant owner or platform admin
+      match /team/{email} {
+        allow read: if isOwner(userId) || (isMember(userId) && email == request.auth.token.email.lower());
+        allow create, update: if isOwner(userId)
+          && request.resource.data.email == email
+          && request.resource.data.role in ['accountant', 'viewer']
+          && request.resource.data.ownerUid == userId;
+        allow delete: if isOwner(userId);
+      }
       match /customers/{docId} {
-        allow read: if isOwner(userId) || isAdmin() || isCashierOf(userId);
-        allow create: if isOwner(userId) || isCashierOf(userId);
-        allow update, delete: if isOwner(userId);
+        allow read: if canRead(userId) || isAdmin() || isCashierOf(userId);
+        allow create: if canWrite(userId) || isCashierOf(userId);
+        allow update, delete: if canWrite(userId);
       }
       match /products/{docId} {
-        allow read: if isOwner(userId) || isAdmin() || isCashierOf(userId);
-        allow write: if isOwner(userId);
+        allow read: if canRead(userId) || isAdmin() || isCashierOf(userId);
+        allow write: if canWrite(userId);
       }
       match /invoices/{docId} {
         // Cashiers see only POS bills and create them in their own name.
-        allow read: if isOwner(userId) || isAdmin() || (isCashierOf(userId) && isPosBill(resource.data));
-        allow create: if isOwner(userId)
+        allow read: if canRead(userId) || isAdmin() || (isCashierOf(userId) && isPosBill(resource.data));
+        allow create: if canWrite(userId)
           || (isCashierOf(userId) && isPosBill(request.resource.data) && request.resource.data.get('cashier', '') == isOwnCashierId());
-        allow update, delete: if isOwner(userId);
+        allow update, delete: if canWrite(userId);
       }
       match /payments/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
       }
       match /expenses/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
       }
       match /recurringInvoices/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
       }
       // Was readable by anyone (including plain-text cashier PINs); owner/admin only now.
       match /settings/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
+        allow read: if canRead(userId) || isAdmin();
         allow write: if isOwner(userId);
       }
+      // Accounting (Tally-style): GST vouchers, suppliers, journals, ledgers.
+      match /advanceReceipts/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /priceLists/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /cheques/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /quotations/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /salesOrders/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /purchaseOrders/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /creditNotes/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /debitNotes/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /purchases/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /suppliers/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /journals/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /ledgers/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /stockJournals/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      // Edit log: append-only. Nobody (not even the owner) can change or delete
+      // an entry from the app; the entry must name the signed-in user.
+      match /auditTrail/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow create: if canWrite(userId) && request.resource.data.by == request.auth.uid;
+        allow update, delete: if false;
+      }
+      match /budgets/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      match /costCentres/{docId} {
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
+      }
+      // Payroll holds salaries and IDs: owner only, not platform admins.
+      match /employees/{docId} {
+        allow read, write: if isOwner(userId);
+      }
+      match /payrollRuns/{docId} {
+        allow read, write: if isOwner(userId);
+      }
       match /deliveryChallans/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId);
+        allow read: if canRead(userId) || isAdmin();
+        allow write: if canWrite(userId);
       }
 
       // Warehouse / Godown collections
@@ -162,6 +263,9 @@ service cloud.firestore {
       }
       match /staff/{docId} {
         allow read, write: if isOwner(userId);
+        // Platform admins may only flip a staff member's status.
+        allow update: if hasPermission('Suspend User')
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
       }
       match /cashiers/{docId} {
         allow read: if isOwner(userId) || isAdmin();
@@ -172,7 +276,7 @@ service cloud.firestore {
         allow write: if isOwner(userId) || hasPermission('Edit Business');
       }
       match /godowns/{docId} {
-        allow read: if isOwner(userId) || isAdmin();
+        allow read: if canRead(userId) || isAdmin();
         allow write: if isOwner(userId) || hasPermission('Edit Business');
       }
       match /terminals/{docId} {
@@ -260,7 +364,9 @@ service cloud.firestore {
     }
 
     match /systemBackups/{docId} {
-      allow read, write: if isAdmin();
+      // Records are written only by the backend after a real export.
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /analytics/{docId} {
@@ -292,6 +398,9 @@ service cloud.firestore {
     match /{path=**}/terminals/{docId} {
       allow read: if isAdmin();
     }
+    match /{path=**}/staff/{docId} {
+      allow read: if isAdmin();
+    }
     match /{path=**}/cashiers/{docId} {
       allow read: if isAdmin();
     }
@@ -299,6 +408,18 @@ service cloud.firestore {
     // -------------------------------------------------------------------------
     // Default deny: no other collections or paths are accessible
     // -------------------------------------------------------------------------
+    // Lets a team member find the businesses that added their (verified) email.
+    match /teamInvites/{email}/owners/{ownerUid} {
+      allow read: if isAuthenticated()
+        && request.auth.token.get('email_verified', false) == true
+        && request.auth.token.get('email', '').lower() == email;
+      allow create, update: if isOwner(ownerUid)
+        && request.resource.data.ownerUid == ownerUid
+        && request.resource.data.email == email
+        && request.resource.data.role in ['accountant', 'viewer'];
+      allow delete: if isOwner(ownerUid);
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
