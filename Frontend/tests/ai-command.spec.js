@@ -1,7 +1,7 @@
 /* global process */
-// AI command bar: command -> draft -> confirm, on the invoice form and the POS.
+// AI command bar: command -> draft -> confirm, on the invoice form.
 // The backend /api/ai/* endpoints are mocked, so no AI key or model call is needed.
-// Signs in with the demo owner (Backend/DEMO_LOGINS.md): set E2E_OWNER_PASSWORD
+// Signs in with a test owner account: set E2E_OWNER_PASSWORD
 // (and optionally E2E_OWNER_EMAIL); skipped without it. Needs the Vite dev server on :5173.
 import { test, expect } from '@playwright/test';
 
@@ -32,9 +32,8 @@ const invoiceDraft = {
     },
 };
 
-// The listener attaches right after the button renders; retry the key until the bar opens.
+// The shortcut listener attaches once the page has rendered; retry the key until the bar opens.
 async function openWithShortcut(page, key) {
-    await expect(page.getByTestId('ai-command-open')).toBeVisible();
     await expect(async () => {
         if (!(await page.getByTestId('ai-command-bar').isVisible())) await page.keyboard.press(key);
         await expect(page.getByTestId('ai-command-bar')).toBeVisible({ timeout: 1000 });
@@ -43,8 +42,8 @@ async function openWithShortcut(page, key) {
 
 async function signIn(page) {
     await page.goto('/signin', { waitUntil: 'domcontentloaded' });
-    await page.getByLabel(/Email Address or Cashier ID/i).fill(OWNER.email);
-    await page.getByLabel(/Password or 4-digit PIN/i).fill(OWNER.password);
+    await page.getByLabel(/Email Address/i).fill(OWNER.email);
+    await page.getByLabel(/^Password$/i).fill(OWNER.password);
     await page.getByRole('button', { name: /Sign In/i }).click();
     await page.waitForURL(/\/dashboard/, { timeout: 30000 });
 }
@@ -132,7 +131,7 @@ test.describe('AI command bar', () => {
         };
         const calls = await mockAiBackend(page, [invoiceDraft, afterRemove]);
         await page.goto('/invoices/create');
-        await page.getByTestId('ai-command-open').click();
+        await openWithShortcut(page, 'F2');
 
         await page.getByTestId('ai-command-input').fill('Ravi Traders ku 10 bag cement, 5 kg nails');
         await page.getByTestId('ai-command-send').click();
@@ -159,48 +158,16 @@ test.describe('AI command bar', () => {
         await expect(page.getByTestId('ai-draft-item')).toHaveCount(0);
     });
 
-    test('POS: Ctrl+K draft -> confirm fills the cart and F9 still prints', async ({ page }) => {
-        const posDraft = {
-            logId: 'log_pos',
-            intent: 'create_pos_bill',
-            clarification: null,
-            messages: [],
-            draft: {
-                customer: { spokenName: 'Arun', status: 'new', id: null, name: 'Arun', candidates: [] },
-                items: [{ key: 'p1', spokenName: 'cement', spokenUnit: 'bag', qty: 2, status: 'matched', source: 'exact', product: cement, candidates: [], lineTotalPaise: 84000 }],
-                dueInDays: null,
-                payment: { mode: 'upi', amountPaise: null },
-                notes: null,
-            },
-        };
-        const calls = await mockAiBackend(page, [posDraft]);
-        await page.goto('/pos/billing');
-        await openWithShortcut(page, 'Control+k');
-        await expect(page.getByTestId('ai-command-bar')).toBeVisible();
-
-        await page.getByTestId('ai-command-input').fill('Arun ku 2 bag cement, UPI');
-        await page.getByTestId('ai-command-send').click();
-        await expect(page.getByTestId('ai-draft-customer')).toHaveAttribute('data-status', 'new');
-        expect(calls.parse[0].context).toBe('pos');
-
-        await page.getByTestId('ai-confirm').click();
-        await expect(page.getByTestId('ai-command-bar')).toBeHidden();
-        await expect(page.getByText('Cement', { exact: true }).first()).toBeVisible();
-        expect(await inputValues(page)).toContain('Arun');
-
-        await page.keyboard.press('F9');
-        await expect(page.getByText('TAX INVOICE').first()).toBeVisible();
-    });
-
     test('offline hides the command bar', async ({ page, context }) => {
         await mockAiBackend(page, [invoiceDraft]);
         await page.goto('/invoices/create');
-        await expect(page.getByTestId('ai-command-open')).toBeVisible();
+        await openWithShortcut(page, 'F2');
+        await page.keyboard.press('Escape');
+        await expect(page.getByTestId('ai-command-bar')).toBeHidden();
         await context.setOffline(true);
-        await expect(page.getByTestId('ai-command-open')).toBeHidden();
         await page.keyboard.press('F2');
         await expect(page.getByTestId('ai-command-bar')).toBeHidden();
         await context.setOffline(false);
-        await expect(page.getByTestId('ai-command-open')).toBeVisible();
+        await openWithShortcut(page, 'F2');
     });
 });
