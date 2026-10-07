@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { Outlet, NavLink, useLocation, useNavigate, Link } from "react-router-dom";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
 import {
   LayoutDashboard,
   Building2,
   GitBranch,
   Users,
-  Smartphone,
-  Warehouse,
   CreditCard,
   Layers,
   Receipt,
@@ -16,7 +14,6 @@ import {
   BarChart3,
   HelpCircle,
   Megaphone,
-  Bell,
   Shield,
   KeyRound,
   FileText,
@@ -28,7 +25,6 @@ import {
   AlertOctagon,
   ChevronLeft,
   ChevronRight,
-  Menu,
   X,
   Search,
   LogOut,
@@ -89,8 +85,6 @@ export default function SuperAdminLayout() {
           { to: "/super-admin/businesses", label: "Businesses", icon: Building2 },
           { to: "/super-admin/branches", label: "Branches", icon: GitBranch },
           { to: "/super-admin/users", label: "Users", icon: Users },
-          { to: "/super-admin/pos-terminals", label: "POS Terminals", icon: Smartphone },
-          { to: "/super-admin/godowns", label: "Godowns", icon: Warehouse },
         ],
       },
       {
@@ -160,18 +154,6 @@ export default function SuperAdminLayout() {
     return searchableItems.filter((i) => i.title.toLowerCase().includes(q) || i.category.toLowerCase().includes(q));
   }, [searchableItems, searchQuery]);
 
-  // Current page title
-  const currentTitle = useMemo(() => {
-    for (const group of navGroups) {
-      for (const item of group.items) {
-        if (location.pathname === item.to || location.pathname.startsWith(item.to + "/")) {
-          return item.label;
-        }
-      }
-    }
-    return "Super Admin Portal";
-  }, [location.pathname, navGroups]);
-
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-mazzard flex antialiased">
       {/* Mobile Backdrop */}
@@ -201,7 +183,7 @@ export default function SuperAdminLayout() {
             </div>
             {!collapsed && (
               <div className="truncate">
-                <div className="text-sm font-black tracking-tight text-gray-900 truncate">Techno Vanam</div>
+                <div className="text-sm font-black tracking-tight text-gray-900 truncate">Kanakku Desk</div>
                 <div className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600">
                   Super Admin
                 </div>

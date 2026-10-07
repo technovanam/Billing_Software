@@ -96,26 +96,14 @@ export function SuperAdminAuthProvider({ children }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        // Verify Admin Role in Firestore
+        // Platform admins are exactly the active docs in adminUsers/{uid};
+        // business owners cannot read that collection, so a denied read means "not an admin".
         try {
-          const docRef = doc(db, "adminUsers", user.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists() && docSnap.data().role === "Super Admin") {
-            setAdminUser({ uid: user.uid, email: user.email, ...docSnap.data() });
-          } else {
-             // Fallback logic for testing master admin if not in DB yet
-             if (user.email === "admin@technovanam.com") {
-                setAdminUser({ uid: user.uid, email: user.email, role: "Super Admin", name: "Chief Platform Admin" });
-             } else {
-                setAdminUser(null);
-             }
-          }
+          const docSnap = await getDoc(doc(db, "adminUsers", user.uid));
+          const data = docSnap.exists() ? docSnap.data() : null;
+          setAdminUser(data && data.status !== "Suspended" ? { uid: user.uid, email: user.email, ...data } : null);
         } catch (error) {
-          if (user.email === "admin@technovanam.com") {
-             setAdminUser({ uid: user.uid, email: user.email, role: "Super Admin", name: "Chief Platform Admin" });
-          } else {
-             setAdminUser(null);
-          }
+          setAdminUser(null);
         }
       } else {
         setAdminUser(null);
@@ -133,20 +121,18 @@ export function SuperAdminAuthProvider({ children }) {
     const res = await signInWithEmailAndPassword(auth, trimmedEmail, password);
     const user = res.user;
 
-    // Verify role
-    let isAdmin = false;
-    let profile = { uid: user.uid, email: user.email, role: "Super Admin", name: "Super Admin" };
-
+    // Verify role: any active adminUsers/{uid} doc (Super Admin, Finance Admin, ...).
+    let profile = null;
     try {
-      const docRef = doc(db, "adminUsers", user.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists() && docSnap.data().role === "Super Admin") {
-         isAdmin = true;
-         profile = { ...profile, ...docSnap.data() };
+      const docSnap = await getDoc(doc(db, "adminUsers", user.uid));
+      if (docSnap.exists() && docSnap.data().status !== "Suspended") {
+        profile = { uid: user.uid, email: user.email, name: "Admin", ...docSnap.data() };
       }
-    } catch(e) {}
-    
-    if (!isAdmin && trimmedEmail !== "admin@technovanam.com") {
+    } catch (e) {
+      // Denied read: not a platform admin.
+    }
+
+    if (!profile) {
        await firebaseSignOut(auth);
        throw new Error("You do not have permission to access the Super Admin Portal.");
     }

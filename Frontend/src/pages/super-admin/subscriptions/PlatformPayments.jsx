@@ -1,28 +1,70 @@
-import React, { useState } from "react";
-import { usePlatformPayments } from "../../../hooks/useSuperAdminFirestore";
-import { db } from "../../../lib/firebase/config";
-import { doc, updateDoc } from "firebase/firestore";
-import { Receipt, Search, CheckCircle2, XCircle, Clock, RotateCcw, ArrowRight, Eye, X } from "lucide-react";
+import React, { useMemo, useState } from "react";
+import { usePlatformPayments, usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
+import { refundPayment } from "../../../services/superAdminApi";
+import { Search, RotateCcw, Eye, X, Loader2 } from "lucide-react";
+
+// Payment docs come from several writers (manual entry, public pay page,
+// Razorpay webhook) with different field names; normalise them for display.
+function normalizeStatus(p) {
+  const s = String(p.status || p.paymentStatus || "").toLowerCase();
+  if (s === "refunded") return "Refunded";
+  if (["completed", "paid", "successful", "success", "captured"].includes(s)) return "Successful";
+  if (s === "failed") return "Failed";
+  return s ? "Pending" : "Successful"; // manual payments are recorded without a status
+}
+
+function formatDate(p) {
+  const v = p.paymentDate || p.paidAt || p.createdAt;
+  if (!v) return "";
+  if (v.toDate) return v.toDate().toLocaleDateString("en-GB");
+  return String(v);
+}
 
 export default function PlatformPayments() {
-  const { payments, loading } = usePlatformPayments();
+  const { payments: rawPayments, error } = usePlatformPayments();
+  const { businesses } = usePlatformBusinesses();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [refundReason, setRefundReason] = useState("");
+  const [refunding, setRefunding] = useState(false);
+  const [refundError, setRefundError] = useState("");
 
+  const payments = useMemo(() => {
+    const names = Object.fromEntries(businesses.map((b) => [b.id, b.name]));
+    return rawPayments.map((p) => {
+      const businessId = (p.path || "").split("/")[1];
+      const gatewayId = p.gatewayPaymentId || p.razorpayPaymentId || (String(p.transactionId || "").startsWith("pay_") ? p.transactionId : "");
+      return {
+        ...p,
+        businessName: names[businessId] || p.customerName || businessId || "Unknown",
+        invoiceNo: p.invoiceNumber || p.invoiceNo || "",
+        amount: Number(p.amount) || 0,
+        gateway: gatewayId ? "Razorpay" : "Manual",
+        paymentMethod: p.paymentMethod || p.method || "",
+        transactionId: p.transactionId || gatewayId || "",
+        status: normalizeStatus(p),
+        date: formatDate(p),
+        refundable: Boolean(gatewayId),
+      };
+    });
+  }, [rawPayments, businesses]);
+
+  // Refund goes through the backend, which calls Razorpay and updates the records.
   const handleRefund = async (e) => {
     e.preventDefault();
-    if (!selectedPayment || !selectedPayment.path) return;
-    
+    if (!selectedPayment?.path) return;
+    setRefunding(true);
+    setRefundError("");
     try {
-      await updateDoc(doc(db, selectedPayment.path), { status: "Refunded" });
+      const result = await refundPayment(selectedPayment.path, refundReason.trim());
       setSelectedPayment(null);
       setRefundReason("");
-      alert("Refund processed successfully and recorded in audit trail.");
+      alert(`Refund ${result.refundId} created with Razorpay.`);
     } catch (err) {
-      console.error(err);
-      alert("Error processing refund. Check permissions.");
+      setRefundError(err.message);
+    } finally {
+      setRefunding(false);
     }
   };
 
@@ -30,12 +72,7 @@ export default function PlatformPayments() {
     if (statusFilter !== "All" && p.status !== statusFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      return (
-        p.id.toLowerCase().includes(q) ||
-        p.businessName.toLowerCase().includes(q) ||
-        p.invoiceNo.toLowerCase().includes(q) ||
-        p.transactionId.toLowerCase().includes(q)
-      );
+      return [p.id, p.businessName, p.invoiceNo, p.transactionId].some((v) => String(v || "").toLowerCase().includes(q));
     }
     return true;
   });
@@ -73,6 +110,10 @@ export default function PlatformPayments() {
           <option value="Refunded">Refunded</option>
         </select>
       </div>
+
+      {error && (
+        <div className="p-3 rounded-xl border border-rose-200 bg-rose-50 text-xs text-rose-700">Could not load payments: {error}</div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
@@ -139,7 +180,7 @@ export default function PlatformPayments() {
           <div className="w-full max-w-lg rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
               <h3 className="text-base font-bold text-gray-900">Transaction Audit: {selectedPayment.id}</h3>
-              <button onClick={() => setSelectedPayment(null)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setSelectedPayment(null); setRefundError(""); }} className="text-gray-400 hover:text-gray-600">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -155,7 +196,7 @@ export default function PlatformPayments() {
               </div>
               <div className="flex justify-between py-1 border-b border-gray-100">
                 <span className="text-gray-400">Gateway Provider:</span>
-                <span>{selectedPayment.gateway} (Live)</span>
+                <span>{selectedPayment.gateway}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-gray-100">
                 <span className="text-gray-400">Gateway Transaction ID:</span>
@@ -167,7 +208,13 @@ export default function PlatformPayments() {
               </div>
             </div>
 
-            {selectedPayment.status === "Successful" && (
+            {selectedPayment.status === "Successful" && !selectedPayment.refundable && (
+              <p className="p-3 rounded-xl bg-gray-50 border border-gray-200 text-xs text-gray-500">
+                This payment was recorded manually (cash, bank transfer, etc.), so it cannot be refunded through the gateway.
+              </p>
+            )}
+
+            {selectedPayment.status === "Successful" && selectedPayment.refundable && (
               <form onSubmit={handleRefund} className="p-4 rounded-xl bg-rose-50/60 border border-rose-200 space-y-2.5 text-xs">
                 <div className="font-bold text-rose-800 flex items-center gap-1">
                   <RotateCcw className="w-3.5 h-3.5" />
@@ -181,10 +228,13 @@ export default function PlatformPayments() {
                   required
                   className="w-full p-2.5 rounded-xl bg-white border border-rose-200 text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-500/20"
                 />
+                {refundError && <p className="text-rose-700 font-medium">{refundError}</p>}
                 <button
                   type="submit"
-                  className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-sm transition"
+                  disabled={refunding}
+                  className="w-full py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
                 >
+                  {refunding && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   Confirm & Process Refund
                 </button>
               </form>

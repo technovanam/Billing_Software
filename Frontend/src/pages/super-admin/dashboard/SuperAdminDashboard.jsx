@@ -4,8 +4,6 @@ import {
   usePlatformBusinesses, 
   usePlatformInvoices, 
   usePlatformPayments,
-  useSubscriptionPlans,
-  useTickets,
   useAuditLogs
 } from "../../../hooks/useSuperAdminFirestore";
 import {
@@ -16,18 +14,13 @@ import {
   AlertTriangle,
   Clock,
   ArrowUpRight,
-  ShieldCheck,
   CheckCircle2,
   XCircle,
   FileText,
-  Smartphone,
   ChevronRight,
-  Layers,
   ArrowRight,
   Activity,
   AlertOctagon,
-  DollarSign,
-  Receipt,
 } from "lucide-react";
 
 export default function SuperAdminDashboard() {
@@ -39,16 +32,12 @@ export default function SuperAdminDashboard() {
   const { invoices = [], loading: invoicesLoading } = usePlatformInvoices();
   const { payments = [], loading: paymentsLoading } = usePlatformPayments();
 
-  const { tickets = [], loading: ticketsLoading } = useTickets();
-  const { logs = [], auditLogs = [], loading: logsLoading } = useAuditLogs();
-  const { plans = [], loading: plansLoading } = useSubscriptionPlans();
+  const { logs = [], auditLogs = [] } = useAuditLogs();
 
   const actualBusinesses = Array.isArray(businesses) ? businesses : [];
   const actualInvoices = Array.isArray(invoices) ? invoices : [];
   const actualPayments = Array.isArray(payments) ? payments : [];
-  const actualTickets = Array.isArray(tickets) ? tickets : [];
   const actualLogs = Array.isArray(logs) && logs.length > 0 ? logs : (Array.isArray(auditLogs) ? auditLogs : []);
-  const actualPlans = Array.isArray(plans) ? plans : [];
 
   // Compute stats
   const activeCount = actualBusinesses.filter((b) => b?.status === "Active").length;
@@ -136,8 +125,8 @@ export default function SuperAdminDashboard() {
     {
       label: "Total Invoices Created",
       value: invoicesLoading ? "..." : actualInvoices.length.toLocaleString(),
-      sub: "Across all counters",
-      pillText: "All Terminals",
+      sub: "Across all businesses",
+      pillText: "All Invoices",
       pillClass: "bg-blue-600 text-white",
       icon: CreditCard,
       iconColor: "text-blue-600",
@@ -565,19 +554,6 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
               <strong className="text-sm font-black text-gray-900 font-mono">184,920</strong>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center">
-                  <Smartphone className="w-4 h-4" />
-                </div>
-                <div>
-                  <div className="text-xs font-bold text-gray-900">POS Terminal Transactions</div>
-                  <div className="text-[10px] text-gray-400">Fast checkout lanes</div>
-                </div>
-              </div>
-              <strong className="text-sm font-black text-gray-900 font-mono">612,480</strong>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">

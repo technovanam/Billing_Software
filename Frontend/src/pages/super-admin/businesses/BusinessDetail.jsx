@@ -4,8 +4,6 @@ import {
   usePlatformBusinesses, 
   usePlatformBusinessUsers, 
   usePlatformBranches, 
-  usePlatformGodowns, 
-  usePlatformTerminals, 
   usePlatformPayments 
 } from "../../../hooks/useSuperAdminFirestore";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
@@ -17,25 +15,15 @@ import {
   Building2,
   Users,
   GitBranch,
-  Warehouse,
-  Smartphone,
-  CreditCard,
   Receipt,
   Activity,
   HelpCircle,
   ShieldAlert,
   ArrowLeft,
-  CheckCircle2,
-  XCircle,
-  Clock,
   MapPin,
   Mail,
   Phone,
-  Calendar,
   Layers,
-  ShoppingBag,
-  TrendingUp,
-  FileText,
 } from "lucide-react";
 
 export default function BusinessDetail() {
@@ -51,8 +39,6 @@ export default function BusinessDetail() {
   const { businesses, loading: loadingBus } = usePlatformBusinesses();
   const { users, loading: loadingUsers } = usePlatformBusinessUsers();
   const { branches, loading: loadingBranches } = usePlatformBranches();
-  const { godowns, loading: loadingGodowns } = usePlatformGodowns();
-  const { terminals, loading: loadingTerminals } = usePlatformTerminals();
   const { payments, loading: loadingPayments } = usePlatformPayments();
   
   // We can just use empty arrays for tickets and logs if we don't have dedicated hooks yet, 
@@ -69,14 +55,14 @@ export default function BusinessDetail() {
   // Associated platform data
   const allUsers = useMemo(() => users.filter((u) => u.path.includes(id)), [users, id]);
   const allBranches = useMemo(() => branches.filter((b) => b.path.includes(id)), [branches, id]);
-  const allGodowns = useMemo(() => godowns.filter((g) => g.path.includes(id)), [godowns, id]);
-  const allTerminals = useMemo(() => terminals.filter((t) => t.path.includes(id)), [terminals, id]);
-  const allPayments = useMemo(() => payments.filter((p) => p.path.includes(id)), [payments, id]);
+  const allPayments = useMemo(
+    () => payments.filter((p) => (p.path || "").startsWith(`users/${id}/`)),
+    [payments, id]
+  );
 
-  const isLoading = loadingBus || loadingUsers || loadingBranches || loadingGodowns || loadingTerminals || loadingPayments;
+  const isLoading = loadingBus || loadingUsers || loadingBranches || loadingPayments;
 
   const AVAILABLE_FEATURES = [
-    { id: "pos", name: "POS Cashier Mode" },
     { id: "billing", name: "Billing & E-Way Bill" },
     { id: "multiBranch", name: "Multi-Outlet Sync" },
     { id: "reports", name: "Advanced Reports" },
@@ -128,8 +114,6 @@ export default function BusinessDetail() {
     { id: "overview", label: "Overview", icon: Building2 },
     { id: "users", label: "Users", icon: Users, count: allUsers.length },
     { id: "branches", label: "Branches", icon: GitBranch, count: allBranches.length },
-    { id: "godowns", label: "Godowns", icon: Warehouse, count: allGodowns.length },
-    { id: "terminals", label: "POS Terminals", icon: Smartphone, count: allTerminals.length },
     { id: "subscription", label: "Subscription", icon: Layers },
     { id: "payments", label: "Payments", icon: Receipt, count: allPayments.length },
     { id: "activity", label: "Activity", icon: Activity, count: allLogs.length },
@@ -299,14 +283,6 @@ export default function BusinessDetail() {
                   <div className="text-lg font-bold text-gray-900 mt-0.5">{business.branchesCount} Outlets</div>
                 </div>
                 <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-gray-500">Active Warehouses</div>
-                  <div className="text-lg font-bold text-gray-900 mt-0.5">{business.godownsCount} Godowns</div>
-                </div>
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-gray-500">POS Counters</div>
-                  <div className="text-lg font-bold text-gray-900 mt-0.5">{business.terminalsCount} Terminals</div>
-                </div>
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
                   <div className="text-gray-500">Authorized Users</div>
                   <div className="text-lg font-bold text-gray-900 mt-0.5">{business.usersCount} Staff Members</div>
                 </div>
@@ -373,20 +349,18 @@ export default function BusinessDetail() {
                 <th className="p-3.5 px-4">BRANCH NAME</th>
                 <th className="p-3.5 px-4">LOCATION</th>
                 <th className="p-3.5 px-4">MANAGER</th>
-                <th className="p-3.5 px-4">TERMINALS</th>
                 <th className="p-3.5 px-4">STATUS</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {allBranches.length === 0 ? (
-                <tr><td colSpan={5} className="p-6 text-center text-gray-400">No branches registered.</td></tr>
+                <tr><td colSpan={4} className="p-6 text-center text-gray-400">No branches registered.</td></tr>
               ) : (
                 allBranches.map((br) => (
                   <tr key={br.id} className="hover:bg-blue-50/20">
                     <td className="p-3.5 px-4 font-bold text-gray-900">{br.name}</td>
                     <td className="p-3.5 px-4 text-gray-500">{br.location}</td>
                     <td className="p-3.5 px-4 text-gray-700">{br.manager}</td>
-                    <td className="p-3.5 px-4 font-mono text-gray-700">{br.terminalsCount}</td>
                     <td className="p-3.5 px-4"><span className="text-emerald-600 font-bold">● {br.status}</span></td>
                   </tr>
                 ))
@@ -396,83 +370,7 @@ export default function BusinessDetail() {
         </div>
       )}
 
-      {/* 4. GODOWNS */}
-      {activeTab === "godowns" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Inventory Warehouses & Godowns</h3>
-          </div>
-          <table className="w-full text-left text-xs text-gray-700">
-            <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
-              <tr>
-                <th className="p-3.5 px-4">GODOWN NAME</th>
-                <th className="p-3.5 px-4">ASSIGNED BRANCH</th>
-                <th className="p-3.5 px-4">MANAGER</th>
-                <th className="p-3.5 px-4">STOCK UNITS</th>
-                <th className="p-3.5 px-4">VALUATION</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {allGodowns.length === 0 ? (
-                <tr><td colSpan={5} className="p-6 text-center text-gray-400">No godowns configured.</td></tr>
-              ) : (
-                allGodowns.map((gdn) => (
-                  <tr key={gdn.id} className="hover:bg-blue-50/20">
-                    <td className="p-3.5 px-4 font-bold text-gray-900">{gdn.name}</td>
-                    <td className="p-3.5 px-4 text-gray-500">{gdn.branch}</td>
-                    <td className="p-3.5 px-4 text-gray-700">{gdn.manager}</td>
-                    <td className="p-3.5 px-4 font-mono">{gdn.stockQuantity.toLocaleString()} units</td>
-                    <td className="p-3.5 px-4 font-mono font-bold text-emerald-600">₹{(gdn.stockValue / 100000).toFixed(2)}L</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* 5. POS TERMINALS */}
-      {activeTab === "terminals" && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="p-4 border-b border-gray-100 bg-gray-50/50">
-            <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">POS Lane Terminals</h3>
-          </div>
-          <table className="w-full text-left text-xs text-gray-700">
-            <thead className="text-xs font-semibold text-gray-500 uppercase bg-gray-50">
-              <tr>
-                <th className="p-3.5 px-4">TERMINAL ID</th>
-                <th className="p-3.5 px-4">DEVICE / OS</th>
-                <th className="p-3.5 px-4">BRANCH</th>
-                <th className="p-3.5 px-4">ASSIGNED CASHIER</th>
-                <th className="p-3.5 px-4">APP VERSION</th>
-                <th className="p-3.5 px-4">STATUS</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {allTerminals.length === 0 ? (
-                <tr><td colSpan={6} className="p-6 text-center text-gray-400">No terminals active.</td></tr>
-              ) : (
-                allTerminals.map((t) => (
-                  <tr key={t.id} className="hover:bg-blue-50/20">
-                    <td className="p-3.5 px-4 font-mono font-bold text-blue-600">{t.id}</td>
-                    <td className="p-3.5 px-4 text-gray-700">{t.device}</td>
-                    <td className="p-3.5 px-4 text-gray-500">{t.branch}</td>
-                    <td className="p-3.5 px-4 text-gray-800">{t.assignedCashier}</td>
-                    <td className="p-3.5 px-4 font-mono">{t.appVersion}</td>
-                    <td className="p-3.5 px-4">
-                      <span className={`font-bold ${t.status === "Online" ? "text-emerald-600" : "text-gray-400"}`}>
-                        ● {t.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* 6. SUBSCRIPTION */}
+      {/* 4. SUBSCRIPTION */}
       {activeTab === "subscription" && (
         <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] space-y-4">
           <h3 className="text-sm font-bold text-gray-900">Commercial Subscription Details</h3>
@@ -528,7 +426,7 @@ export default function BusinessDetail() {
         </div>
       )}
 
-      {/* 7. PAYMENTS */}
+      {/* 5. PAYMENTS */}
       {activeTab === "payments" && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50">
@@ -552,11 +450,11 @@ export default function BusinessDetail() {
                 allPayments.map((p) => (
                   <tr key={p.id} className="hover:bg-blue-50/20">
                     <td className="p-3.5 px-4 font-mono font-bold text-blue-600">{p.id}</td>
-                    <td className="p-3.5 px-4 font-mono text-gray-700">{p.invoiceNo}</td>
-                    <td className="p-3.5 px-4 font-bold text-gray-900">₹{p.amount.toLocaleString()}</td>
+                    <td className="p-3.5 px-4 font-mono text-gray-700">{p.invoiceNumber || p.invoiceNo}</td>
+                    <td className="p-3.5 px-4 font-bold text-gray-900">₹{(Number(p.amount) || 0).toLocaleString()}</td>
                     <td className="p-3.5 px-4 text-gray-500">{p.paymentMethod}</td>
-                    <td className="p-3.5 px-4"><span className="text-emerald-600 font-bold">● {p.status}</span></td>
-                    <td className="p-3.5 px-4 text-gray-500">{p.date}</td>
+                    <td className="p-3.5 px-4"><span className="text-emerald-600 font-bold">● {p.status || p.paymentStatus || "Recorded"}</span></td>
+                    <td className="p-3.5 px-4 text-gray-500">{p.paymentDate || p.date}</td>
                   </tr>
                 ))
               )}
@@ -565,7 +463,7 @@ export default function BusinessDetail() {
         </div>
       )}
 
-      {/* 8. ACTIVITY / AUDIT */}
+      {/* 6. ACTIVITY / AUDIT */}
       {activeTab === "activity" && (
         <div className="p-6 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)] space-y-3">
           <h3 className="text-sm font-bold text-gray-900 mb-2">Audit History for this Tenant</h3>
@@ -588,7 +486,7 @@ export default function BusinessDetail() {
         </div>
       )}
 
-      {/* 9. SUPPORT */}
+      {/* 7. SUPPORT */}
       {activeTab === "support" && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50">

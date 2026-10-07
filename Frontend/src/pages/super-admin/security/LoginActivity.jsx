@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useLoginActivity } from "../../../hooks/useSuperAdminFirestore";
-import { Clock, ShieldCheck, XCircle, Search, Laptop, Loader2 } from "lucide-react";
+import { Search, Laptop, Loader2 } from "lucide-react";
 
 export default function LoginActivity() {
   const { loginActivity: activities, loading } = useLoginActivity();

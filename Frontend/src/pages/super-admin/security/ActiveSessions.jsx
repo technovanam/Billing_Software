@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React from "react";
 import { useActiveSessions } from "../../../hooks/useSuperAdminFirestore";
-import { Laptop, Trash2, ShieldAlert, CheckCircle, Clock, Loader2 } from "lucide-react";
+import { Laptop, Trash2, Loader2 } from "lucide-react";
 import { doc, deleteDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase/config";
 

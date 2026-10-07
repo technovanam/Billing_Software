@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useMaintenanceMode } from "../../../hooks/useSuperAdminFirestore";
-import { AlertOctagon, Power, Save, CheckCircle2, ShieldAlert, Clock, Bell, Loader2 } from "lucide-react";
+import { AlertOctagon, Power, Save, CheckCircle2, Loader2 } from "lucide-react";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase/config";
 
@@ -119,8 +119,7 @@ export default function MaintenanceMode() {
                     </span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1 leading-relaxed max-w-xl">
-                    When activated, non-admin users will see a polite service notice. Offline POS caching will remain active
-                    so store cashiers can continue printing local receipts uninterrupted.
+                    When activated, non-admin users will see a polite service notice.
                   </p>
                 </div>
               </div>

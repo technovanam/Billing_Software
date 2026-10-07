@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router-dom";
-import { ShieldCheck, Lock, Check, X, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, Check, X, Eye, EyeOff } from "lucide-react";
 import AuthCollage from "../../../components/AuthCollage";
 import { confirmPasswordReset } from "firebase/auth";
 import { auth } from "../../../lib/firebase/config";

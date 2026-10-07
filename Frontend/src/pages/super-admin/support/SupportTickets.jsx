@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useTickets } from "../../../hooks/useSuperAdminFirestore";
-import { HelpCircle, Search, MessageSquare, Send, CheckCircle2, Clock, AlertTriangle, X, Loader2 } from "lucide-react";
+import { HelpCircle, Search, MessageSquare, Send, AlertTriangle, X, Loader2 } from "lucide-react";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
 import { db } from "../../../lib/firebase/config";
 
@@ -89,7 +89,7 @@ export default function SupportTickets() {
       <div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Support Tickets</h2>
         <p className="text-xs sm:text-sm text-gray-500 mt-1">
-          Manage tenant customer service queries, POS hardware issues, and account requests.
+          Manage tenant customer service queries and account requests.
         </p>
       </div>
 

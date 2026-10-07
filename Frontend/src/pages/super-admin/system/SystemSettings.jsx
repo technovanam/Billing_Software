@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useSystemSettings } from "../../../hooks/useSuperAdminFirestore";
-import { Settings, Save, Lock, Shield, Mail, Smartphone, MessageSquare, CreditCard, CheckCircle, Loader2 } from "lucide-react";
+import { Settings, Save, Shield, Mail, Smartphone, MessageSquare, CreditCard, CheckCircle, Loader2 } from "lucide-react";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase/config";
 
 export default function SystemSettings() {
   const { settings: dbSettings, loading } = useSystemSettings();
   const [settings, setSettings] = useState({
-    platformName: "TechnoVanam Platform",
+    platformName: "Kanakku Desk",
     supportEmail: "support@technovanam.com",
     defaultCurrency: "INR",
     timezone: "Asia/Kolkata",

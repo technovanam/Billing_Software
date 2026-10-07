@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { usePlatformAnalytics } from "../../../hooks/useSuperAdminFirestore";
-import { BarChart3, Building2, Users, CreditCard, TrendingUp, Calendar, ArrowUpRight, ArrowDownRight, Loader2 } from "lucide-react";
+import { Building2, Users, CreditCard, TrendingUp, Loader2 } from "lucide-react";
 
 const EMPTY_METRIC = { value: "—", sub: "No data yet", subColor: "gray-400" };
 

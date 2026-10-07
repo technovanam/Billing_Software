@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { useAuditLogs } from "../../../hooks/useSuperAdminFirestore";
-import { FileText, Search, Download, ShieldCheck, Laptop, Clock, Filter, Eye, X, Loader2 } from "lucide-react";
+import { FileText, Search, Download, ShieldCheck, Clock, Eye, X, Loader2 } from "lucide-react";
 
 export default function AuditLogs() {
   const { auditLogs: logs, loading } = useAuditLogs();

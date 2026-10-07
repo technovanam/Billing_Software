@@ -1,37 +1,56 @@
-import React, { useEffect, useState } from "react";
-import { useSystemHealth } from "../../../hooks/useSuperAdminFirestore";
-import { Activity, Server, Database, Globe, Cpu, HardDrive, Zap, CheckCircle2, AlertTriangle, Loader2 } from "lucide-react";
+import React, { useCallback, useEffect, useState } from "react";
+import { fetchHealth } from "../../../services/superAdminApi";
+import { Server, Database, Globe, Cpu, HardDrive, Zap, Loader2 } from "lucide-react";
 
+const gb = (bytes) => (bytes / 1024 ** 3).toFixed(1);
+const pct = (n) => `${Math.min(100, Math.max(0, n)).toFixed(0)}%`;
+const formatUptime = (sec) => {
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+};
+
+// Live numbers from the backend's /api/super-admin/health check, refreshed every 30 seconds.
 export default function SystemHealth() {
-  const { health: dbHealth, loading } = useSystemHealth();
+  const [health, setHealth] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const [health, setHealth] = useState({
-    cpu: "18.4%",
-    cpuWidth: "18.4%",
-    ram: "2.4 / 8 GB",
-    ramWidth: "30%",
-    disk: "42 / 200 GB",
-    diskWidth: "21%",
-    latency: "64 ms",
-    latencyWidth: "16%",
-    services: [
-      { name: "Payment Gateway (Razorpay)", type: "API Webhook", status: "Healthy", latency: "142ms", uptime: "99.98%" },
-      { name: "Firestore Multi-Region DB", type: "Core Database", status: "Healthy", latency: "28ms", uptime: "100.0%" },
-      { name: "Puppeteer PDF Cluster", type: "Backend Microservice", status: "Healthy", latency: "420ms", uptime: "99.94%" },
-      { name: "Nodemailer SMTP Relays", type: "Email Delivery", status: "Healthy", latency: "310ms", uptime: "99.91%" },
-      { name: "WhatsApp Cloud API", type: "Direct Messaging", status: "Healthy", latency: "185ms", uptime: "99.85%" },
-      { name: "NIC GST E-Invoice API", type: "Government Gateway", status: "Warning", latency: "890ms", uptime: "98.42%" },
-    ]
-  });
+  const refresh = useCallback(async () => {
+    const started = performance.now();
+    try {
+      const data = await fetchHealth();
+      const roundTrip = Math.round(performance.now() - started);
+      const used = data.memory.total - data.memory.free;
+      setHealth({
+        cpu: `${data.cpuPercent}%`,
+        cpuWidth: pct(data.cpuPercent),
+        ram: `${gb(used)} / ${gb(data.memory.total)} GB`,
+        ramWidth: pct((used / data.memory.total) * 100),
+        disk: data.disk ? `${gb(data.disk.total - data.disk.free)} / ${gb(data.disk.total)} GB` : "Unavailable",
+        diskWidth: data.disk ? pct(((data.disk.total - data.disk.free) / data.disk.total) * 100) : "0%",
+        latency: `${roundTrip} ms`,
+        latencyWidth: pct(roundTrip / 10),
+        uptime: formatUptime(data.uptimeSeconds),
+        services: data.services,
+        checkedAt: data.checkedAt,
+      });
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (dbHealth && dbHealth.services) {
-      setHealth({
-        ...health,
-        ...dbHealth
-      });
-    }
-  }, [dbHealth]);
+    refresh();
+    const timer = setInterval(refresh, 30000);
+    return () => clearInterval(timer);
+  }, [refresh]);
+
+  const allHealthy = health && !error && health.services.every((s) => s.status === "Healthy" || s.status === "Not configured");
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -43,9 +62,9 @@ export default function SystemHealth() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Core Infrastructure Optimal</span>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${allHealthy ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-rose-50 border-rose-200 text-rose-700"}`}>
+          <span className={`w-2 h-2 rounded-full animate-pulse ${allHealthy ? "bg-emerald-500" : "bg-rose-500"}`} />
+          <span>{loading ? "Checking..." : allHealthy ? `All services healthy · server up ${health.uptime}` : "Problem detected"}</span>
         </div>
       </div>
 
@@ -54,13 +73,22 @@ export default function SystemHealth() {
           <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
           <p className="text-sm text-gray-500 font-medium animate-pulse">Loading system telemetry...</p>
         </div>
+      ) : !health ? (
+        <div className="p-6 rounded-xl border border-rose-200 bg-rose-50 text-sm text-rose-700">
+          Could not load server health: {error}
+        </div>
       ) : (
         <>
+          {error && (
+            <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-700">
+              Last refresh failed ({error}). Showing the previous reading from {new Date(health.checkedAt).toLocaleTimeString()}.
+            </div>
+          )}
           {/* Compute Gauges */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500 font-semibold">Node.js Server CPU</span>
+                <span className="text-xs text-gray-500 font-semibold">Node.js Process CPU</span>
                 <Cpu className="w-4 h-4 text-blue-600" />
               </div>
               <div className="text-2xl font-bold text-gray-900 font-mono">{health.cpu}</div>
@@ -82,7 +110,7 @@ export default function SystemHealth() {
 
             <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500 font-semibold">SSD Disk Storage</span>
+                <span className="text-xs text-gray-500 font-semibold">Server Disk</span>
                 <HardDrive className="w-4 h-4 text-cyan-600" />
               </div>
               <div className="text-2xl font-bold text-gray-900 font-mono">{health.disk}</div>
@@ -93,7 +121,7 @@ export default function SystemHealth() {
 
             <div className="p-5 rounded-2xl bg-white border border-slate-100 shadow-[0_2px_8px_rgba(0,0,0,0.04)]">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-gray-500 font-semibold">Avg API Response</span>
+                <span className="text-xs text-gray-500 font-semibold">API Round Trip</span>
                 <Zap className="w-4 h-4 text-emerald-600" />
               </div>
               <div className="text-2xl font-bold text-gray-900 font-mono">{health.latency}</div>
@@ -114,7 +142,7 @@ export default function SystemHealth() {
                   <th className="p-3.5 px-4">SERVICE PROVIDER</th>
                   <th className="p-3.5 px-4">ARCHITECTURE ROLE</th>
                   <th className="p-3.5 px-4">LIVE ROUNDTRIP LATENCY</th>
-                  <th className="p-3.5 px-4">30-DAY UPTIME</th>
+                  <th className="p-3.5 px-4">DETAILS</th>
                   <th className="p-3.5 px-4">STATUS</th>
                 </tr>
               </thead>
@@ -127,16 +155,18 @@ export default function SystemHealth() {
                     </td>
                     <td className="p-3.5 px-4 text-gray-500">{svc.type}</td>
                     <td className="p-3.5 px-4 font-mono text-gray-800 font-medium">{svc.latency}</td>
-                    <td className="p-3.5 px-4 font-mono text-emerald-600 font-semibold">{svc.uptime}</td>
+                    <td className="p-3.5 px-4 text-gray-500">{svc.detail}</td>
                     <td className="p-3.5 px-4">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
                           svc.status === "Healthy"
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                            : svc.status === "Down"
+                            ? "bg-rose-50 text-rose-700 border-rose-200/60"
                             : "bg-amber-50 text-amber-700 border-amber-200/60"
                         }`}
                       >
-                        <span className={`w-1.5 h-1.5 rounded-full ${svc.status === "Healthy" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                        <span className={`w-1.5 h-1.5 rounded-full ${svc.status === "Healthy" ? "bg-emerald-500" : svc.status === "Down" ? "bg-rose-500" : "bg-amber-500"}`} />
                         {svc.status}
                       </span>
                     </td>

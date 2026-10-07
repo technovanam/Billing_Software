@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from "react";
-import { TrendingUp, CreditCard, ArrowUpRight, DollarSign, RotateCcw, AlertTriangle, BarChart2 } from "lucide-react";
 import { usePlatformAnalytics, usePlatformPayments, usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

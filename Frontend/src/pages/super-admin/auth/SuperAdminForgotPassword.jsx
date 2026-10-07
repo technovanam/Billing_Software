@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { ShieldCheck, Mail, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
+import { ShieldCheck, ArrowLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import AuthCollage from "../../../components/AuthCollage";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../../../lib/firebase/config";

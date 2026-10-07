@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { usePlatformBranches } from "../../../hooks/useSuperAdminFirestore";
-import { GitBranch, Search, MapPin, Building, Smartphone, Warehouse, Users, Loader2 } from "lucide-react";
+import { GitBranch, Search, MapPin, Loader2 } from "lucide-react";
 
 export default function BranchesList() {
   const { branches, loading } = usePlatformBranches();
@@ -23,7 +23,7 @@ export default function BranchesList() {
       <div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Branches Management</h2>
         <p className="text-xs sm:text-sm text-gray-500 mt-1">
-          Monitor operating outlets, managers, and attached POS lanes across all active merchants.
+          Monitor operating outlets and managers across all active merchants.
         </p>
       </div>
 
@@ -64,8 +64,6 @@ export default function BranchesList() {
                   <th className="p-3.5 px-4">LOCATION</th>
                   <th className="p-3.5 px-4">MANAGER</th>
                   <th className="p-3.5 px-4">USERS</th>
-                  <th className="p-3.5 px-4">GODOWNS</th>
-                  <th className="p-3.5 px-4">POS TERMINALS</th>
                   <th className="p-3.5 px-4">STATUS</th>
                 </tr>
               </thead>
@@ -83,8 +81,6 @@ export default function BranchesList() {
                     </td>
                     <td className="p-3.5 px-4 text-gray-700">{b.manager || b.managerName || "Not Assigned"}</td>
                     <td className="p-3.5 px-4 font-mono text-gray-600">{b.usersCount || 0}</td>
-                    <td className="p-3.5 px-4 font-mono text-gray-600">{b.godownsCount || 0}</td>
-                    <td className="p-3.5 px-4 font-mono text-gray-600">{b.terminalsCount || 0}</td>
                     <td className="p-3.5 px-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

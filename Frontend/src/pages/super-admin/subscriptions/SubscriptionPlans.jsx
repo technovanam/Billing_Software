@@ -2,18 +2,8 @@ import React, { useState } from "react";
 import { useSubscriptionPlans } from "../../../hooks/useSuperAdminFirestore";
 import { db } from "../../../lib/firebase/config";
 import { doc, setDoc, deleteDoc, serverTimestamp } from "firebase/firestore";
-import { Plus, Check, X, Edit2, Shield, Trash2, Copy, Loader2 } from "lucide-react";
-
-const AVAILABLE_FEATURES = [
-  { id: "pos", name: "POS Cashier Mode" },
-  { id: "billing", name: "Billing & E-Way Bill" },
-  { id: "multiBranch", name: "Multi-Outlet Sync" },
-  { id: "reports", name: "Advanced Reports" },
-  { id: "whatsapp", name: "WhatsApp Delivery" },
-  { id: "api", name: "API Access" },
-  { id: "crm", name: "CRM Module" },
-  { id: "inventory", name: "Advanced Inventory" }
-];
+import { Plus, Check, X, Edit2, Shield, Trash2, Loader2, Layers, Sparkles } from "lucide-react";
+import { AVAILABLE_FEATURES } from "../../../utils/planFeatures";
 
 export default function SubscriptionPlans() {
   const { plans, loading } = useSubscriptionPlans();
@@ -34,8 +24,6 @@ export default function SubscriptionPlans() {
     limits: {
       users: 1,
       branches: 1,
-      godowns: 1,
-      terminals: 1,
       products: 100,
       invoices: 500
     },
@@ -99,16 +87,6 @@ export default function SubscriptionPlans() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const toggleFeature = (featId) => {
-    setEditingPlan(prev => ({
-      ...prev,
-      featuresObject: {
-        ...prev.featuresObject,
-        [featId]: !prev.featuresObject[featId]
-      }
-    }));
   };
 
   const renderFeatureToggle = (featId, label) => (
@@ -195,10 +173,6 @@ export default function SubscriptionPlans() {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500 font-medium">Branches:</span>
                   <strong className="font-bold text-gray-900">{plan.limits?.branches || 1}</strong>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-500 font-medium">POS Terminals:</span>
-                  <strong className="font-bold text-gray-900">{plan.limits?.terminals || 1}</strong>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-gray-500 font-medium">Products Limit:</span>
@@ -371,8 +345,6 @@ export default function SubscriptionPlans() {
                     {[
                       { key: "users", label: "Max User Seats" },
                       { key: "branches", label: "Max Branches" },
-                      { key: "godowns", label: "Max Godowns" },
-                      { key: "terminals", label: "Max POS Terminals" },
                       { key: "products", label: "Max Products" },
                       { key: "invoices", label: "Monthly Invoices" },
                     ].map((limit) => (

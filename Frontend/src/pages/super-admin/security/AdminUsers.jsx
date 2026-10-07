@@ -1,37 +1,45 @@
 import React, { useState } from "react";
 import { useAdminUsers } from "../../../hooks/useSuperAdminFirestore";
-import { Shield, Plus, Key, Lock, CheckCircle2, UserCheck, X, Loader2 } from "lucide-react";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../../../lib/firebase/config";
+import { Shield, Plus, Key, UserCheck, X, Loader2, Copy } from "lucide-react";
+import { createAdminUser } from "../../../services/superAdminApi";
+
+const ROLES = ["Super Admin", "Platform Admin", "Finance Admin", "Support Admin", "Operations Admin", "Read Only Admin"];
 
 export default function AdminUsers() {
-  const { adminUsers, loading } = useAdminUsers();
+  const { adminUsers, loading, error } = useAdminUsers();
   const [modalOpen, setModalOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("Support Admin");
+  const [ipAddress, setIpAddress] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [setupLink, setSetupLink] = useState("");
 
+  // The backend creates the sign-in account and adminUsers/{uid}, then
+  // returns a one-time link the new admin uses to set their password.
   const handleAddStaff = async (e) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
-
+    setSaving(true);
+    setFormError("");
     try {
-      await addDoc(collection(db, "adminUsers"), {
-        name: name.trim(),
-        email: email.trim(),
-        role,
-        twoFactorEnabled: true,
-        ipAddress: "Dynamic",
-        status: "Active",
-        createdAt: serverTimestamp(),
-      });
-      setModalOpen(false);
+      const result = await createAdminUser({ name: name.trim(), email: email.trim(), role, ipAddress: ipAddress.trim() });
+      setSetupLink(result.setupLink);
       setName("");
       setEmail("");
+      setIpAddress("");
     } catch (err) {
-      console.error(err);
-      alert("Failed to create admin user.");
+      setFormError(err.message);
+    } finally {
+      setSaving(false);
     }
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setSetupLink("");
+    setFormError("");
   };
 
   return (
@@ -60,6 +68,8 @@ export default function AdminUsers() {
             <Loader2 className="w-8 h-8 text-blue-600 animate-spin mb-4" />
             <p className="text-sm text-gray-500 font-medium animate-pulse">Loading admin users from Firebase...</p>
           </div>
+        ) : error ? (
+          <div className="p-6 text-sm text-rose-700 bg-rose-50">Could not load admin users: {error}</div>
         ) : adminUsers.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center px-4">
             <div className="w-16 h-16 rounded-full bg-gray-50 flex items-center justify-center mb-4">
@@ -94,11 +104,6 @@ export default function AdminUsers() {
                       {adm.role || "Admin"}
                     </span>
                   </td>
-                  <td className="p-3.5 px-4">
-                    <span className={`font-bold ${adm.twoFactorEnabled ? "text-emerald-600" : "text-gray-400"}`}>
-                      {adm.twoFactorEnabled ? "✓ Enforced" : "Optional"}
-                    </span>
-                  </td>
                   <td className="p-3.5 px-4 text-gray-500">{adm.lastLogin || "Never"}</td>
                   <td className="p-3.5 px-4 font-mono text-gray-400">{adm.ipAddress || "Any"}</td>
                   <td className="p-3.5 px-4">
@@ -119,11 +124,25 @@ export default function AdminUsers() {
           <div className="w-full max-w-md rounded-2xl bg-white border border-slate-200 p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 mb-4">
               <h3 className="text-base font-bold text-gray-900">Invite Platform Admin</h3>
-              <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={closeModal} className="text-gray-400 hover:text-gray-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {setupLink ? (
+              <div className="space-y-4 text-xs">
+                <p className="text-gray-700">
+                  Admin account created. Send this one-time link to the new admin so they can set their password and sign in at <span className="font-mono">/signin</span>:
+                </p>
+                <div className="flex items-center gap-2">
+                  <input readOnly value={setupLink} className="flex-1 p-2.5 rounded-xl border border-gray-200 font-mono text-[11px]" onFocus={(e) => e.target.select()} />
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(setupLink)} className="p-2.5 rounded-xl border border-gray-200 hover:bg-gray-50" title="Copy link">
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+                <button type="button" onClick={closeModal} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl">Done</button>
+              </div>
+            ) : (
             <form onSubmit={handleAddStaff} className="space-y-4 text-xs">
               <div>
                 <label className="block text-gray-600 font-bold mb-1">Full Name</label>
@@ -162,22 +181,37 @@ export default function AdminUsers() {
                   onChange={(e) => setRole(e.target.value)}
                   className="w-full p-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none font-medium"
                 >
-                  <option value="Super Admin">Super Admin</option>
-                  <option value="Support Admin">Support Admin</option>
-                  <option value="Billing Admin">Billing Admin</option>
-                  <option value="Security Auditor">Security Auditor</option>
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
                 </select>
               </div>
+
+              <div>
+                <label className="block text-gray-600 font-bold mb-1">Allowed IP (optional)</label>
+                <input
+                  type="text"
+                  value={ipAddress}
+                  onChange={(e) => setIpAddress(e.target.value)}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 focus:border-blue-500 outline-none font-mono"
+                  placeholder="Leave empty to allow any IP"
+                />
+              </div>
+
+              {formError && <p className="text-rose-600 font-medium">{formError}</p>}
 
               <div className="pt-2">
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-sm transition"
+                  disabled={saving}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-sm transition flex items-center justify-center gap-2"
                 >
-                  Send Invitation & Credentials
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  Create Admin Account
                 </button>
               </div>
             </form>
+            )}
           </div>
         </div>
       )}

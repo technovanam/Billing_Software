@@ -78,7 +78,7 @@ export default function SuperAdmin2FA() {
           <div className="mb-5 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
             <span className="text-gray-500">Admin Account:</span>
             <span className="font-mono text-blue-600 font-semibold truncate max-w-[200px]">
-              {pendingAdmin?.email || "admin@technovanam.com"}
+              {pendingAdmin?.email || ""}
             </span>
           </div>
 

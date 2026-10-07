@@ -7,7 +7,6 @@ import { doc, updateDoc } from "firebase/firestore";
 import { useSuperAdminAuth } from "../../../context/SuperAdminAuthContext";
 import ImpersonationModal from "../../../components/super-admin/ImpersonationModal";
 import {
-  Building2,
   Search,
   Filter,
   Download,
@@ -16,26 +15,22 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  MoreVertical,
-  ExternalLink,
-  ChevronDown,
   Layers,
   ArrowUpDown,
-  Plus,
 } from "lucide-react";
 
 export default function BusinessesList() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const initialStatus = searchParams.get("status") || "All";
 
   // Real-time businesses from Firestore
-  const { businesses, loading } = usePlatformBusinesses();
+  const { businesses } = usePlatformBusinesses();
   
   const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [planFilter, setPlanFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortField, setSortField] = useState("name");
-  const [sortOrder, setSortOrder] = useState("asc");
+  const [sortOrder] = useState("asc");
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 

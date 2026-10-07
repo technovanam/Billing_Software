@@ -2,10 +2,10 @@ import React, { useState } from "react";
 import { usePlatformBusinesses } from "../../../hooks/useSuperAdminFirestore";
 import { db } from "../../../lib/firebase/config";
 import { doc, updateDoc } from "firebase/firestore";
-import { CreditCard, Search, Clock, Play, Pause, XCircle, CheckCircle2, ChevronRight, Layers } from "lucide-react";
+import { Search, Clock, Play, Pause, XCircle } from "lucide-react";
 
 export default function SubscriptionsList() {
-  const { businesses, loading } = usePlatformBusinesses();
+  const { businesses } = usePlatformBusinesses();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 

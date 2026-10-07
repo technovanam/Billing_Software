@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { TicketPercent, Plus, Search, Calendar, Tag, CheckCircle2, X } from "lucide-react";
+import { Plus, Tag, X } from "lucide-react";
 import { usePlatformCoupons } from "../../../hooks/useSuperAdminFirestore";
 import { db } from "../../../lib/firebase/config";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function CouponsManagement() {
-  const { coupons, loading } = usePlatformCoupons();
+  const { coupons } = usePlatformCoupons();
   const [modalOpen, setModalOpen] = useState(false);
   const [newCode, setNewCode] = useState("");
   const [discountPercent, setDiscountPercent] = useState(20);

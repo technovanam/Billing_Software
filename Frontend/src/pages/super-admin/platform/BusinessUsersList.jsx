@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from "react";
 import { usePlatformBusinessUsers } from "../../../hooks/useSuperAdminFirestore";
-import { Users, Search, Filter, ShieldCheck, XCircle, CheckCircle2, RotateCcw, LogOut, Download, Loader2 } from "lucide-react";
+import { Users, Search, XCircle, CheckCircle2, RotateCcw, LogOut, Loader2 } from "lucide-react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../../lib/firebase/config";
 
@@ -32,7 +32,7 @@ export default function BusinessUsersList() {
   const filteredUsers = useMemo(() => {
     return users.filter((u) => {
       const status = u.status || "Active";
-      const role = u.role || "Cashier";
+      const role = u.role || "Staff";
       if (statusFilter !== "All" && status !== statusFilter) return false;
       if (roleFilter !== "All" && role !== roleFilter) return false;
       if (searchQuery.trim()) {
@@ -54,7 +54,7 @@ export default function BusinessUsersList() {
         <div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 tracking-tight">Business Users Directory</h2>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            Directory of all owners, managers, and cashiers across platform tenants.
+            Directory of all owners, managers, and staff across platform tenants.
           </p>
         </div>
       </div>
@@ -90,7 +90,7 @@ export default function BusinessUsersList() {
           >
             <option value="All">All Roles</option>
             <option value="Business Owner">Business Owner</option>
-            <option value="Cashier">Cashier</option>
+            <option value="Staff">Staff</option>
             <option value="Store Manager">Store Manager</option>
           </select>
         </div>
@@ -129,7 +129,7 @@ export default function BusinessUsersList() {
               <tbody className="divide-y divide-gray-100">
                 {filteredUsers.map((u) => {
                   const status = u.status || "Active";
-                  const role = u.role || "Cashier";
+                  const role = u.role || "Staff";
                   return (
                     <tr key={u.id} className="text-sm transition-colors hover:bg-gray-50 group">
                       <td className="p-3.5 px-4 font-bold text-gray-900">{u.name || u.displayName || "Unknown User"}</td>
