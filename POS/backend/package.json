@@ -1,0 +1,20 @@
+{
+  "name": "pos-backend",
+  "version": "1.0.0",
+  "description": "Standalone POS backend: cashier login, POS devices, PINs, shifts and counter payments",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"test/**/*.test.js\"",
+    "migrate:pins": "node scripts/migrate-cashier-pins.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "express": "^4.18.2",
+    "firebase-admin": "^13.6.0",
+    "razorpay": "^2.9.8",
+    "zod": "^4.6.5"
+  }
+}
