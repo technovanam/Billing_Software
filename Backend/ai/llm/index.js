@@ -1,10 +1,9 @@
 // Picks the fallback model used when the local parser is not confident.
-// AI_FALLBACK = none (default) | anthropic | ollama. Every provider exposes
+// AI_FALLBACK = none (default) | ollama. No third-party AI service is used:
+// "none" keeps everything in the local parser, and "ollama" is a model you
+// run yourself. Every provider exposes
 // parseCommand({ text, context, draftItemNames }) -> { parsed, usage }.
-const { createAnthropicProvider } = require('./anthropic');
 const { createOllamaProvider } = require('./ollama');
-
-const DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5';
 
 function configError(message) {
   return Object.assign(new Error(message), { code: 'AI_NOT_CONFIGURED' });
@@ -16,14 +15,11 @@ function buildProvider(name, env) {
   switch (name) {
     case 'none':
       return null;
-    case 'anthropic':
-      if (!env.AI_API_KEY) throw configError('AI_FALLBACK=anthropic needs AI_API_KEY in Backend/.env.');
-      return createAnthropicProvider({ apiKey: env.AI_API_KEY, model: env.AI_MODEL || DEFAULT_ANTHROPIC_MODEL });
     case 'ollama':
       if (!env.AI_OLLAMA_URL || !env.AI_OLLAMA_MODEL) throw configError('AI_FALLBACK=ollama needs AI_OLLAMA_URL and AI_OLLAMA_MODEL in Backend/.env.');
       return createOllamaProvider({ baseUrl: env.AI_OLLAMA_URL, model: env.AI_OLLAMA_MODEL, apiKey: env.AI_OLLAMA_API_KEY || null });
     default:
-      throw configError(`Unsupported AI_FALLBACK "${name}". Use none, anthropic or ollama.`);
+      throw configError(`Unsupported AI_FALLBACK "${name}". Use none or ollama.`);
   }
 }
 

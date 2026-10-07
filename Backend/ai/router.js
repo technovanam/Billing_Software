@@ -19,7 +19,7 @@ const MAX_ALIASES_PER_PRODUCT = 25;
 const AliasSaveSchema = z.object({
   productId: z.string().min(1).max(128),
   alias: z.string().trim().min(2).max(60),
-  source: z.enum(['invoice', 'pos']),
+  source: z.enum(['invoice']),
   commandLogId: z.string().max(128).optional().nullable(),
   customerId: z.string().max(128).optional().nullable(),
 });
@@ -40,7 +40,7 @@ const CorrectionSchema = z
   .refine((c) => JSON.stringify(c).length <= 1024, 'correction too large');
 
 const LogUpdateSchema = z.object({
-  context: z.enum(['invoice', 'pos']),
+  context: z.enum(['invoice']),
   logIds: z.array(z.string().min(1).max(128)).min(1).max(50),
   corrections: z.array(CorrectionSchema).max(100).optional(),
   finalInvoiceId: z.string().max(128).optional().nullable(),

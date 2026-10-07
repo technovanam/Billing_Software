@@ -1,5 +1,5 @@
 // Firebase Admin setup. The backend needs real service account credentials:
-// without them it cannot verify ID tokens or mint cashier tokens, so it refuses
+// without them it cannot verify ID tokens, so it refuses
 // to start instead of running with weaker checks.
 const path = require('path');
 

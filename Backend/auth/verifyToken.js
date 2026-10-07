@@ -10,14 +10,16 @@ class AuthError extends Error {
   }
 }
 
+// The website has one role: the business owner. Cashier tokens and "wh."
+// warehouse accounts belong to the separate POS app (same Firebase project).
 function roleOf(decoded) {
-  if (decoded.role === 'cashier' && decoded.businessUid && decoded.cashierId) return 'cashier';
+  if (decoded.role === 'cashier') return 'cashier';
   if (String(decoded.email || '').toLowerCase().startsWith('wh.')) return 'warehouse';
   return 'owner';
 }
 
 /**
- * @returns {Promise<{ uid, email, role, businessUid, cashierId, counter, deviceId, claims }>}
+ * @returns {Promise<{ uid, email, role, businessUid, claims }>}
  */
 async function verifyAuthHeader(header, { auth = admin.auth() } = {}) {
   const value = String(header || '');
@@ -27,23 +29,19 @@ async function verifyAuthHeader(header, { auth = admin.auth() } = {}) {
   let decoded;
   try {
     decoded = await auth.verifyIdToken(token);
-    // Cashier sessions can be revoked (deactivation, PIN change, device removal):
-    // check revocation for them on every request.
-    if (decoded.role === 'cashier') decoded = await auth.verifyIdToken(token, true);
   } catch (err) {
     const revoked = err?.code === 'auth/id-token-revoked' || err?.code === 'auth/user-disabled';
     throw new AuthError(401, revoked ? 'Your session was ended. Please sign in again.' : 'Your session has expired. Please sign in again.', revoked ? 'REVOKED' : 'INVALID_TOKEN');
   }
 
   const role = roleOf(decoded);
+  if (role !== 'owner') throw new AuthError(403, 'POS cashier and warehouse accounts cannot use the billing website. Use the POS app.', 'POS_ACCOUNT');
+
   return {
     uid: decoded.uid,
     email: decoded.email || '',
     role,
-    businessUid: role === 'cashier' ? decoded.businessUid : decoded.uid,
-    cashierId: role === 'cashier' ? decoded.cashierId : null,
-    counter: role === 'cashier' ? decoded.counter || null : null,
-    deviceId: role === 'cashier' ? decoded.deviceId || null : null,
+    businessUid: decoded.uid,
     claims: decoded,
   };
 }

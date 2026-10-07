@@ -1,5 +1,5 @@
 /**
- * One-time backfill: adds productId to existing invoice and POS bill lines
+ * One-time backfill: adds productId to existing invoice lines
  * whose name matches exactly one product. Safe to run again (lines that
  * already have a valid productId are left alone).
  *

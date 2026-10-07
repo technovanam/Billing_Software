@@ -93,6 +93,14 @@ const REMOVE_WORDS = new Set(['remove', 'delete', 'cancel', 'drop', 'hatao', 'ha
 const UPDATE_WORDS = new Set(['make', 'change', 'set', 'update', 'modify']);
 // Trailing verbs that mean "do it" ("cement 12 bags pannunga", "kar do").
 const DO_VERBS = new Set(['pannunga', 'pannu', 'pannidu', 'podunga', 'podu', 'karo', 'kardo', 'karna', 'kariye', 'maathu', 'maathunga', 'badlo']);
+// Lead-in words of an English command ("create a new invoice for ...").
+const COMMAND_WORDS = new Set(['create', 'make', 'generate', 'raise', 'prepare', 'new', 'invoice', 'bill', 'billing', 'a', 'an', 'the', 'please', 'pls', 'kindly']);
+// Words that only mark the number next to them as the quantity ("2 quantity", "qty 5").
+const QTY_WORDS = new Set(['quantity', 'quantities', 'qty', 'qnty', 'count']);
+// Prepositions that can start an item clause ("and for abc product").
+const ITEM_LEAD_WORDS = new Set(['for', 'with']);
+// "make it 15", "remove that": these point at an item already on the bill.
+const PRONOUNS = new Set(['it', 'this', 'that', 'them', 'those', 'these', 'same', 'qty', 'quantity']);
 const ADD_WORDS = new Set(['add', 'also', 'innum', 'inum', 'extra', 'more', 'aur', 'plus', 'serthu', 'sethu', 'jodo']);
 const GIVE_FILLER = new Set(['dena', 'de', 'do', 'dijiye', 'kodu', 'kudunga', 'kodunga', 'thaa', 'thanga', 'venum', 'vendum', 'chahiye', 'please', 'pls', 'give', 'want', 'need', 'bill', 'billing', 'of', 'the', 'more', 'a', 'an', 'some', 'konjam', 'thoda', 'kuch', 'item', 'items', 'mattum', 'only', 'just', 'total', 'sir', 'anna', 'bhai', 'ji', 'venumnga', 'podunga', 'pannunga', 'karo', 'kar', 'கொடு', 'दो']);
 const VAGUE_QTY = new Set(['some', 'konjam', 'thoda', 'kuch', 'few']);
@@ -134,6 +142,10 @@ module.exports = {
   UPDATE_WORDS,
   DO_VERBS,
   ADD_WORDS,
+  COMMAND_WORDS,
+  QTY_WORDS,
+  ITEM_LEAD_WORDS,
+  PRONOUNS,
   GIVE_FILLER,
   VAGUE_QTY,
   DISCOUNT_WORDS,

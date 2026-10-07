@@ -32,7 +32,7 @@ describe('local parser: every sample command', () => {
     test(`${c.id}: "${c.text}"`, () => {
       const { parsed, confidence } = parseLocal({ text: c.text, context: c.context, draftItemNames: draftNamesBefore(c) });
       assert.equal(ParsedCommandSchema.safeParse(parsed).success, true, 'matches the LLM schema');
-      assert.deepEqual(compareParse(fullReply(c.llm), parsed, c.context), []);
+      assert.deepEqual(compareParse(fullReply(c.llm), parsed), []);
       assert.ok(confidence.overall >= 0 && confidence.overall <= 1);
     });
   }
@@ -43,7 +43,7 @@ describe('local parser: extra cases', () => {
     test(`${c.id}: "${c.text}"`, () => {
       const { parsed, confidence } = parseLocal({ text: c.text, context: c.context, draftItemNames: c.draft || [] });
       assert.equal(ParsedCommandSchema.safeParse(parsed).success, true, 'matches the LLM schema');
-      assert.deepEqual(compareParse(fullReply(c.expect), parsed, c.context), []);
+      assert.deepEqual(compareParse(fullReply(c.expect), parsed), []);
       if (c.lowConfidence) assert.ok(confidence.overall < 0.85, `expected low confidence, got ${confidence.overall}`);
       else assert.ok(confidence.overall >= 0.85, `expected confident parse, got ${confidence.overall}`);
     });
@@ -60,8 +60,8 @@ describe('local parser: details', () => {
     assert.equal(confidence.overall, Math.min(confidence.intent, confidence.customer, confidence.payment, ...confidence.items));
   });
   test('"do" is two only when it counts something', () => {
-    assert.equal(parseLocal({ text: 'Kumar ko do Lux soap', context: 'pos' }).parsed.items[0].qty, 2);
-    assert.equal(parseLocal({ text: 'Lux soap de do', context: 'pos' }).parsed.items[0].qty, null);
+    assert.equal(parseLocal({ text: 'Kumar ko do Lux soap', context: 'invoice' }).parsed.items[0].qty, 2);
+    assert.equal(parseLocal({ text: 'Lux soap de do', context: 'invoice' }).parsed.items[0].qty, null);
   });
   test('update without the item on the bill becomes an add', () => {
     const r = parseLocal({ text: 'cement 12 bags pannunga', context: 'invoice', draftItemNames: [] });
@@ -78,7 +78,7 @@ describe('local parser: details', () => {
     for (const key of ['price', 'gst', 'hsn', 'rate', 'total']) assert.equal(new RegExp(`"${key}"`, 'i').test(json), false, key);
   });
   test('empty input is unknown with low confidence', () => {
-    const r = parseLocal({ text: '   ', context: 'pos' });
+    const r = parseLocal({ text: '   ', context: 'invoice' });
     assert.equal(r.parsed.intent, 'unknown');
     assert.ok(r.confidence.overall < 0.5);
   });

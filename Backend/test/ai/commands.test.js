@@ -29,7 +29,6 @@ function checkExpectations(c, out) {
   }
   if (e.messages) assert.match(out.messages.join(' '), new RegExp(e.messages), 'messages');
   if ('dueInDays' in e) assert.equal(out.draft.dueInDays, e.dueInDays, 'dueInDays');
-  if (e.paymentMode) assert.equal(out.draft.payment?.mode, e.paymentMode, 'payment mode');
 
   if (e.customer) {
     const got = out.draft.customer;

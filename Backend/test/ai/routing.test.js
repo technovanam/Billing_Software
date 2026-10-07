@@ -14,7 +14,7 @@ const catalog = loadCatalog();
 function fakeFallback(reply, { fail = false } = {}) {
   const calls = [];
   return {
-    name: 'anthropic',
+    name: 'stub',
     model: 'test-model',
     calls,
     async parseCommand(args) {
@@ -36,9 +36,9 @@ describe('routing', () => {
   });
 
   test('a low-confidence parse goes to the fallback and is logged with its path', async () => {
-    const fb = fakeFallback({ intent: 'create_pos_bill', items: [{ spoken_name: 'Lux soap', qty: 2, unit: null }] });
-    const run = await runCommand({ text: 'Lux soap de do yaar', context: 'pos', catalog, fallback: fb, threshold: 0.85 });
-    assert.equal(run.path, 'anthropic');
+    const fb = fakeFallback({ intent: 'create_invoice', items: [{ spoken_name: 'Lux soap', qty: 2, unit: null }] });
+    const run = await runCommand({ text: 'Lux soap de do yaar', context: 'invoice', catalog, fallback: fb, threshold: 0.85 });
+    assert.equal(run.path, 'stub');
     assert.equal(fb.calls.length, 1);
     assert.deepEqual(Object.keys(fb.calls[0]).sort(), ['context', 'draftItemNames', 'text'], 'only text, context and item names go out');
     assert.equal(run.result.draft.items[0].product.id, 'p_soap');
@@ -46,13 +46,13 @@ describe('routing', () => {
   });
 
   test('a name that matches no product lowers confidence (catalogue-aware)', async () => {
-    const run = await runCommand({ text: '5 kg saffron', context: 'pos', catalog, threshold: 0.85 });
+    const run = await runCommand({ text: '5 kg saffron', context: 'invoice', catalog, threshold: 0.85 });
     assert.ok(run.localConfidence.items[0] <= 0.7);
     assert.equal(run.lowConfidence, true);
   });
 
   test('with no fallback, the local result comes back with unsure parts marked', async () => {
-    const run = await runCommand({ text: '5 kg saffron and 2 kg sugar', context: 'pos', catalog, fallback: null, threshold: 0.85 });
+    const run = await runCommand({ text: '5 kg saffron and 2 kg sugar', context: 'invoice', catalog, fallback: null, threshold: 0.85 });
     assert.equal(run.path, 'local');
     assert.equal(run.lowConfidence, true);
     const [saffron, sugar] = run.result.draft.items;
@@ -63,7 +63,7 @@ describe('routing', () => {
 
   test('if the fallback fails, the local result is used and the error recorded', async () => {
     const fb = fakeFallback({}, { fail: true });
-    const run = await runCommand({ text: 'Lux soap', context: 'pos', catalog, fallback: fb, threshold: 0.85 });
+    const run = await runCommand({ text: 'Lux soap', context: 'invoice', catalog, fallback: fb, threshold: 0.85 });
     assert.equal(run.path, 'local');
     assert.equal(run.fallbackError, 'AI_UNAVAILABLE');
     assert.equal(run.lowConfidence, true);
@@ -71,15 +71,15 @@ describe('routing', () => {
 
   test('invalid fallback output is rejected and the local result used', async () => {
     const bad = { name: 'ollama', model: 'm', parseCommand: async () => ({ parsed: { intent: 'drop_tables' } }) };
-    const run = await runCommand({ text: 'Lux soap', context: 'pos', catalog, fallback: bad, threshold: 0.85 });
+    const run = await runCommand({ text: 'Lux soap', context: 'invoice', catalog, fallback: bad, threshold: 0.85 });
     assert.equal(run.path, 'local');
     assert.equal(run.fallbackError, 'AI_BAD_OUTPUT');
   });
 
   test('the threshold is respected', async () => {
-    const fb = fakeFallback({ intent: 'create_pos_bill', items: [{ spoken_name: 'sugar', qty: 2, unit: 'kg' }] });
-    const run = await runCommand({ text: '2 kg sugar', context: 'pos', catalog, fallback: fb, threshold: 0.99 });
-    assert.equal(run.path, 'anthropic', 'a stricter threshold sends even good parses to the fallback');
+    const fb = fakeFallback({ intent: 'create_invoice', items: [{ spoken_name: 'sugar', qty: 2, unit: 'kg' }] });
+    const run = await runCommand({ text: '2 kg sugar', context: 'invoice', catalog, fallback: fb, threshold: 0.99 });
+    assert.equal(run.path, 'stub', 'a stricter threshold sends even good parses to the fallback');
   });
 });
 
@@ -88,14 +88,14 @@ describe('fallback configuration', () => {
     assert.equal(buildProvider('none', {}), null);
   });
   test('missing settings are reported, not silently ignored', () => {
-    assert.throws(() => buildProvider('anthropic', {}), /AI_API_KEY/);
+    assert.throws(() => buildProvider('anthropic', {}), /Unsupported/, 'third-party AI is not supported');
     assert.throws(() => buildProvider('ollama', { AI_OLLAMA_URL: 'http://x' }), /AI_OLLAMA_MODEL/);
     assert.throws(() => buildProvider('openai', {}), /Unsupported/);
   });
 });
 
 describe('ollama adapter', () => {
-  const reply = { intent: 'create_pos_bill', customer: null, items: [{ spoken_name: 'sugar', qty: 2, unit: 'kg' }], discount: null, payment: null, due_in_days: null, notes: null, clarification_needed: null };
+  const reply = { intent: 'create_invoice', customer: null, items: [{ spoken_name: 'sugar', qty: 2, unit: 'kg' }], discount: null, payment: null, due_in_days: null, notes: null, clarification_needed: null };
   const okFetch = (content, captured = {}) => async (url, init) => {
     captured.url = url;
     captured.body = JSON.parse(init.body);
@@ -106,7 +106,7 @@ describe('ollama adapter', () => {
   test('calls the OpenAI-compatible endpoint with a JSON schema and validates the reply', async () => {
     const captured = {};
     const p = createOllamaProvider({ baseUrl: 'http://gpu-box:11434/', model: 'qwen2.5:7b', apiKey: 'k', fetchImpl: okFetch(JSON.stringify(reply), captured) });
-    const out = await p.parseCommand({ text: '2 kg sugar', context: 'pos', draftItemNames: [] });
+    const out = await p.parseCommand({ text: '2 kg sugar', context: 'invoice', draftItemNames: [] });
     assert.equal(captured.url, 'http://gpu-box:11434/v1/chat/completions');
     assert.equal(captured.body.model, 'qwen2.5:7b');
     assert.equal(captured.body.response_format.type, 'json_schema');
@@ -117,17 +117,17 @@ describe('ollama adapter', () => {
 
   test('accepts JSON wrapped in a code fence', async () => {
     const p = createOllamaProvider({ baseUrl: 'http://x', model: 'm', fetchImpl: okFetch('```json\n' + JSON.stringify(reply) + '\n```') });
-    assert.equal((await p.parseCommand({ text: 't', context: 'pos', draftItemNames: [] })).parsed.intent, 'create_pos_bill');
+    assert.equal((await p.parseCommand({ text: 't', context: 'invoice', draftItemNames: [] })).parsed.intent, 'create_invoice');
   });
 
   test('rejects output that fails the schema', async () => {
     const p = createOllamaProvider({ baseUrl: 'http://x', model: 'm', fetchImpl: okFetch(JSON.stringify({ ...reply, intent: 'rm -rf' })) });
-    await assert.rejects(p.parseCommand({ text: 't', context: 'pos', draftItemNames: [] }), (e) => e.code === 'AI_BAD_OUTPUT');
+    await assert.rejects(p.parseCommand({ text: 't', context: 'invoice', draftItemNames: [] }), (e) => e.code === 'AI_BAD_OUTPUT');
   });
 
   test('server errors are reported as unavailable', async () => {
     const p = createOllamaProvider({ baseUrl: 'http://x', model: 'm', fetchImpl: async () => ({ ok: false, status: 503 }) });
-    await assert.rejects(p.parseCommand({ text: 't', context: 'pos', draftItemNames: [] }), (e) => e.code === 'AI_UNAVAILABLE');
+    await assert.rejects(p.parseCommand({ text: 't', context: 'invoice', draftItemNames: [] }), (e) => e.code === 'AI_UNAVAILABLE');
   });
 });
 

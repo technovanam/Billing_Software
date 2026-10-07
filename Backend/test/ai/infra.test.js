@@ -3,7 +3,7 @@ const { test, describe } = require('node:test');
 const assert = require('node:assert/strict');
 const { createCatalogCache } = require('../../ai/catalogCache');
 const { canUseContext, canRunIntent, canManageAliases } = require('../../ai/permissions');
-const { roleOf } = require('../../auth/verifyToken');
+const { roleOf, verifyAuthHeader } = require('../../auth/verifyToken');
 const { createUserRateLimiter } = require('../../ai/rateLimit');
 const { rawCatalog } = require('./helpers');
 
@@ -98,24 +98,28 @@ describe('catalogue cache', () => {
 describe('permissions', () => {
   test('role comes from the token, not the screen', () => {
     assert.equal(roleOf({ email: 'wh.demo@x.in' }), 'warehouse');
-    assert.equal(roleOf({ email: 'owner@x.in' }), 'owner', 'an owner on the POS screen is still the owner');
-    assert.equal(roleOf({ role: 'cashier', businessUid: 'b1', cashierId: 'CSH-001' }), 'cashier');
-    assert.equal(roleOf({ email: 'owner@x.in', role: 'cashier' }), 'owner', 'a cashier claim without business and id is ignored');
+    assert.equal(roleOf({ email: 'owner@x.in' }), 'owner');
   });
-  test('cashier can bill on POS but not open invoices or ask business questions', () => {
-    assert.equal(canUseContext('cashier', 'pos'), true);
+  test('POS cashier and warehouse tokens are refused by the website backend', async () => {
+    const cashier = { verifyIdToken: async () => ({ uid: 'cashier_b1_CSH-001', role: 'cashier', businessUid: 'b1', cashierId: 'CSH-001' }) };
+    await assert.rejects(verifyAuthHeader('Bearer tok', { auth: cashier }), (e) => e.status === 403 && e.code === 'POS_ACCOUNT');
+    const warehouse = { verifyIdToken: async () => ({ uid: 'w1', email: 'wh.demo@x.in' }) };
+    await assert.rejects(verifyAuthHeader('Bearer tok', { auth: warehouse }), (e) => e.status === 403 && e.code === 'POS_ACCOUNT');
+    const owner = { verifyIdToken: async () => ({ uid: 'o1', email: 'owner@x.in' }) };
+    assert.equal((await verifyAuthHeader('Bearer tok', { auth: owner })).role, 'owner');
+  });
+  test('owners bill on invoices; there is no POS context or cashier role', () => {
+    assert.equal(canUseContext('owner', 'invoice'), true);
+    assert.equal(canUseContext('owner', 'pos'), false);
     assert.equal(canUseContext('cashier', 'invoice'), false);
-    assert.equal(canRunIntent('cashier', 'create_pos_bill'), true);
-    assert.equal(canRunIntent('cashier', 'query'), false);
+    assert.equal(canRunIntent('owner', 'create_pos_bill'), false);
     assert.equal(canRunIntent('cashier', 'create_invoice'), false);
   });
   test('warehouse cannot bill', () => {
-    assert.equal(canUseContext('warehouse', 'pos'), false);
     assert.equal(canUseContext('warehouse', 'invoice'), false);
   });
   test('only owners manage aliases', () => {
     assert.equal(canManageAliases('owner'), true);
-    assert.equal(canManageAliases('cashier'), false);
     assert.equal(canManageAliases('warehouse'), false);
   });
 });

@@ -4,7 +4,6 @@ const { z } = require('zod');
 
 const INTENTS = [
   'create_invoice',
-  'create_pos_bill',
   'add_item',
   'remove_item',
   'update_qty',
@@ -49,7 +48,7 @@ const ParsedCommandSchema = z.object({
 
 const ParseRequestSchema = z.object({
   text: z.string().trim().min(1).max(500),
-  context: z.enum(['invoice', 'pos']),
+  context: z.enum(['invoice']),
   currentDraft: z.any().optional().nullable(),
   sessionId: z.string().max(64).optional().nullable(),
 });

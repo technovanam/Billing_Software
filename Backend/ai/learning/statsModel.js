@@ -69,7 +69,7 @@ function buildResolvers(products, customers) {
   };
 }
 
-// Invoice / POS bill document -> { id, at, customerId, lines: [{ productId, qty }] }
+// Invoice document -> { id, at, customerId, lines: [{ productId, qty }] }
 function extractBill(doc, resolvers) {
   if (SKIP_STATUSES.has(String(doc.status || '').toLowerCase())) return null;
   const at = toIso(doc.createdAt) || toIso(doc.invoiceDate);

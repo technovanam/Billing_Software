@@ -16,11 +16,6 @@ const businessCollections = {
   invoices: sub('invoices'),
   aiLogs: sub('aiLogs'),
   settings: sub('settings'),
-  cashierSecrets: sub('cashierSecrets'),
-  securityLogs: sub('securityLogs'),
-  terminals: sub('terminals'),
-  posShifts: sub('posShifts'),
-  posShiftLocks: sub('posShiftLocks'),
 };
 
 module.exports = { getBusinessRef, businessCollections };

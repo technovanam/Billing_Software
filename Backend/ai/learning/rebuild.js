@@ -1,4 +1,4 @@
-// Full rebuild of one business's stats from its invoices, POS bills and aiLogs,
+// Full rebuild of one business's stats from its invoices and aiLogs,
 // and the nightly job that rebuilds every business with new activity.
 const admin = require('firebase-admin');
 const cron = require('node-cron');

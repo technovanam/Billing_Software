@@ -68,6 +68,8 @@ function toProductRecord(doc) {
     unitLabel: doc.unit || '',
     hsn: doc.hsn || doc.hsnCode || '',
     pricePaise: rupeesToPaise(doc.price ?? doc.rate),
+    // Item-wise GST rate set on the product (null = use the business default).
+    gstRate: Number.isFinite(Number(doc.gstRate)) && doc.gstRate !== '' && doc.gstRate !== null ? Number(doc.gstRate) : null,
     aliases: Array.isArray(doc.aliases) ? doc.aliases.map(normalizeText).filter(Boolean) : [],
     inactive: isInactive(doc),
   };

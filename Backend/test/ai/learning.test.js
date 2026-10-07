@@ -37,7 +37,7 @@ describe('stats from bills', () => {
     assert.equal(s.products.p_rice_ponni.n, 4);
     assert.equal(s.products.p_rice_basmati.n, 6, 'Basmati resolved from line names; draft bill skipped');
     assert.equal(s.products.p_dal.n, 4, 'Toor Dal resolved from description');
-    assert.equal(s.customers.c_meena.n, 6, 'POS bill customer resolved from customerName');
+    assert.equal(s.customers.c_meena.n, 6, 'bill customer resolved from customerName');
     assert.equal(s.customerProducts.c_ravi.p_rice_ponni.n, 4);
     assert.equal(s.pairs.p_rice_ponni.p_dal, 4);
     assert.equal(s.meta.watermark.at, daysAgo(1));
@@ -144,7 +144,7 @@ describe('ranking prefers the usual product', () => {
     s.customers.c_kumar_r = { n: 9, last: daysAgo(1) };
     const ranking = createRanking({ stats: s, now: NOW });
     const cmd = ParsedCommandSchema.parse(fullReply({ intent: 'set_customer', customer: { name: 'Kumar', phone: null } }));
-    const customer = applyCommand(cmd, null, catalog, { context: 'pos', ranking }).draft.customer;
+    const customer = applyCommand(cmd, null, catalog, { context: 'invoice', ranking }).draft.customer;
     assert.equal(customer.status, 'ambiguous');
     assert.equal(customer.candidates[0].id, 'c_kumar_r');
   });

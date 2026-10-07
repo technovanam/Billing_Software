@@ -1,12 +1,11 @@
 // Compares a parse with the expected one on the fields that matter for billing.
 const { normalizeText, normalizeUnit } = require('../../ai/matcher');
 
-const coerce = (intent, context) => (context === 'pos' && intent === 'create_invoice' ? 'create_pos_bill' : intent);
 const itemKey = (it) => `${normalizeText(it.spoken_name)}|${it.qty ?? '-'}|${normalizeUnit(it.unit) ?? '-'}`;
 
-function compareParse(expected, got, context) {
+function compareParse(expected, got) {
   const problems = [];
-  if (coerce(expected.intent, context) !== coerce(got.intent, context)) problems.push(`intent ${got.intent} (want ${expected.intent})`);
+  if (expected.intent !== got.intent) problems.push(`intent ${got.intent} (want ${expected.intent})`);
   if (normalizeText(expected.customer?.name) !== normalizeText(got.customer?.name)) {
     problems.push(`customer "${got.customer?.name ?? ''}" (want "${expected.customer?.name ?? ''}")`);
   }

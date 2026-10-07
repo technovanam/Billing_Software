@@ -2,20 +2,13 @@
 // (see auth/verifyToken.js), never from which screen sent the request.
 const ROLE_INTENTS = {
   owner: new Set([
-    'create_invoice', 'create_pos_bill', 'add_item', 'remove_item', 'update_qty',
+    'create_invoice', 'add_item', 'remove_item', 'update_qty',
     'set_customer', 'apply_discount', 'record_payment', 'query', 'unknown',
   ]),
-  cashier: new Set([
-    'create_pos_bill', 'add_item', 'remove_item', 'update_qty',
-    'set_customer', 'apply_discount', 'record_payment', 'unknown',
-  ]),
-  warehouse: new Set([]),
 };
 
 const ROLE_CONTEXTS = {
-  owner: new Set(['invoice', 'pos']),
-  cashier: new Set(['pos']),
-  warehouse: new Set([]),
+  owner: new Set(['invoice']),
 };
 
 

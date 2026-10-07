@@ -1,7 +1,7 @@
 // Applies a parsed command to the current draft. Prices and HSN codes always
 // come from the catalogue (re-read on every command), never from the client or
 // the LLM. Money is integer paise. GST and totals are left to the existing
-// invoice / POS calculation on the frontend.
+// invoice calculation on the frontend.
 const crypto = require('crypto');
 const Fuse = require('fuse.js');
 const { matchProduct, matchCustomer, normalizeText, normalizeUnit, convertQty } = require('./matcher');
@@ -10,7 +10,7 @@ const { lineTotalPaise } = require('./money');
 const MAX_ITEMS = 100;
 
 function productView(p) {
-  return { id: p.id, name: p.name, brand: p.brand, unit: p.unit, unitLabel: p.unitLabel, hsn: p.hsn, pricePaise: p.pricePaise };
+  return { id: p.id, name: p.name, brand: p.brand, unit: p.unit, unitLabel: p.unitLabel, hsn: p.hsn, pricePaise: p.pricePaise, gstRate: p.gstRate ?? null };
 }
 
 function candidateView({ product, score }) {
@@ -164,10 +164,10 @@ function setCustomerFromResult(draft, spokenCustomer, result, context) {
     draft.customer = { spokenName: spokenCustomer.name, status: 'ambiguous', id: null, name: spokenCustomer.name, candidates };
     return;
   }
-  // POS bills can go to a walk-in name; invoices need an existing client.
+  // Invoices need an existing client.
   draft.customer = {
     spokenName: spokenCustomer.name,
-    status: context === 'pos' ? 'new' : 'unmatched',
+    status: 'unmatched',
     id: null,
     name: spokenCustomer.name,
     candidates,
@@ -195,9 +195,7 @@ function applyCommand(parsed, rawDraft, catalog, { context, threshold, ranking =
     draftProductIds: draft.items.filter((it) => it.product).map((it) => it.product.id),
     uncertain: Boolean(itemMeta[index]?.uncertain),
   });
-  let intent = parsed.intent;
-  if (context === 'pos' && intent === 'create_invoice') intent = 'create_pos_bill';
-  if (context === 'invoice' && intent === 'create_pos_bill') intent = 'create_invoice';
+  const intent = parsed.intent;
 
   if (parsed.clarification_needed) {
     return { draft, intent, messages, clarification: parsed.clarification_needed, createdItemKeys };
@@ -216,7 +214,6 @@ function applyCommand(parsed, rawDraft, catalog, { context, threshold, ranking =
 
   switch (intent) {
     case 'create_invoice':
-    case 'create_pos_bill':
     case 'add_item':
       // A new bill command adds to whatever is already in the draft; the user
       // clears the draft explicitly, so a stray command never wipes a bill.
@@ -266,11 +263,7 @@ function applyCommand(parsed, rawDraft, catalog, { context, threshold, ranking =
       break;
 
     case 'record_payment':
-      if (context === 'pos' && parsed.payment?.mode) {
-        draft.payment = { mode: parsed.payment.mode, amountPaise: null };
-      } else {
-        messages.push('Recording payments against an invoice by command is not available yet. Use the Payments page.');
-      }
+      messages.push('Recording payments against an invoice by command is not available yet. Use the Payments page.');
       break;
 
     case 'query':
@@ -288,9 +281,8 @@ function applyCommand(parsed, rawDraft, catalog, { context, threshold, ranking =
   }
 
   // Details that ride along with a bill command.
-  if (['create_invoice', 'create_pos_bill', 'add_item'].includes(intent)) {
+  if (['create_invoice', 'add_item'].includes(intent)) {
     if (context === 'invoice' && Number.isInteger(parsed.due_in_days) && parsed.due_in_days >= 0) draft.dueInDays = parsed.due_in_days;
-    if (context === 'pos' && parsed.payment?.mode) draft.payment = { mode: parsed.payment.mode, amountPaise: null };
     if (parsed.discount) messages.push('Discounts are not supported on bills yet, so no discount was added.');
     if (parsed.notes) draft.notes = parsed.notes.slice(0, 500);
   }

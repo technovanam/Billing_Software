@@ -5,7 +5,7 @@ const { tokenize } = require('./tokenize');
 const { numberize } = require('./numbers');
 const { normalizeText } = require('../matcher');
 
-const BILL_INTENT = { invoice: 'create_invoice', pos: 'create_pos_bill' };
+const BILL_INTENT = { invoice: 'create_invoice' };
 
 const isNum = (t) => t && t.kind === 'num';
 const isSep = (t) => t && L.SEPARATORS.has(t.text);
@@ -125,7 +125,8 @@ function takeCustomer(toks, used) {
   for (let k = 0; k < toks.length; k += 1) {
     if (used[k] || !L.CUSTOMER_PREFIX.has(toks[k].text)) continue;
     let end = k + 1;
-    while (end < toks.length && !used[end] && isNameTok(toks[end]) && end - k <= 6) end += 1;
+    // Stop at "with"/"add": "for Test Customer add 10 cement" names the customer, then the items.
+    while (end < toks.length && !used[end] && isNameTok(toks[end]) && !L.ITEM_LEAD_WORDS.has(toks[end].text) && !L.ADD_WORDS.has(toks[end].text) && end - k <= 6) end += 1;
     if (end === k + 1) continue;
     const nameToks = toks.slice(k + 1, end);
     for (let i = k; i < end; i += 1) used[i] = true;
@@ -154,9 +155,12 @@ function splitClauses(toks, used) {
 function parseItemClause(clause) {
   const vague = clause.some((t) => L.VAGUE_QTY.has(t.text));
   const toks = clause.filter(
-    (t) => isNum(t) || !(L.GIVE_FILLER.has(t.text) || L.DO_VERBS.has(t.text) || L.ADD_WORDS.has(t.text) || L.REMOVE_WORDS.has(t.text) || L.UPDATE_WORDS.has(t.text))
+    (t) => isNum(t) || !(L.GIVE_FILLER.has(t.text) || L.DO_VERBS.has(t.text) || L.ADD_WORDS.has(t.text) || L.REMOVE_WORDS.has(t.text) || L.UPDATE_WORDS.has(t.text) || L.QTY_WORDS.has(t.text) || L.PRONOUNS.has(t.text))
   );
+  while (toks.length && L.ITEM_LEAD_WORDS.has(toks[0].text)) toks.shift();
   if (!toks.length) return null;
+  // "and 2 quantity": a bare number belongs to the item before it.
+  if (toks.length === 1 && isNum(toks[0])) return { qtyOnly: toks[0].value, conf: toks[0].conf };
 
   // Pick the quantity: a number followed by a unit, else a number at either end.
   const numIdx = toks.map((t, i) => (isNum(t) ? i : -1)).filter((i) => i >= 0);
@@ -188,13 +192,38 @@ function parseItemClause(clause) {
 function parseItems(toks, used) {
   const items = [];
   const confs = [];
+  let orphanQty = null; // "add 10 more": a number with no item named
   for (const clause of splitClauses(toks, used)) {
     const parsed = parseItemClause(clause);
     if (!parsed) continue;
+    if (parsed.qtyOnly !== undefined) {
+      const prev = items[items.length - 1];
+      if (prev && prev.qty === null) {
+        prev.qty = parsed.qtyOnly;
+        confs[confs.length - 1] = Math.min(confs[confs.length - 1] / 0.9, 1) * parsed.conf;
+      } else if (!prev && orphanQty === null) {
+        orphanQty = parsed.qtyOnly;
+      }
+      continue;
+    }
     items.push(parsed.item);
     confs.push(parsed.conf);
   }
-  return { items, confs };
+  return { items, confs, orphanQty };
+}
+
+// Follow-ups that name no item ("add 10 more", "remove", "make it 15") mean
+// the item on the bill when there is only one; otherwise ask which.
+function itemOnBill(draftItemNames, question) {
+  if (draftItemNames.length === 1) return { name: draftItemNames[0] };
+  if (!draftItemNames.length) return { ask: 'There are no items on the bill yet. Say the product name, e.g. "10 bag cement".' };
+  return { ask: `${question}: ${draftItemNames.join(', ')}?` };
+}
+
+function askBack(intent, question) {
+  const result = emptyParse(intent);
+  result.clarification_needed = question;
+  return finish(result, { intent: 0.95, customer: null, items: [], payment: null, due: null, discount: null });
 }
 
 // ---- main ------------------------------------------------------------------
@@ -291,14 +320,26 @@ function parseLocal({ text, context = 'invoice', draftItemNames = [] }) {
     conf.discount = discount.conf;
   }
 
+  // Drop an English lead-in: "create a new invoice", "make bill", "please generate invoice".
+  // Only when it names an invoice/bill, so "make sugar 750 gram" stays an update.
+  let leadEnd = 0;
+  while (leadEnd < toks.length && L.COMMAND_WORDS.has(toks[leadEnd].text)) leadEnd += 1;
+  if (toks.slice(0, leadEnd).some((t) => ['invoice', 'bill', 'billing'].includes(t.text))) {
+    for (let i = 0; i < leadEnd; i += 1) used[i] = true;
+  }
+
   const first = firstMeaningful(toks, used);
   const firstTok = first >= 0 ? toks[first] : null;
   const lastIdx = toks.map((t, i) => (!used[i] && !isSep(t) ? i : -1)).filter((i) => i >= 0).pop();
   const lastTok = lastIdx !== undefined ? toks[lastIdx] : null;
 
   // Customer change: "customer name Kumar", "change customer to Kumar", "customer ka naam Kumar".
+  // Only when the word opens the command ("customer ...", "change customer ..."),
+  // never inside a bill: "Test Customer ABC ku 3 bag cement" names a customer.
   const custWordIdx = toks.findIndex((t, i) => !used[i] && (t.text === 'customer' || t.text === 'client' || t.text === 'party' || t.text === 'ग्राहक'));
-  if (custWordIdx >= 0 && custWordIdx <= (first ?? 0) + 1) {
+  const opensCommand = custWordIdx === first || (custWordIdx === (first ?? 0) + 1 && L.UPDATE_WORDS.has(toks[first]?.text));
+  const looksLikeBill = toks.some((t, i) => !used[i] && (isNum(t) || L.CUSTOMER_SUFFIX.has(t.text)));
+  if (custWordIdx >= 0 && opensCommand && !looksLikeBill) {
     for (let i = 0; i <= custWordIdx; i += 1) used[i] = true;
     const nameToks = toks.filter((t, i) => !used[i] && !isSep(t) && !L.CUSTOMER_WORDS.has(t.text) && !L.UPDATE_WORDS.has(t.text) && t.text !== 'to' && !L.DO_VERBS.has(t.text));
     const result = emptyParse('set_customer');
@@ -310,8 +351,14 @@ function parseLocal({ text, context = 'invoice', draftItemNames = [] }) {
   if ((firstTok && L.REMOVE_WORDS.has(firstTok.text)) || (lastTok && L.REMOVE_WORDS.has(lastTok.text))) {
     const { items, confs } = parseItems(toks, used);
     const result = emptyParse('remove_item');
+    if (!items.length) {
+      const target = itemOnBill(draftItemNames, 'Which item should I remove');
+      if (target.ask) return askBack('remove_item', target.ask);
+      result.items = [{ spoken_name: target.name, qty: null, unit: null }];
+      return finish(result, { ...conf, intent: 0.95, items: [0.95] });
+    }
     result.items = items.map((it) => ({ spoken_name: it.spoken_name, qty: null, unit: null }));
-    return finish(result, { ...conf, intent: 0.95, items: items.length ? confs : [0.3] });
+    return finish(result, { ...conf, intent: 0.95, items: confs });
   }
 
   // Quantity change: "make sugar 750 gram", "change cement to 12 bags",
@@ -322,7 +369,12 @@ function parseLocal({ text, context = 'invoice', draftItemNames = [] }) {
     if (explicitUpdate) used[first] = true;
     const toIdx = toks.findIndex((t, i) => !used[i] && t.text === 'to');
     if (toIdx >= 0) used[toIdx] = true;
-    const { items, confs } = parseItems(toks, used);
+    const { items, confs, orphanQty } = parseItems(toks, used);
+    if (!items.length && orphanQty !== null && explicitUpdate) {
+      const target = itemOnBill(draftItemNames, `Change which item to ${orphanQty}`);
+      if (target.ask) return askBack('update_qty', target.ask);
+      return finish({ ...parsed, intent: 'update_qty', items: [{ spoken_name: target.name, qty: orphanQty, unit: null }] }, { ...conf, intent: 0.95, items: [0.95] });
+    }
     const allOnBill = items.length > 0 && items.every((it) => draftHas(it.spoken_name, draftItemNames));
     if (explicitUpdate || allOnBill) {
       const result = { ...parsed, intent: 'update_qty', items };
@@ -340,7 +392,13 @@ function parseLocal({ text, context = 'invoice', draftItemNames = [] }) {
     conf.customer = customer.conf;
   }
   const addFirst = firstTok && L.ADD_WORDS.has(firstTok.text) && firstTok.text !== 'more';
-  const { items, confs } = parseItems(toks, used);
+  const { items, confs, orphanQty } = parseItems(toks, used);
+  const saysMore = toks.some((t) => L.ADD_WORDS.has(t.text));
+  if (!items.length && orphanQty !== null && saysMore && draftItemNames.length) {
+    const target = itemOnBill(draftItemNames, `Add ${orphanQty} more of which item`);
+    if (target.ask) return askBack('add_item', target.ask);
+    return finish({ ...parsed, intent: 'add_item', items: [{ spoken_name: target.name, qty: orphanQty, unit: null }] }, { ...conf, intent: 0.95, items: [0.95] });
+  }
   parsed.items = items;
   conf.items = confs;
 

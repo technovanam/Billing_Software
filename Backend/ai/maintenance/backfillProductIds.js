@@ -1,4 +1,4 @@
-// Plans adding productId to saved invoice / POS lines that don't have one,
+// Plans adding productId to saved invoice lines that don't have one,
 // when the line's name matches exactly one product. Pure: the script applies it.
 const { normalizeText } = require('../matcher');
 

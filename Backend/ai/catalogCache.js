@@ -1,6 +1,6 @@
 // In-memory product and customer lists per business, kept current by Firestore
 // listeners. Any create, edit or delete of a product or customer (from the admin
-// pages, POS, warehouse, backend routes or the AI preview) replaces the cached
+// pages, backend routes or the AI preview) replaces the cached
 // list, so matching never uses stale names, prices or aliases. Businesses that
 // stop sending commands are dropped after IDLE_MS.
 const { businessCollections } = require('./businessRef');

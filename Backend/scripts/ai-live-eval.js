@@ -3,11 +3,11 @@
  * (test/ai/fixtures/commands.json + local-extra.json):
  *   - how many commands the local parser handles at AI_LOCAL_CONFIDENCE
  *   - local accuracy, and how many CONFIDENT local results were wrong
- *   - fallback accuracy (Anthropic or Ollama) and accuracy after routing
+ *   - fallback accuracy (self-hosted Ollama) and accuracy after routing
  *   - response times per path, plus a threshold sweep for tuning
  *
  *   node scripts/ai-live-eval.js                       # local only (free, offline)
- *   node scripts/ai-live-eval.js --fallback=anthropic  # also call the model (needs AI_API_KEY)
+ *   node scripts/ai-live-eval.js --fallback=ollama  # also call your Ollama model
  *   node scripts/ai-live-eval.js --fallback=ollama     # needs AI_OLLAMA_URL, AI_OLLAMA_MODEL
  *   node scripts/ai-live-eval.js ta- x-                # only ids starting with these
  *   node scripts/ai-live-eval.js --from=exports/training-20261001.jsonl
@@ -93,7 +93,7 @@ async function main() {
     const t0 = process.hrtime.bigint();
     const local = await runCommand({ text: c.text, context: c.context, currentDraft: c.currentDraft, catalog, fallback: null, threshold });
     const localMs = Number(process.hrtime.bigint() - t0) / 1e6;
-    const localProblems = compareParse(c.truth, local.parsed, c.context);
+    const localProblems = compareParse(c.truth, local.parsed);
     const row = { id: c.id, text: c.text, confidence: local.localConfidence.overall, confident: !local.lowConfidence, localOk: !localProblems.length, localProblems, localMs };
 
     if (fallback) {
@@ -101,7 +101,7 @@ async function main() {
       try {
         const reply = await fallback.parseCommand({ text: c.text, context: c.context, draftItemNames: local.draftItemNames });
         row.fallbackMs = Date.now() - t1;
-        row.fallbackProblems = compareParse(c.truth, reply.parsed, c.context);
+        row.fallbackProblems = compareParse(c.truth, reply.parsed);
         row.fallbackOk = !row.fallbackProblems.length;
         row.tokens = (reply.usage?.inputTokens || 0) + (reply.usage?.outputTokens || 0);
       } catch (err) {

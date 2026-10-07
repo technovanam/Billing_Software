@@ -34,7 +34,7 @@ async function logCommand({ businessId, user, role, context, sessionId, text, in
     finalInvoiceId: null,
     status: error ? 'error' : 'parsed',
     error: error || null,
-    path: path || null, // local | anthropic | ollama
+    path: path || null, // local | ollama
     localConfidence: localConfidence || null,
     lowConfidence: Boolean(lowConfidence),
     fallbackError: fallbackError || null,
