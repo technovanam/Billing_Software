@@ -10,18 +10,17 @@ A full-stack, multi-tenant SaaS billing and inventory platform for Indian retail
 2. Architecture
 3. Repository Structure
 4. Technology Stack
-5. The Three Portals
-6. Warehouse Module
-7. All Application Routes
-8. Backend API Endpoints
-9. Firebase Collections Schema
-10. Firestore Security Rules
-11. Context Providers
-12. Custom Hooks
-13. Environment Variables
-14. Getting Started
-15. Seeding Data
-16. Deployment
+5. The Two Portals
+6. All Application Routes
+7. Backend API Endpoints
+8. Firebase Collections Schema
+9. Firestore Security Rules
+10. Context Providers
+11. Custom Hooks
+12. Environment Variables
+13. Getting Started
+14. Seeding Data
+15. Deployment
 
 ---
 
@@ -30,10 +29,10 @@ A full-stack, multi-tenant SaaS billing and inventory platform for Indian retail
 TechnoVanam Billing Software is a multi-tenant SaaS platform built for Indian retail businesses. It provides:
 
 - GST-compliant invoice generation with PDF export and Razorpay online payment links
-- Full inventory management with godown/warehouse tracking, barcode scanning, and stock movements
-- A touch-optimized POS terminal for cashiers with offline-ready local caching
 - A Super Admin Command Center to manage all tenants, subscriptions, billing, support tickets, and platform-wide configurations
 - AI-powered business assistant for instant financial insights and automated analytics
+
+The POS (point of sale) counter app and the warehouse / godown module are a separate project in [`POS/`](POS/README.md). It has its own frontend and backend, and is not part of this website.
 
 The platform is designed as a multi-tenant architecture where each business (userId) owns its own Firestore subcollection tree, isolated from other tenants at the security rules level.
 
@@ -44,13 +43,12 @@ The platform is designed as a multi-tenant architecture where each business (use
 ```
 +---------------------------------------------------------------------+
 |                        CLIENT (React + Vite)                        |
-|  +-------------+  +------------------+  +------------------------+ |
-|  |  Business   |  |   POS Terminal   |  |  Super Admin Portal    | |
-|  |  Portal     |  |   Portal         |  |  Command Center        | |
-|  |  /dashboard |  |   /pos/*         |  |  /super-admin/*        | |
-|  +------+------+  +--------+---------+  +----------+-------------+ |
-|         |                  |                        |               |
-|         +------------------+------------------------+               |
+|  +--------------------------+     +----------------------------+  |
+|  |  Business (Owner) Portal |     |  Super Admin Portal        |  |
+|  |  /dashboard              |     |  /super-admin/*            |  |
+|  +------------+-------------+     +-------------+--------------+  |
+|               |                                 |                 |
+|               +---------------------------------+                 |
 |                      Real-time onSnapshot                           |
 +----------------------------+----------------------------------------+
                              |
@@ -86,14 +84,11 @@ Billing_Software/
 +-- Backend/
 |   +-- server.js                (PDF, payments, CRON jobs)
 |   +-- package.json
-|   +-- seedSuperAdmin.js
-|   +-- seedData.js
-|   +-- seedDemoUser.js
-|   +-- seedFirestore.js
-|   +-- seedCoupons.js
-|   +-- seedWarehouseUser.js
-|   +-- linkWarehouseToAdmin.js
 |   +-- .env
+|
++-- POS/                         (standalone POS app, see POS/README.md)
+|   +-- frontend/
+|   +-- backend/
 |
 +-- Frontend/
     +-- vite.config.js
@@ -116,25 +111,19 @@ Billing_Software/
         |   +-- super-admin/
         |   |   +-- ImpersonationBanner.jsx
         |   |   +-- SuperAdminRoute.jsx
-        |   +-- warehouse/
         |
         +-- context/
         |   +-- AuthContext.jsx
         |   +-- SuperAdminAuthContext.jsx
         |   +-- CompanyProfileContext.jsx
-        |   +-- OperatorContext.jsx
         |   +-- AIAssistantContext.jsx
         |   +-- ToastContext.jsx
         |
         +-- hooks/
         |   +-- useFirestore.js
         |   +-- useSuperAdminFirestore.js
-        |   +-- useWarehouse.js
-        |   +-- usePOSFullscreen.js
-        |   +-- useFormKeyboardNavigation.js
         |
         +-- lib/firebase/config.js
-        +-- layouts/WarehouseLayout.jsx
         +-- services/
         +-- types/
         +-- utils/
@@ -151,12 +140,9 @@ Billing_Software/
             +-- payments/
             +-- expenses/
             +-- reports/
-            +-- cashiers/
             +-- settings/
             +-- ai/
             +-- pay/
-            +-- pos/
-            +-- warehouse/
             +-- admin/
             +-- super-admin/
                 +-- auth/
@@ -215,7 +201,7 @@ Billing_Software/
 
 ---
 
-## The Three Portals
+## The Two Portals
 
 ### Portal 1 - Business / Billing Portal
 
@@ -239,7 +225,6 @@ Billing_Software/
 | Payments | Record payment receipts with multiple modes Cash, UPI, Bank Transfer |
 | Expenses | Log and categorize business expenses with vendor tagging |
 | Reports | Revenue line charts, GST summary, expense breakdown, profit/loss |
-| Cashier Management | Create and manage cashier PIN-based accounts for POS login |
 | AI Assistant | Gemini-powered chatbot for instant financial queries |
 | Settings | Company profile, logo, GST details, branding, payment configuration |
 | FY Archives | Financial year data archiving and rollover |
@@ -256,7 +241,6 @@ src/pages/products/           -> ProductsList.jsx
 src/pages/payments/           -> Payment.jsx
 src/pages/expenses/           -> Expenses.jsx
 src/pages/reports/            -> RevenueLineChart.jsx
-src/pages/cashiers/           -> CashierManagement.jsx
 src/pages/settings/           -> SettingsPage.jsx
 src/pages/ai/                 -> AIAssistant.jsx
 src/pages/admin/              -> DataSeeder.jsx, ClearAndReseed.jsx, FYArchives.jsx
@@ -264,48 +248,7 @@ src/pages/admin/              -> DataSeeder.jsx, ClearAndReseed.jsx, FYArchives.
 
 ---
 
-### Portal 2 - POS (Point of Sale) Portal
-
-**URL Base:** /pos/*
-
-**Who uses it:** Cashiers and billing operators at retail counters.
-
-**Authentication:** Dual-mode. Cashiers log in using a business UID + 4-digit PIN stored in the Firestore cashiers subcollection. Business owners can also access the POS via regular Firebase auth.
-
-**Design:** Touch-optimized, fullscreen-capable. Supports barcode scanning, customer lookup, multi-item cart, thermal receipt printing, QR payments, and real-time stock deduction.
-
-#### Features
-
-| Page | Description |
-|---|---|
-| POS Login | Cashier selects business UID and enters PIN to open a shift |
-| POS Dashboard | Shift summary, quick stats, shortcuts to POS functions |
-| POS Billing | Full billing terminal: product search, cart, discount, payment, receipt printing |
-| POS Customers | Customer search, registration, ledger view, balance payments |
-| POS Products Catalog | Browse product catalog with stock levels and pricing |
-
-#### Page Files
-
-```
-src/pages/pos/POSLogin.jsx           -> Cashier PIN login screen
-src/pages/pos/POSPortalLayout.jsx    -> POS shell layout with nav
-src/pages/pos/POSDashboard.jsx       -> Shift overview dashboard
-src/pages/pos/POSPage.jsx            -> Main billing terminal (77KB largest component)
-src/pages/pos/POSCustomers.jsx       -> Customer lookup and registration
-src/pages/pos/POSProductsCatalog.jsx -> Product browsing
-src/pages/pos/QRScannerModal.jsx     -> Camera-based QR/barcode scanner
-src/pages/pos/ThermalReceipt.jsx     -> 80mm thermal receipt layout
-```
-
-#### POS Session Management (OperatorContext)
-
-- Stores cashier name, PIN, shift start time in localStorage under pos_cashier_session
-- Route guard POSProtectedRoute checks for active session or owner Firebase auth
-- Session persists across page refreshes until explicitly ended via shift close
-
----
-
-### Portal 3 - Super Admin Command Center
+### Portal 2 - Super Admin Command Center
 
 **URL Base:** /super-admin/*
 
@@ -313,7 +256,7 @@ src/pages/pos/ThermalReceipt.jsx     -> 80mm thermal receipt layout
 
 **Authentication:** Separate Firebase Auth scope (SuperAdminAuthContext). Only users in the adminUsers Firestore collection with role Super Admin can access. Supports 2FA/MFA via TOTP. Separate 15-minute idle timeout.
 
-**Master Credentials:** See `DEMO_LOGINS.md` (or configure via Firebase Console)
+**Admin accounts:** create them in the Firebase console (see Setup step 6) or from the Admin Users page.
 
 **Ghost Mode (Impersonation):** Super Admins can impersonate any business to view their data as if they were the owner. An always-visible ImpersonationBanner warns when a ghost session is active.
 
@@ -343,10 +286,8 @@ src/pages/pos/ThermalReceipt.jsx     -> 80mm thermal receipt layout
 
 | Route | Page | Description |
 |---|---|---|
-| /super-admin/platform/users | BusinessUsersList.jsx | All cashiers and staff across all tenants |
+| /super-admin/platform/users | BusinessUsersList.jsx | All staff across all tenants |
 | /super-admin/platform/branches | BranchesList.jsx | All branches registered by all tenants |
-| /super-admin/platform/godowns | GodownsList.jsx | All warehouses/godowns across tenants |
-| /super-admin/platform/terminals | POSTerminalsList.jsx | All POS terminals with block/unblock/remote reset |
 
 #### Subscriptions and Billing
 
@@ -400,38 +341,6 @@ File: src/pages/super-admin/layout/SuperAdminLayout.jsx
 
 ---
 
-## Warehouse Module
-
-**URL Base:** /warehouse/*
-
-**Who uses it:** Warehouse operators and inventory managers linked to a business tenant.
-
-**Authentication:** Same business Firebase Auth (AuthContext). A dedicated seedWarehouseUser.js script creates a warehouse operator account linked to a tenant userId.
-
-**Architecture:** All warehouse data stored under users/{userId}/ subcollections: godowns, stock, stockMovements, barcodeIndex, damaged_stock, and staff.
-
-### Pages and Routes
-
-| Route | Page | Description |
-|---|---|---|
-| /warehouse/ | WarehouseDashboard.jsx | Stock summary, low-stock alerts, recent movements, godown breakdown |
-| /warehouse/products | WarehouseProducts.jsx | Product registry with stock levels per godown, pricing, barcode |
-| /warehouse/scan | BarcodeScanner.jsx | Camera and manual barcode scanning with product lookup |
-| /warehouse/stock-in | StockIn.jsx | Receive goods: select godown, product, quantity, lot, expiry |
-| /warehouse/stock-out | StockOut.jsx | Issue goods: dispatch recording with reason codes |
-| /warehouse/movements | StockMovements.jsx | Immutable ledger of all stock IN/OUT/TRANSFER events |
-| /warehouse/damaged | DamagedStock.jsx | Log and track damaged/expired inventory |
-| /warehouse/reports | StockReport.jsx | Godown-wise stock valuation, movement history, low-stock report |
-| /warehouse/setup | WarehouseSetup.jsx | Configure godowns, set alerts, link staff operators |
-
-### Key Warehouse Data Rules
-
-- stockMovements are immutable (append-only via security rules, update and delete blocked)
-- Barcode uniqueness enforced via Firestore atomic transactions on barcodeIndex/{barcode}
-- Stock transfers between godowns use runTransaction for concurrency-safe atomic updates
-
----
-
 ## All Application Routes
 
 ### Public Routes
@@ -469,30 +378,6 @@ File: src/pages/super-admin/layout/SuperAdminLayout.jsx
 | /clear-and-reseed | ClearAndReseed | Dev: reset and reseed |
 | /fy-archives | FYArchives | Financial year archives |
 
-### Warehouse Portal (Firebase Auth required)
-
-| Route | Component | Description |
-|---|---|---|
-| /warehouse/ | WarehouseDashboard | Inventory overview |
-| /warehouse/products | WarehouseProducts | Product registry |
-| /warehouse/scan | BarcodeScanner | Barcode scanner |
-| /warehouse/stock-in | StockIn | Receive stock |
-| /warehouse/stock-out | StockOut | Issue stock |
-| /warehouse/movements | StockMovements | Movement ledger |
-| /warehouse/damaged | DamagedStock | Damaged goods log |
-| /warehouse/reports | StockReport | Inventory reports |
-| /warehouse/setup | WarehouseSetup | Godown configuration |
-
-### POS Portal (POS PIN or Firebase Auth)
-
-| Route | Component | Description |
-|---|---|---|
-| /pos/login | POSLogin | Cashier PIN login |
-| /pos/ | POSDashboard | Shift dashboard |
-| /pos/billing | POSPage | Main POS billing terminal |
-| /pos/customers | POSCustomers | Customer management |
-| /pos/products | POSProductsCatalog | Product catalog |
-
 ### Super Admin Portal (Super Admin Auth required)
 
 | Route | Component | Description |
@@ -506,8 +391,6 @@ File: src/pages/super-admin/layout/SuperAdminLayout.jsx
 | /super-admin/businesses/:id | BusinessDetail | Tenant detail and controls |
 | /super-admin/platform/users | BusinessUsersList | All tenant staff |
 | /super-admin/platform/branches | BranchesList | All branches |
-| /super-admin/platform/godowns | GodownsList | All godowns |
-| /super-admin/platform/terminals | POSTerminalsList | All POS terminals |
 | /super-admin/subscriptions/plans | SubscriptionPlans | Plan builder |
 | /super-admin/subscriptions/list | SubscriptionsList | Active subscriptions |
 | /super-admin/subscriptions/payments | PlatformPayments | Payments and refunds |
@@ -576,15 +459,13 @@ The Express server runs on port 5000, proxied through Vite in development.
   +-- /recurringInvoices/{docId}     Recurring billing templates
   +-- /deliveryChallans/{docId}      Delivery challans
   +-- /settings/{docId}              Company settings
-  +-- /cashiers/{docId}              POS cashier accounts PIN-based
-  +-- /staff/{docId}                 Warehouse staff
+  +-- /staff/{docId}                 Warehouse staff (POS app)
   +-- /branches/{docId}              Branch offices
-  +-- /godowns/{docId}               Warehouse/godown definitions
-  +-- /terminals/{docId}             POS terminal registrations
-  +-- /stock/{docId}                 Current stock per product+godown
-  +-- /stockMovements/{docId}        Immutable stock movement ledger
-  +-- /damaged_stock/{docId}         Damaged goods records
-  +-- /barcodeIndex/{barcode}        Unique barcode to product mapping
+  +-- /godowns/{docId}               Godown definitions (POS app)
+  +-- /stock/{docId}                 Stock per product+godown (POS app)
+  +-- /stockMovements/{docId}        Stock movement ledger (POS app)
+  +-- /damaged_stock/{docId}         Damaged goods records (POS app)
+  +-- /barcodeIndex/{barcode}        Barcode to product mapping (POS app)
   +-- /appSettings/{docId}           App-level configuration cache
 
 /adminUsers/{adminId}                Super Admin and staff accounts
@@ -654,7 +535,6 @@ isLinkedWarehouseReader()   -> Currently aliased to isOwner (extensible)
 | users/{userId} | Owner only | Owner (protected fields blocked); Admin with permission |
 | users/{uid}/invoices | Owner | Owner |
 | users/{uid}/payments | Owner | Owner |
-| users/{uid}/cashiers | Owner | Owner |
 | users/{uid}/stockMovements | Owner | Owner (create only, update/delete blocked) |
 | adminUsers | Any Admin | Super Admin only |
 | adminRoles | Any Admin | Super Admin only |
@@ -676,9 +556,8 @@ AuthProvider
   CompanyProfileProvider
     ToastProvider
       AIAssistantProvider
-        OperatorProvider
-          SuperAdminAuthProvider
-            Router
+        SuperAdminAuthProvider
+          Router
 ```
 
 | Context | File | Provides |
@@ -687,7 +566,6 @@ AuthProvider
 | CompanyProfileContext | CompanyProfileContext.jsx | companyProfile (tenant Firestore doc), loading |
 | ToastContext | ToastContext.jsx | showToast(message, type) global toast function |
 | AIAssistantContext | AIAssistantContext.jsx | Gemini AI chat state, message history, loading |
-| OperatorContext | OperatorContext.jsx | POS cashier session, shift state, login/logout |
 | SuperAdminAuthContext | SuperAdminAuthContext.jsx | adminUser, 2FA state, login, logout, verify2FA, startImpersonation, stopImpersonation |
 
 ---
@@ -706,7 +584,6 @@ All hooks use onSnapshot for real-time Firestore updates.
 | usePayments() | payments | { payments, loading } |
 | useExpenses() | expenses | { expenses, loading } |
 | useRecurringInvoices() | recurringInvoices | { recurringInvoices, loading } |
-| useCashiers() | cashiers | { cashiers, loading } |
 | useDashboardStats() | Multiple aggregated | { stats, loading } |
 
 ### useSuperAdminFirestore.js - Super Admin Hooks
@@ -729,20 +606,8 @@ All hooks use onSnapshot for real-time Firestore updates.
 | useSystemSettings() | system/settings | { settings, loading } |
 | useBackups() | systemBackups | { backups, loading } |
 | useSystemHealth() | system/health | { health, loading } |
-| usePlatformTerminals() | users collectionGroup | { terminals, loading } |
 | usePlatformBranches() | users collectionGroup | { branches, loading } |
-| usePlatformGodowns() | users collectionGroup | { godowns, loading } |
 | usePlatformUsers() | users collectionGroup | { users, loading } |
-
-### useWarehouse.js - Warehouse Hooks
-
-Large hook file (55KB) covering all warehouse operations:
-
-- useGodowns(), useWarehouseProducts(), useStockMovements(), useStockReport()
-- stockIn(), stockOut(), stockTransfer(), addDamagedStock()
-- useBarcodeScanner(), lookupBarcode()
-
----
 
 ## Environment Variables
 
@@ -824,33 +689,11 @@ npm run dev
 
 App starts on http://localhost:5173
 
-### 6. Seed the Super Admin
+### 6. Create the Super Admin
 
-```bash
-cd Backend
-node seedSuperAdmin.js
-```
-
-This creates the Super Admin account (configured via SUPER_ADMIN_SEED_PASSWORD environment variable):
-- Email: admin@technovanam.com
-- Password: (Defined via environment variable / see DEMO_LOGINS.md)
-- Portal URL: http://localhost:5173/super-admin/login
-
----
-
-## Seeding Data
-
-All seed scripts are in Backend/ and require a valid serviceAccountKey.json:
-
-| Script | Command | Description |
-|---|---|---|
-| seedSuperAdmin.js | node seedSuperAdmin.js | Creates Super Admin Firebase Auth account and Firestore document |
-| seedData.js | node seedData.js | Seeds a full demo business with invoices, products, customers |
-| seedDemoUser.js | node seedDemoUser.js | Creates a demo tenant account |
-| seedFirestore.js | node seedFirestore.js | Seeds basic Firestore structure and config |
-| seedCoupons.js | node seedCoupons.js | Seeds discount coupon codes |
-| seedWarehouseUser.js | node seedWarehouseUser.js | Creates a warehouse operator account |
-| linkWarehouseToAdmin.js | node linkWarehouseToAdmin.js | Links warehouse operator to a specific tenant |
+1. In the Firebase console, add an Email/Password user under Authentication and copy its UID.
+2. In Firestore, create the document `adminUsers/{that UID}` with `role: "Super Admin"`, `status: "Active"`, `email` and `name`.
+3. Sign in at http://localhost:5173/signin. Further admins can be added from the Admin Users page.
 
 ---
 
